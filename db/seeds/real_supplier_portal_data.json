@@ -1,0 +1,1051 @@
+{
+  "generatedAt": "2026-08-03T20:30:54Z",
+  "mode": "hybrid_sync_worker",
+  "provider": {
+    "supplierCode": "FORN-4050",
+    "name": "Nestlé Brasil S/A",
+    "cnpj": "60.409.075/0001-52"
+  },
+  "sales": [
+    {
+      "codFilial": 7,
+      "sku": 186537,
+      "quantidade": 18.0,
+      "valorVenda": 129.6,
+      "valorCmv": 87.12,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 189285,
+      "quantidade": 21.0,
+      "valorVenda": 132.09,
+      "valorCmv": 95.55,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 191841,
+      "quantidade": 58.0,
+      "valorVenda": 200.1,
+      "valorCmv": 99.76,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 193636,
+      "quantidade": 21.0,
+      "valorVenda": 300.3,
+      "valorCmv": 170.1,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 195360,
+      "quantidade": 6.0,
+      "valorVenda": 143.4,
+      "valorCmv": 97.5,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 199737,
+      "quantidade": 26.0,
+      "valorVenda": 115.7,
+      "valorCmv": 52.52,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 210524,
+      "quantidade": 6.0,
+      "valorVenda": 474.0,
+      "valorCmv": 287.34,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 212501,
+      "quantidade": 5.0,
+      "valorVenda": 986.62,
+      "valorCmv": 806.97,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188528,
+      "quantidade": 50.0,
+      "valorVenda": 225.1,
+      "valorCmv": 187.0,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190318,
+      "quantidade": 7.0,
+      "valorVenda": 108.5,
+      "valorCmv": 49.49,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190482,
+      "quantidade": 11.0,
+      "valorVenda": 183.15,
+      "valorCmv": 134.2,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 192266,
+      "quantidade": 55.0,
+      "valorVenda": 85.25,
+      "valorCmv": 62.15,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 186314,
+      "quantidade": 26.0,
+      "valorVenda": 166.14,
+      "valorCmv": 103.22,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 186360,
+      "quantidade": 5.0,
+      "valorVenda": 54.35,
+      "valorCmv": 24.1,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 186951,
+      "quantidade": 9.0,
+      "valorVenda": 58.71,
+      "valorCmv": 35.37,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 189749,
+      "quantidade": 9.0,
+      "valorVenda": 105.3,
+      "valorCmv": 61.29,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 190501,
+      "quantidade": 14.0,
+      "valorVenda": 402.5,
+      "valorCmv": 202.86,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 192545,
+      "quantidade": 5.0,
+      "valorVenda": 168.0,
+      "valorCmv": 122.25,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 195901,
+      "quantidade": 22.0,
+      "valorVenda": 217.58,
+      "valorCmv": 178.42,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 196809,
+      "quantidade": 9.0,
+      "valorVenda": 154.35,
+      "valorCmv": 68.4,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 198013,
+      "quantidade": 30.0,
+      "valorVenda": 144.0,
+      "valorCmv": 88.5,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 208661,
+      "quantidade": 27.0,
+      "valorVenda": 1525.5,
+      "valorCmv": 303.21,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190419,
+      "quantidade": 5.0,
+      "valorVenda": 18.1,
+      "valorCmv": 9.35,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191830,
+      "quantidade": 33.0,
+      "valorVenda": 166.98,
+      "valorCmv": 76.23,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 186633,
+      "quantidade": 17.0,
+      "valorVenda": 152.66,
+      "valorCmv": 111.35,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 209940,
+      "quantidade": 7.0,
+      "valorVenda": 54.39,
+      "valorCmv": 37.87,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 210248,
+      "quantidade": 14.0,
+      "valorVenda": 135.38,
+      "valorCmv": 60.34,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 212378,
+      "quantidade": 6.0,
+      "valorVenda": 53.88,
+      "valorCmv": 29.34,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 187823,
+      "quantidade": 9.0,
+      "valorVenda": 37.35,
+      "valorCmv": 18.81,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188530,
+      "quantidade": 48.0,
+      "valorVenda": 216.72,
+      "valorCmv": 179.52,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188882,
+      "quantidade": 7.0,
+      "valorVenda": 47.95,
+      "valorCmv": 31.43,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189625,
+      "quantidade": 16.0,
+      "valorVenda": 34.4,
+      "valorCmv": 24.48,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190493,
+      "quantidade": 16.0,
+      "valorVenda": 95.84,
+      "valorCmv": 44.48,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190503,
+      "quantidade": 5.0,
+      "valorVenda": 31.75,
+      "valorCmv": 16.0,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191869,
+      "quantidade": 41.0,
+      "valorVenda": 118.9,
+      "valorCmv": 67.65,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 185243,
+      "quantidade": 22.0,
+      "valorVenda": 81.18,
+      "valorCmv": 60.28,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 191225,
+      "quantidade": 5.0,
+      "valorVenda": 80.0,
+      "valorCmv": 39.75,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 193150,
+      "quantidade": 11.0,
+      "valorVenda": 100.54,
+      "valorCmv": 50.82,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 195697,
+      "quantidade": 4.0,
+      "valorVenda": 63.96,
+      "valorCmv": 50.4,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 197661,
+      "quantidade": 20.0,
+      "valorVenda": 118.0,
+      "valorCmv": 74.2,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 197663,
+      "quantidade": 28.0,
+      "valorVenda": 165.2,
+      "valorCmv": 103.81,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 199530,
+      "quantidade": 19.0,
+      "valorVenda": 82.11,
+      "valorCmv": 45.98,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 199670,
+      "quantidade": 9.0,
+      "valorVenda": 378.0,
+      "valorCmv": 179.73,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 211088,
+      "quantidade": 2.0,
+      "valorVenda": 379.98,
+      "valorCmv": 186.86,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 212052,
+      "quantidade": 4.0,
+      "valorVenda": 67.6,
+      "valorCmv": 42.36,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 212619,
+      "quantidade": 5.0,
+      "valorVenda": 6025.0,
+      "valorCmv": 3201.9,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188023,
+      "quantidade": 17.0,
+      "valorVenda": 54.06,
+      "valorCmv": 32.81,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188058,
+      "quantidade": 29.0,
+      "valorVenda": 289.61,
+      "valorCmv": 202.71,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188208,
+      "quantidade": 80.0,
+      "valorVenda": 208.0,
+      "valorCmv": 168.0,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189861,
+      "quantidade": 3.0,
+      "valorVenda": 50.94,
+      "valorCmv": 37.17,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190481,
+      "quantidade": 2.0,
+      "valorVenda": 33.3,
+      "valorCmv": 24.32,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 184853,
+      "quantidade": 22.0,
+      "valorVenda": 40.7,
+      "valorCmv": 18.92,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 188575,
+      "quantidade": 18.0,
+      "valorVenda": 248.76,
+      "valorCmv": 155.16,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 188882,
+      "quantidade": 7.0,
+      "valorVenda": 47.95,
+      "valorCmv": 31.43,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 194472,
+      "quantidade": 60.0,
+      "valorVenda": 154.2,
+      "valorCmv": 97.8,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 205875,
+      "quantidade": 2.0,
+      "valorVenda": 15.92,
+      "valorCmv": 7.86,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 211491,
+      "quantidade": 2.0,
+      "valorVenda": 8.98,
+      "valorCmv": 4.7,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 187846,
+      "quantidade": 27.0,
+      "valorVenda": 147.15,
+      "valorCmv": 96.12,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189113,
+      "quantidade": 41.0,
+      "valorVenda": 655.18,
+      "valorCmv": 479.7,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190664,
+      "quantidade": 25.0,
+      "valorVenda": 169.5,
+      "valorCmv": 109.5,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191870,
+      "quantidade": 3.0,
+      "valorVenda": 6.6,
+      "valorCmv": 3.81,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 184507,
+      "quantidade": 2.0,
+      "valorVenda": 26.7,
+      "valorCmv": 22.72,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 191208,
+      "quantidade": 16.0,
+      "valorVenda": 181.12,
+      "valorCmv": 104.32,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 191867,
+      "quantidade": 18.0,
+      "valorVenda": 48.06,
+      "valorCmv": 27.36,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 197204,
+      "quantidade": 16.0,
+      "valorVenda": 103.84,
+      "valorCmv": 53.6,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 198265,
+      "quantidade": 10.0,
+      "valorVenda": 105.8,
+      "valorCmv": 48.1,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 210641,
+      "quantidade": 1.0,
+      "valorVenda": 59.7,
+      "valorCmv": 38.42,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 212101,
+      "quantidade": 26.0,
+      "valorVenda": 233.74,
+      "valorCmv": 128.18,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 187851,
+      "quantidade": 4.0,
+      "valorVenda": 15.92,
+      "valorCmv": 8.12,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 188546,
+      "quantidade": 37.0,
+      "valorVenda": 36.63,
+      "valorCmv": 23.31,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190299,
+      "quantidade": 15.0,
+      "valorVenda": 58.2,
+      "valorCmv": 27.6,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191151,
+      "quantidade": 25.0,
+      "valorVenda": 93.75,
+      "valorCmv": 47.75,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191152,
+      "quantidade": 22.0,
+      "valorVenda": 82.5,
+      "valorCmv": 42.02,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191772,
+      "quantidade": 22.0,
+      "valorVenda": 161.04,
+      "valorCmv": 98.78,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191891,
+      "quantidade": 4.0,
+      "valorVenda": 10.64,
+      "valorCmv": 5.64,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 192648,
+      "quantidade": 1.0,
+      "valorVenda": 13.35,
+      "valorCmv": 11.36,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 184913,
+      "quantidade": 6.0,
+      "valorVenda": 45.18,
+      "valorCmv": 18.6,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 184932,
+      "quantidade": 4.0,
+      "valorVenda": 20.68,
+      "valorCmv": 9.2,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 186526,
+      "quantidade": 15.0,
+      "valorVenda": 138.0,
+      "valorCmv": 79.8,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 195557,
+      "quantidade": 47.0,
+      "valorVenda": 380.7,
+      "valorCmv": 325.71,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 199531,
+      "quantidade": 23.0,
+      "valorVenda": 101.07,
+      "valorCmv": 55.66,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 208872,
+      "quantidade": 2.0,
+      "valorVenda": 87.92,
+      "valorCmv": 52.42,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 209560,
+      "quantidade": 22.0,
+      "valorVenda": 138.66,
+      "valorCmv": 39.38,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 187859,
+      "quantidade": 17.0,
+      "valorVenda": 67.66,
+      "valorCmv": 34.51,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190296,
+      "quantidade": 12.0,
+      "valorVenda": 93.0,
+      "valorCmv": 44.04,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 186460,
+      "quantidade": 15.0,
+      "valorVenda": 53.85,
+      "valorCmv": 32.4,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 190302,
+      "quantidade": 9.0,
+      "valorVenda": 65.07,
+      "valorCmv": 25.56,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 193552,
+      "quantidade": 25.0,
+      "valorVenda": 92.25,
+      "valorCmv": 44.0,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 194056,
+      "quantidade": 2.0,
+      "valorVenda": 9.08,
+      "valorCmv": 4.14,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 199167,
+      "quantidade": 13.0,
+      "valorVenda": 723.71,
+      "valorCmv": 518.96,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 7,
+      "sku": 210279,
+      "quantidade": 6.0,
+      "valorVenda": 58.02,
+      "valorCmv": 25.86,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189108,
+      "quantidade": 84.0,
+      "valorVenda": 235.2,
+      "valorCmv": 136.5,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189265,
+      "quantidade": 36.0,
+      "valorVenda": 122.04,
+      "valorCmv": 54.36,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189417,
+      "quantidade": 5.0,
+      "valorVenda": 65.95,
+      "valorCmv": 33.95,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 189608,
+      "quantidade": 42.0,
+      "valorVenda": 163.8,
+      "valorCmv": 89.88,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190437,
+      "quantidade": 24.0,
+      "valorVenda": 125.76,
+      "valorCmv": 79.68,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190807,
+      "quantidade": 16.0,
+      "valorVenda": 54.66,
+      "valorCmv": 35.36,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 190990,
+      "quantidade": 53.0,
+      "valorVenda": 148.4,
+      "valorCmv": 108.12,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191206,
+      "quantidade": 34.0,
+      "valorVenda": 79.56,
+      "valorCmv": 41.48,
+      "competencia": "202605"
+    },
+    {
+      "codFilial": 2,
+      "sku": 191691,
+      "quantidade": 76.0,
+      "valorVenda": 291.08,
+      "valorCmv": 216.6,
+      "competencia": "202605"
+    }
+  ],
+  "stock": [
+    {
+      "codFilial": 1,
+      "sku": 10010,
+      "saldoFisico": 150.0,
+      "estoqueMinimo": 50
+    },
+    {
+      "codFilial": 5,
+      "sku": 10010,
+      "saldoFisico": 30.0,
+      "estoqueMinimo": 40
+    },
+    {
+      "codFilial": 12,
+      "sku": 10020,
+      "saldoFisico": 0.0,
+      "estoqueMinimo": 30
+    },
+    {
+      "codFilial": 1,
+      "sku": 10030,
+      "saldoFisico": 85.0,
+      "estoqueMinimo": 20
+    }
+  ],
+  "orders": [
+    {
+      "codFilial": 35,
+      "numPedido": 152,
+      "comprador": "REGINALDA GONCALVES PIMENTEL",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 153,
+      "comprador": "JOSE CLAUDIO PINHEIRO",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 156,
+      "comprador": "JOANA EDITE S.DE MAGALHAES",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 124,
+      "numPedido": 157,
+      "comprador": "ANTONIO TAVARES",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 159,
+      "comprador": "MARGARIDA EVARISTO BRAGA",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 160,
+      "comprador": "ROSELI TEIXEIRA GOULART",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 161,
+      "comprador": "INES BARROS DA SILVA",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 163,
+      "comprador": "INES BARROS DA SILVA",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 164,
+      "comprador": "WANDA ANTONIA  TEIXEIRA GOULART",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    },
+    {
+      "codFilial": 35,
+      "numPedido": 165,
+      "comprador": "ADOZINDA ALVARES",
+      "status": "Aberto",
+      "dataEmissao": "2026-08-01"
+    }
+  ],
+  "payments": [
+    {
+      "codLan": 5000,
+      "numeroDocumento": "NF-0002-5",
+      "valorOriginal": 1794.96,
+      "dataVencimento": "2026-08-10",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5001,
+      "numeroDocumento": "NF-0003-5",
+      "valorOriginal": 194.05,
+      "dataVencimento": "2026-08-11",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5002,
+      "numeroDocumento": "NF-0006-5",
+      "valorOriginal": 107.7,
+      "dataVencimento": "2026-08-12",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5003,
+      "numeroDocumento": "NF-0018-5",
+      "valorOriginal": 718.0,
+      "dataVencimento": "2026-08-13",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5004,
+      "numeroDocumento": "NF-0019-5",
+      "valorOriginal": 0.24,
+      "dataVencimento": "2026-08-14",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5005,
+      "numeroDocumento": "NF-0019-5",
+      "valorOriginal": 0.42,
+      "dataVencimento": "2026-08-15",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5006,
+      "numeroDocumento": "NF-0020-5",
+      "valorOriginal": 0.24,
+      "dataVencimento": "2026-08-16",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5007,
+      "numeroDocumento": "NF-0020-5",
+      "valorOriginal": 0.24,
+      "dataVencimento": "2026-08-17",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5008,
+      "numeroDocumento": "NF-0030-5",
+      "valorOriginal": 208.0,
+      "dataVencimento": "2026-08-18",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5009,
+      "numeroDocumento": "NF-0032-5",
+      "valorOriginal": 718.0,
+      "dataVencimento": "2026-08-19",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5010,
+      "numeroDocumento": "NF-0079-5",
+      "valorOriginal": 194.05,
+      "dataVencimento": "2026-08-20",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5011,
+      "numeroDocumento": "NF-0111-5",
+      "valorOriginal": 140.06,
+      "dataVencimento": "2026-08-21",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5012,
+      "numeroDocumento": "NF-0112-5",
+      "valorOriginal": 79.51,
+      "dataVencimento": "2026-08-22",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5013,
+      "numeroDocumento": "NF-0123-5",
+      "valorOriginal": 376.94,
+      "dataVencimento": "2026-08-23",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5014,
+      "numeroDocumento": "NF-0195-5",
+      "valorOriginal": 112.61,
+      "dataVencimento": "2026-08-24",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5015,
+      "numeroDocumento": "NF-0260-5",
+      "valorOriginal": 16.0,
+      "dataVencimento": "2026-08-25",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5016,
+      "numeroDocumento": "NF-0447-5",
+      "valorOriginal": 112.61,
+      "dataVencimento": "2026-08-26",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5017,
+      "numeroDocumento": "NF-0460-5",
+      "valorOriginal": 13.51,
+      "dataVencimento": "2026-08-27",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5018,
+      "numeroDocumento": "NF-0466-5",
+      "valorOriginal": 7.0,
+      "dataVencimento": "2026-08-28",
+      "status": "A Vencer"
+    },
+    {
+      "codLan": 5019,
+      "numeroDocumento": "NF-0474-5",
+      "valorOriginal": 208.0,
+      "dataVencimento": "2026-08-29",
+      "status": "A Vencer"
+    }
+  ]
+}
