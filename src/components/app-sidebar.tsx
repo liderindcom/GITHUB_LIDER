@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   CalendarClock,
+  Flame,
   LayoutDashboard,
   LineChart,
   LogOut,
@@ -8,6 +9,7 @@ import {
   ShoppingCart,
   Wallet,
 } from "lucide-react";
+
 
 import {
   Sidebar,
