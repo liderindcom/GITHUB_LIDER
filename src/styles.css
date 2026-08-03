@@ -164,8 +164,8 @@
 
 @utility grid-noise {
   background-image:
-    linear-gradient(to right, oklch(1 0 0 / 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(1 0 0 / 0.035) 1px, transparent 1px);
+    linear-gradient(to right, oklch(0.3 0.02 45 / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.3 0.02 45 / 0.05) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
@@ -177,7 +177,7 @@
     inset: -1px;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(140deg, oklch(0.645 0.17 36 / 0.55), transparent 55%);
+    background: linear-gradient(140deg, oklch(0.645 0.17 36 / 0.45), transparent 60%);
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -187,17 +187,26 @@
   }
 }
 
+@utility speed-lines {
+  background-image: repeating-linear-gradient(
+    115deg,
+    oklch(0.645 0.17 36 / 0.1) 0 2px,
+    transparent 2px 16px
+  );
+}
+
 @utility rise-in {
-  animation: rise-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
+
