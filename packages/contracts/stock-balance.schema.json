@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/stock-balance.schema.json",
+  "title": "GET /v1/stock/balances",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generatedAt", "homologationStatus", "supplierId", "dataFreshness", "page", "rows"],
+  "properties": {
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "homologationStatus": {
+      "type": "string",
+      "enum": ["candidato", "aguarda_aceite", "restrito", "bloqueado"]
+    },
+    "supplierId": { "type": "string", "format": "uuid" },
+    "dataFreshness": {
+      "type": "object",
+      "required": ["sourceUpdatedAt", "syncedAt", "ageSeconds", "slaLabel", "slaBreached"],
+      "properties": {
+        "sourceUpdatedAt": { "type": "string", "format": "date-time" },
+        "syncedAt": { "type": "string", "format": "date-time" },
+        "ageSeconds": { "type": "integer", "minimum": 0 },
+        "slaLabel": { "type": "string" },
+        "slaBreached": { "type": "boolean" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["limit", "hasMore"],
+      "properties": {
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "hasMore": { "type": "boolean" },
+        "nextCursor": { "type": ["string", "null"] }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "branchId",
+          "sku",
+          "skuDescription",
+          "qtyOnHand",
+          "qtyReserved",
+          "qtyAvailable",
+          "uom",
+          "sourceUpdatedAt"
+        ],
+        "properties": {
+          "branchId": { "type": "string", "minLength": 1 },
+          "branchName": { "type": "string" },
+          "sku": { "type": "string", "minLength": 1 },
+          "skuDescription": { "type": "string" },
+          "qtyOnHand": { "type": "number" },
+          "qtyReserved": { "type": "number" },
+          "qtyAvailable": { "type": "number" },
+          "reorderPoint": { "type": ["number", "null"] },
+          "uom": { "type": "string", "minLength": 1 },
+          "sourceUpdatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

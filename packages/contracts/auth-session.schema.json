@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/auth-session.schema.json",
+  "title": "Auth session / me",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "userId",
+    "supplierId",
+    "supplierCode",
+    "cnpj",
+    "roles",
+    "mustChangePassword",
+    "mfaEnabled",
+    "anticipationEnabled"
+  ],
+  "properties": {
+    "userId": { "type": "string", "format": "uuid" },
+    "supplierId": { "type": "string", "format": "uuid" },
+    "supplierCode": { "type": "string", "minLength": 1 },
+    "cnpj": { "type": "string", "pattern": "^\\d{14}$" },
+    "displayName": { "type": "string" },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["supplier_user", "supplier_admin"] },
+      "minItems": 1
+    },
+    "mustChangePassword": { "type": "boolean" },
+    "mfaEnabled": { "type": "boolean" },
+    "anticipationEnabled": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/api-error.schema.json",
+  "title": "API error envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["error", "message"],
+  "properties": {
+    "error": {
+      "type": "string",
+      "enum": [
+        "unauthorized",
+        "forbidden",
+        "not_found",
+        "validation_error",
+        "rate_limited",
+        "quote_expired",
+        "conflict",
+        "not_eligible",
+        "service_unavailable"
+      ]
+    },
+    "message": { "type": "string" },
+    "details": { "type": "array", "items": { "type": "object" } },
+    "requestId": { "type": "string" }
+  }
+}

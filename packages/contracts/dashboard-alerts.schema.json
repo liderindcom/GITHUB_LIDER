@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/dashboard-alerts.schema.json",
+  "title": "GET /v1/dashboard/alerts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generatedAt", "homologationStatus", "supplierId", "dataFreshness", "alerts"],
+  "properties": {
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "homologationStatus": {
+      "type": "string",
+      "enum": ["candidato", "aguarda_aceite", "restrito", "bloqueado"]
+    },
+    "supplierId": { "type": "string", "format": "uuid" },
+    "dataFreshness": {
+      "type": "object",
+      "required": ["syncedAt", "ageSeconds", "slaLabel", "slaBreached"],
+      "properties": {
+        "sourceUpdatedAt": { "type": ["string", "null"], "format": "date-time" },
+        "syncedAt": { "type": "string", "format": "date-time" },
+        "ageSeconds": { "type": "integer", "minimum": 0 },
+        "slaLabel": { "type": "string" },
+        "slaBreached": { "type": "boolean" }
+      }
+    },
+    "alerts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "alertCode",
+          "severity",
+          "module",
+          "message",
+          "suggestedAction",
+          "status",
+          "writesToErp"
+        ],
+        "properties": {
+          "alertCode": {
+            "type": "string",
+            "pattern": "^A-(STK|REC|ANT|NF|PAY)-\\d{2}$"
+          },
+          "severity": { "type": "string", "enum": ["baixa", "media", "alta", "critica"] },
+          "module": {
+            "type": "string",
+            "enum": ["stock", "receivables", "anticipation", "invoice", "payments"]
+          },
+          "message": { "type": "string", "minLength": 1 },
+          "suggestedAction": { "type": "string" },
+          "entityRef": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "id": { "type": "string" }
+            }
+          },
+          "status": { "type": "string", "enum": ["novo", "lido", "resolvido"] },
+          "writesToErp": {
+            "type": "boolean",
+            "const": false,
+            "description": "Portal nunca escreve no RMS/RM a partir de alertas."
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

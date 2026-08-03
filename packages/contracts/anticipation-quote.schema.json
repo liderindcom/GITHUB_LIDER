@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/anticipation-quote.schema.json",
+  "title": "POST /v1/anticipations/quotes response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "quoteId",
+    "supplierId",
+    "createdAt",
+    "expiresAt",
+    "homologationStatus",
+    "policyVersion",
+    "currency",
+    "totals",
+    "lines",
+    "rejected",
+    "writesToErp"
+  ],
+  "properties": {
+    "quoteId": { "type": "string", "format": "uuid" },
+    "supplierId": { "type": "string", "format": "uuid" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "homologationStatus": {
+      "type": "string",
+      "enum": ["candidato", "aguarda_aceite", "restrito", "bloqueado"],
+      "description": "Taxas candidatas até aceite Financeiro."
+    },
+    "policyVersion": { "type": "string", "minLength": 1 },
+    "currency": { "type": "string", "const": "BRL" },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gross", "discount", "net", "titleCount"],
+      "properties": {
+        "gross": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "discount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "net": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "titleCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "titleId",
+          "dueDate",
+          "daysCharged",
+          "amountOpen",
+          "discount",
+          "net",
+          "rateMonthlyApplied"
+        ],
+        "properties": {
+          "titleId": { "type": "string", "format": "uuid" },
+          "documentNumber": { "type": "string" },
+          "dueDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "daysCharged": { "type": "integer", "minimum": 0 },
+          "amountOpen": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+          "discount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+          "net": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+          "rateMonthlyApplied": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "rejected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["titleId", "reason"],
+        "properties": {
+          "titleId": { "type": "string", "format": "uuid" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "writesToErp": { "type": "boolean", "const": false },
+    "disclaimer": {
+      "type": "string",
+      "description": "Texto obrigatório: simulação candidata, sem obrigação financeira."
+    }
+  }
+}
