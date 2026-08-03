@@ -1,4 +1,5 @@
 import { addDays, format, subMonths } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export const fornecedor = {
   codigo: "FORN-4050",
@@ -141,7 +142,7 @@ export const vendasMensais = Array.from({ length: 6 }, (_, i) => {
   const mes = subMonths(hoje, 5 - i);
   const fator = 1 + i * 0.08;
   return {
-    mes: format(mes, "MMM/yy"),
+    mes: format(mes, "MMM/yy", { locale: ptBR }),
     faturamento: Number((418000 * fator).toFixed(2)),
     volume: Math.round(31500 * fator),
   };

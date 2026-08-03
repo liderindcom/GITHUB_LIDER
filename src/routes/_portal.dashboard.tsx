@@ -144,7 +144,8 @@ function Dashboard() {
               <CardTitle className="text-base">Participação por loja</CardTitle>
               <CardDescription>Proporção de vendas nos últimos 45 dias</CardDescription>
             </CardHeader>
-            <CardContent className="h-72">
+            <CardContent>
+              <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={vendasPorLoja} dataKey="valor" nameKey="nome" innerRadius={55} outerRadius={90}>
@@ -158,7 +159,8 @@ function Dashboard() {
                   />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="mt-2 space-y-1">
+              </div>
+              <div className="mt-4 space-y-1">
                 {vendasPorLoja.map((loja, i) => (
                   <div key={loja.nome} className="flex items-center gap-2 text-xs">
                     <span className="size-2.5 rounded-full" style={{ background: CORES[i % CORES.length] }} />
