@@ -159,7 +159,7 @@ export function LoginScreen() {
       </div>
 
       <Dialog open={onboardingAberto} onOpenChange={() => undefined}>
-        <DialogContent className="max-w-lg" showCloseButton={false}>
+        <DialogContent className="max-w-lg [&>button]:hidden">
           <DialogHeader>
             <DialogTitle>Primeiro acesso obrigatório</DialogTitle>
             <DialogDescription>
