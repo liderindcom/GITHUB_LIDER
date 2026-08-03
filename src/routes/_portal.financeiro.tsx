@@ -39,7 +39,7 @@ function FinanceiroPage() {
   const [selecionadas, setSelecionadas] = useState<string[]>([aVencer[0]?.id ?? ""]);
   const [taxa, setTaxa] = useState(TAXA_ANTECIPACAO_MENSAL * 100);
 
-  const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome ?? id;
+  const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome.replace(" - Líder", " ·") ?? id;
 
   const simulacao = useMemo(() => {
     const itens = aVencer
@@ -164,7 +164,7 @@ function FinanceiroPage() {
               {simulacao.itens.map((item) => (
                 <div key={item.fatura.id} className="flex items-center justify-between gap-2">
                   <span className="truncate text-muted-foreground">
-                    {item.fatura.numeroNota} · {item.dias} dias
+                    {item.fatura.numeroNota} · {item.dias} {item.dias === 1 ? "dia" : "dias"}
                   </span>
                   <span className="font-medium">-{brl(item.desconto)}</span>
                 </div>
