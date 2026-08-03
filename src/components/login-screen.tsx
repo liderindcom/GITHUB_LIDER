@@ -83,9 +83,11 @@ export function LoginScreen() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
-      <div className="grid-noise pointer-events-none absolute inset-0 opacity-70" />
-      <div className="pointer-events-none absolute -left-40 top-[-10rem] size-[34rem] rounded-full bg-primary/25 blur-[140px]" />
-      <div className="pointer-events-none absolute -bottom-52 right-[-8rem] size-[30rem] rounded-full bg-warning/10 blur-[150px]" />
+      <div className="grid-noise pointer-events-none absolute inset-0 opacity-80" />
+      <div className="speed-lines pointer-events-none absolute inset-x-0 top-0 h-40 opacity-70" />
+      <div className="pointer-events-none absolute -left-40 top-[-10rem] size-[34rem] rounded-full bg-primary/20 blur-[140px]" />
+      <div className="pointer-events-none absolute -bottom-52 right-[-8rem] size-[30rem] rounded-full bg-warning/20 blur-[150px]" />
+
 
       <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-6 py-12 lg:grid-cols-[1.05fr_minmax(0,26rem)] lg:gap-16">
         <div className="rise-in space-y-10">
