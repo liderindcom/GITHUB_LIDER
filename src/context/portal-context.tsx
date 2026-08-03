@@ -31,12 +31,36 @@ type PortalState = {
 
 const PortalContext = createContext<PortalState | null>(null);
 
+const CHAVE_SESSAO = "portal-lider-sessao";
+
 export function PortalProvider({ children }: { children: ReactNode }) {
   const [autenticado, setAutenticado] = useState(false);
   const [primeiroAcessoConcluido, setPrimeiroAcessoConcluido] = useState(false);
   const [mfaAtivo, setMfaAtivo] = useState(false);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>(agendamentosMock);
   const [antecipacoes, setAntecipacoes] = useState<Antecipacao[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const bruto = window.sessionStorage.getItem(CHAVE_SESSAO);
+    if (!bruto) return;
+    try {
+      const dados = JSON.parse(bruto) as { autenticado: boolean; primeiroAcessoConcluido: boolean };
+      setAutenticado(dados.autenticado);
+      setPrimeiroAcessoConcluido(dados.primeiroAcessoConcluido);
+      setMfaAtivo(dados.primeiroAcessoConcluido);
+    } catch {
+      window.sessionStorage.removeItem(CHAVE_SESSAO);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(
+      CHAVE_SESSAO,
+      JSON.stringify({ autenticado, primeiroAcessoConcluido }),
+    );
+  }, [autenticado, primeiroAcessoConcluido]);
 
   const entrar = useCallback(() => setAutenticado(true), []);
   const sair = useCallback(() => setAutenticado(false), []);
@@ -45,6 +69,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     setPrimeiroAcessoConcluido(true);
     setMfaAtivo(true);
   }, []);
+
 
   const adicionarAgendamento = useCallback((dados: Omit<Agendamento, "id" | "status">) => {
     setAgendamentos((atual) => [
