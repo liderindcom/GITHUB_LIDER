@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -17,7 +17,7 @@ export function PortalLayout({
   const { fornecedor, mfaAtivo } = usePortal();
 
   return (
-    <SidebarProvider>
+    <SidebarProvider style={{ "--sidebar-width": "13.5rem" } as CSSProperties}>
       <div className="relative flex min-h-screen w-full bg-background">
         <div className="grid-noise pointer-events-none fixed inset-0 opacity-60" />
         <div className="pointer-events-none fixed -left-32 top-[-12rem] size-[30rem] rounded-full bg-primary/15 blur-[150px]" />
