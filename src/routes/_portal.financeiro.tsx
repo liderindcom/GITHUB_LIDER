@@ -152,7 +152,7 @@ function FinanceiroPage() {
                 min={0.8}
                 max={4}
                 step={0.05}
-                onValueChange={([v]) => setTaxa(v)}
+                onValueChange={(v) => setTaxa(v[0] ?? taxa)}
                 className="pointer-events-auto"
               />
               <p className="text-xs text-muted-foreground">
