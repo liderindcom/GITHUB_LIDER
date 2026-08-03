@@ -8,7 +8,15 @@ export const Route = createFileRoute("/_portal")({
 });
 
 function PortalGate() {
-  const { autenticado } = usePortal();
+  const { autenticado, carregandoSessao } = usePortal();
+  if (carregandoSessao) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Carregando portal...
+      </div>
+    );
+  }
   if (!autenticado) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
+
