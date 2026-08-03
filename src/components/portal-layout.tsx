@@ -17,9 +17,7 @@ export function PortalLayout({
   const { fornecedor, mfaAtivo } = usePortal();
 
   return (
-    <SidebarProvider
-      style={{ "--sidebar-width": "13.5rem" } as React.CSSProperties}
-    >
+    <SidebarProvider style={{ "--sidebar-width": "13.5rem" } as CSSProperties}>
       <div className="relative flex min-h-screen w-full bg-background">
         <div className="grid-noise pointer-events-none fixed inset-0 opacity-60" />
         <div className="pointer-events-none fixed -left-32 top-[-12rem] size-[30rem] rounded-full bg-primary/15 blur-[150px]" />
