@@ -1,48 +1,46 @@
-# Portal do Fornecedor Líder
+# Portal do Fornecedor — Grupo Líder
 
-Li a especificação diretamente do repositório `liderindcom/GITHUB_LIDER` (via conexão GitHub da workspace) e vou construir o portal aqui, neste projeto, seguindo a spec. Observação: o Lovable não importa repositórios — o código nasce aqui e pode ser sincronizado de volta para o GitHub depois.
+Protótipo completo e navegável, com todos os dados mockados carregados em estado global (React Context), exatamente como no prompt detalhado. Dois ajustes de plataforma: o app roda em React + TanStack Router (o stack do Lovable, equivalente ao Next.js aqui) e o backend real (Lovable Cloud) fica para uma etapa seguinte — assim as 7 telas ficam prontas e interativas primeiro.
 
-## Identidade visual
+## Design
 
-Azul marinho `#0f172a` + azul Líder `#1e40af`, verde esmeralda para sucesso, âmbar para atenção, vermelho para ruptura. Ícones Lucide, tipografia sans-serif limpa, componentes shadcn/ui. Tudo via tokens semânticos no design system (sem cores fixas espalhadas nos componentes).
+Cabeçalhos e sidebar em azul corporativo escuro (slate-900 / blue-800), área de dados em fundo claro muito organizado. Bordas suaves, sombras discretas, transições, tipografia sans-serif limpa. Ícones Lucide na navegação. Verde esmeralda = sucesso, âmbar = atenção, vermelho = ruptura. Tudo em tokens semânticos no design system, responsivo, com sidebar colapsável.
 
-## Backend (Lovable Cloud)
+## Dados mockados (Context global)
 
-Banco e login reais, com as tabelas semeadas com os dados da spec (Nestlé Brasil S/A, 3 lojas Líder, 3 SKUs), então tudo já aparece populado na primeira abertura:
+- Fornecedor: `FORN-4050` — Nestlé Brasil S/A — CNPJ 60.409.075/0001-52
+- Lojas: Loja 01 Batista Campos, Loja 05 Doca, Loja 12 Humaitá
+- Produtos: 10010 Nescau 400g, 10020 Leite Moça 395g, 10030 Passatempo 130g
+- 4 pedidos (Aberto, Faturado, Pendente, Cancelado) com itens
+- Vendas por dia/item/loja com SKU, qtd, valor unitário, total, CMV e margem %
+- Estoque por SKU/loja com mínimo e atual
+- Faturas a vencer e pagas com previsão de pagamento
+- Agenda logística de recebimento de NF-e com datas e horários
 
-- `fornecedores` (código, razão social, CNPJ), `lojas`, `produtos`
-- `pedidos` + `pedido_itens` (status: aberto, faturado, pendente, cancelado)
-- `vendas_itens` (sell-out por SKU/loja/data, com CMV e margem)
-- `estoque` (estoque atual e mínimo por SKU/loja)
-- `agendamentos_nfe` (chave NF-e, data/hora, central de distribuição)
-- `faturas` (vencimento, valor, status pago/a vencer) + `antecipacoes`
-
-Cada tabela com RLS: o fornecedor autenticado só vê os próprios dados. Leituras via server functions autenticadas.
+O Context também guarda mutações da sessão: agendamentos criados, antecipações confirmadas e o estado de primeiro acesso/MFA.
 
 ## Telas
 
-1. **/login** — Código do Fornecedor + CNPJ/senha. Se a senha ainda for o CNPJ, abre o modal de Primeiro Acesso: nova senha (mín. 8 caracteres, 1 especial) e onboarding de MFA com QR Code e campo de 6 dígitos.
-2. **/dashboard** — cards de alerta acionáveis (ruptura crítica / NF-e pendentes de agendamento / previsão de pagamento), gráfico de vendas dos últimos 6 meses e rosca de estoque por categoria.
-3. **/pedidos** — tabela com filtros rápidos por status; clique na linha abre drawer lateral com itens, preço unitário, quantidade pedida e faturada.
-4. **/vendas** — relatório item a item com filtro de período obrigatório e filtro por loja; colunas SKU, descrição, qtd vendida, valor unitário médio, bruto total, CMV, margem %; botão de exportar Excel.
-5. **/estoque** — estoque por loja com sinalizador de cor: vermelho se atual < mínimo, âmbar se próximo, verde se confortável.
-6. **/logistica** — calendário interativo de agendamentos + formulário com chave da NF-e e data/hora de entrega.
-7. **/financeiro** — faturas a vencer e pagas + modal do Simulador de Antecipação, calculando desconto de 1,8% a.m. proporcional aos dias até o vencimento e mostrando o líquido a receber hoje, em tempo real.
+1. **/login** — marca "Portal do Fornecedor - Grupo Líder", campos Código do Fornecedor e Senha. Senha igual a `60409075000152` dispara o modal obrigatório de Primeiro Acesso: criação de senha forte + onboarding de MFA com QR Code fictício e campo de código de 6 dígitos para validar o setup.
+2. **/dashboard** — três cards de alerta acionáveis (ruptura → /estoque, 2 NF-e aguardando agendamento → /logistica, previsão de R$ 124.500,00 → /financeiro), cards de métricas, gráfico interativo de vendas mensais e rosca de vendas por loja.
+3. **/pedidos** — filtros rápidos por status (Todos, Aberto, Faturado, Pendente, Cancelado), tabela dos pedidos; clique na linha abre drawer lateral com SKU, descrição, qtd pedida, qtd faturada, preço unitário e total do item.
+4. **/vendas** — filtro obrigatório de período (data inicial/final) + seletor de loja ("Todas as Lojas"); tabela item a item com SKU, produto, qtd vendida, valor médio, faturamento bruto, CMV e margem %; botão "Exportar para Excel/CSV" gerando o arquivo em tempo real com toast de feedback.
+5. **/estoque** — tabela SKU, produto, loja, estoque mínimo, atual e badge de status: vermelho se atual = 0, âmbar se 0 < atual ≤ mínimo, verde se atual > mínimo.
+6. **/logistica** — calendário de entregas interativo + formulário de Novo Agendamento com chave da NF-e (validação de 44 dígitos), filial, data no calendário e horário disponível; ao enviar, o evento entra no calendário com notificação de sucesso.
+7. **/financeiro** — faturas a vencer ordenadas por vencimento + botão em destaque "Solicitar Antecipação de Recebíveis" abrindo o simulador: checkboxes por fatura e cálculo em tempo real de valor bruto, taxa de 1,8% a.m. pro-rata dia até o vencimento de cada fatura, valor do desconto e líquido a receber hoje; "Confirmar Antecipação" grava o log de aceite e exibe recibo com código de auditoria.
 
-Layout com shell autenticado: sidebar de navegação, cabeçalho com fornecedor logado e sair.
+## Notas técnicas
 
-## Detalhes técnicos
+- Rotas em `src/routes/` (login, dashboard, pedidos, vendas, estoque, logistica, financeiro), com layout de app compartilhado (sidebar + header do fornecedor logado) e `/` redirecionando para o login/dashboard.
+- Gate de sessão do protótipo via Context: sem login, as rotas internas voltam para `/login`.
+- Gráficos com Recharts; toasts com sonner; datas e calendário com shadcn/ui.
+- Exportação gera um `.csv`/`.xlsx` real no navegador a partir dos dados filtrados.
+- Antecipação: `desconto = valor × 0,018 × (dias até vencimento / 30)`, somado por fatura selecionada.
 
-- Rotas de app sob `_authenticated/` (gate gerenciado); `/` redireciona para `/dashboard` quando logado e mostra o login caso contrário.
-- Autenticação usa e-mail internamente; como a spec loga por Código do Fornecedor, derivo um e-mail determinístico a partir do código e ativo confirmação automática. Efeito colateral: reset de senha por e-mail não funciona nesse modelo — se preferir, podemos pedir e-mail corporativo no primeiro acesso.
-- MFA (TOTP) via Cloud auth, obrigatório no onboarding do primeiro acesso.
-- Exportação Excel gerada no cliente (arquivo .xlsx real).
-- Simulador de antecipação: cálculo pró-rata dias/30 sobre a taxa mensal, exibido ao vivo conforme as faturas selecionadas.
+## Etapas
 
-## Entrega em etapas
-
-1. Cloud + schema + seed dos dados da spec
-2. Login, primeiro acesso e MFA + shell autenticado
+1. Design system, Context de dados mockados, layout com sidebar
+2. Login + Primeiro Acesso + MFA
 3. Dashboard com alertas e gráficos
-4. Pedidos, Vendas (com Excel), Estoque
-5. Logística e Financeiro com o simulador
+4. Pedidos, Vendas (com exportação), Estoque
+5. Logística e Financeiro com o simulador de antecipação
