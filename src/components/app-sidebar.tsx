@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   CalendarClock,
+  Flame,
   LayoutDashboard,
   LineChart,
   LogOut,
@@ -8,6 +9,7 @@ import {
   ShoppingCart,
   Wallet,
 } from "lucide-react";
+
 
 import {
   Sidebar,
@@ -40,16 +42,16 @@ export function AppSidebar() {
   const { fornecedor, sair } = usePortal();
 
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+      <SidebarHeader className="px-4 py-5">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sm font-bold text-sidebar-primary-foreground">
-            GL
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-ember">
+            <Flame className="size-4" />
           </span>
           {!collapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold leading-tight">Portal do Fornecedor</p>
-              <p className="truncate text-xs text-sidebar-foreground/70">Grupo Líder</p>
+              <p className="truncate font-display text-sm font-bold leading-tight">Grupo Líder</p>
+              <p className="truncate text-xs text-sidebar-foreground/60">Portal do Fornecedor</p>
             </div>
           )}
         </div>
@@ -57,8 +59,11 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navegação</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[0.65rem] uppercase tracking-[0.2em]">
+            Navegação
+          </SidebarGroupLabel>
           <SidebarGroupContent>
+
             <SidebarMenu>
               {itens.map((item) => (
                 <SidebarMenuItem key={item.url}>
