@@ -14,6 +14,7 @@ import { Route as PortalRouteImport } from './routes/_portal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalDashboardRouteImport } from './routes/_portal.dashboard'
 import { Route as PortalEstoqueRouteImport } from './routes/_portal.estoque'
+import { Route as PortalLogisticaRouteImport } from './routes/_portal.logistica'
 import { Route as PortalPedidosRouteImport } from './routes/_portal.pedidos'
 import { Route as PortalVendasRouteImport } from './routes/_portal.vendas'
 
@@ -41,6 +42,11 @@ const PortalEstoqueRoute = PortalEstoqueRouteImport.update({
   path: '/estoque',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalLogisticaRoute = PortalLogisticaRouteImport.update({
+  id: '/logistica',
+  path: '/logistica',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalPedidosRoute = PortalPedidosRouteImport.update({
   id: '/pedidos',
   path: '/pedidos',
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
+  '/logistica': typeof PortalLogisticaRoute
   '/pedidos': typeof PortalPedidosRoute
   '/vendas': typeof PortalVendasRoute
 }
@@ -65,6 +72,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
+  '/logistica': typeof PortalLogisticaRoute
   '/pedidos': typeof PortalPedidosRoute
   '/vendas': typeof PortalVendasRoute
 }
@@ -75,14 +83,29 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_portal/dashboard': typeof PortalDashboardRoute
   '/_portal/estoque': typeof PortalEstoqueRoute
+  '/_portal/logistica': typeof PortalLogisticaRoute
   '/_portal/pedidos': typeof PortalPedidosRoute
   '/_portal/vendas': typeof PortalVendasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/dashboard' | '/estoque' | '/pedidos' | '/vendas'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/estoque'
+    | '/logistica'
+    | '/pedidos'
+    | '/vendas'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/dashboard' | '/estoque' | '/pedidos' | '/vendas'
+  to:
+    | '/'
+    | '/login'
+    | '/dashboard'
+    | '/estoque'
+    | '/logistica'
+    | '/pedidos'
+    | '/vendas'
   id:
     | '__root__'
     | '/'
@@ -90,6 +113,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_portal/dashboard'
     | '/_portal/estoque'
+    | '/_portal/logistica'
     | '/_portal/pedidos'
     | '/_portal/vendas'
   fileRoutesById: FileRoutesById
@@ -137,6 +161,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalEstoqueRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/logistica': {
+      id: '/_portal/logistica'
+      path: '/logistica'
+      fullPath: '/logistica'
+      preLoaderRoute: typeof PortalLogisticaRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/pedidos': {
       id: '/_portal/pedidos'
       path: '/pedidos'
@@ -157,6 +188,7 @@ declare module '@tanstack/react-router' {
 interface PortalRouteChildren {
   PortalDashboardRoute: typeof PortalDashboardRoute
   PortalEstoqueRoute: typeof PortalEstoqueRoute
+  PortalLogisticaRoute: typeof PortalLogisticaRoute
   PortalPedidosRoute: typeof PortalPedidosRoute
   PortalVendasRoute: typeof PortalVendasRoute
 }
@@ -164,6 +196,7 @@ interface PortalRouteChildren {
 const PortalRouteChildren: PortalRouteChildren = {
   PortalDashboardRoute: PortalDashboardRoute,
   PortalEstoqueRoute: PortalEstoqueRoute,
+  PortalLogisticaRoute: PortalLogisticaRoute,
   PortalPedidosRoute: PortalPedidosRoute,
   PortalVendasRoute: PortalVendasRoute,
 }
