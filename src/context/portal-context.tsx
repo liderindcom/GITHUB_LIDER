@@ -16,6 +16,7 @@ export type Antecipacao = {
 };
 
 type PortalState = {
+  carregandoSessao: boolean;
   autenticado: boolean;
   primeiroAcessoConcluido: boolean;
   mfaAtivo: boolean;
@@ -39,11 +40,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [mfaAtivo, setMfaAtivo] = useState(false);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>(agendamentosMock);
   const [antecipacoes, setAntecipacoes] = useState<Antecipacao[]>([]);
+  const [carregandoSessao, setCarregandoSessao] = useState(true);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const bruto = window.sessionStorage.getItem(CHAVE_SESSAO);
-    if (!bruto) return;
+    if (!bruto) {
+      setCarregandoSessao(false);
+      return;
+    }
     try {
       const dados = JSON.parse(bruto) as { autenticado: boolean; primeiroAcessoConcluido: boolean };
       setAutenticado(dados.autenticado);
@@ -52,15 +57,16 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     } catch {
       window.sessionStorage.removeItem(CHAVE_SESSAO);
     }
+    setCarregandoSessao(false);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || carregandoSessao) return;
     window.sessionStorage.setItem(
       CHAVE_SESSAO,
       JSON.stringify({ autenticado, primeiroAcessoConcluido }),
     );
-  }, [autenticado, primeiroAcessoConcluido]);
+  }, [autenticado, primeiroAcessoConcluido, carregandoSessao]);
 
   const entrar = useCallback(() => setAutenticado(true), []);
   const sair = useCallback(() => setAutenticado(false), []);
@@ -93,6 +99,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PortalState>(
     () => ({
+      carregandoSessao,
       autenticado,
       primeiroAcessoConcluido,
       mfaAtivo,
@@ -106,6 +113,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       fornecedor,
     }),
     [
+      carregandoSessao,
       autenticado,
       primeiroAcessoConcluido,
       mfaAtivo,
