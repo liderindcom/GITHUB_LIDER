@@ -142,19 +142,25 @@ export type Loja = {
   tipo?: "L" | "D";
 };
 
+const idsLojasReais = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "15", "17", "18", "19", "24", "27", "28", "29", "31", "32", "33", "35", "36", "37", "38", "40", "41", "42", "43", "44", "48", "49", "50", "54", "94", "175", "248", "272", "329", "388", "418", "540", "2011", "2038"];
+
+const nomesEspecificos: Record<string, string> = {
+  "01": "Loja 01 - Líder Batista Campos",
+  "05": "Loja 05 - Líder Doca",
+  "12": "Loja 12 - Líder Humaitá",
+  "201": "CDAM - Depósito Aug. Montenegro",
+  "13": "CDAM - Depósito central (legado mock)",
+};
+
 export const lojas: Loja[] = [
-  { id: "01", nome: "Loja 01 - Líder Batista Campos", tipo: "L" },
-  { id: "05", nome: "Loja 05 - Líder Doca", tipo: "L" },
-  { id: "12", nome: "Loja 12 - Líder Humaitá", tipo: "L" },
-  /**
-   * Depósito de recebimento de fornecedores (evidência RMS AA2CTIPO código 201,
-   * CNPJ 05.054.671/0015-54 — DEPOSITO AUG.MONTENEGRO).
-   * Não confundir com loja 13 de PDV nem com agendas de transferência 65/66/148.
-   */
-  { id: "201", nome: "CDAM - Depósito Aug. Montenegro", tipo: "D" },
-  /** Mantido para pedidos/transferência legados no mock de pedidos. */
-  { id: "13", nome: "CDAM - Depósito central (legado mock)", tipo: "D" },
-];
+  ...idsLojasReais.map((id) => ({
+    id,
+    nome: nomesEspecificos[id] || `Loja ${id.padStart(2, "0")} - Líder`,
+    tipo: id === "201" || id === "13" ? ("D" as const) : ("L" as const),
+  })),
+  { id: "13", nome: "CDAM - Depósito central (legado mock)", tipo: "D" as const },
+  { id: "201", nome: "CDAM - Depósito Aug. Montenegro", tipo: "D" as const },
+].filter((item, index, self) => self.findIndex((t) => t.id === item.id) === index);
 
 /** Agendas RMS relevantes ao portal do fornecedor (mapa + evidência empírica). */
 export const agendasRms = {
