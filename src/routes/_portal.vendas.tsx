@@ -8,18 +8,37 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { brl, dataBR, numero } from "@/lib/format";
-import { lojas, produtoPorSku, produtos, vendas } from "@/lib/mock-data";
+import { codigoProdutoComDigito, lojas, produtoPorSku, produtos, vendas } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/_portal/vendas")({
   head: () => ({
     meta: [
       { title: "Vendas Sell-Out | Portal do Fornecedor" },
-      { name: "description", content: "Relatório de vendas item a item por loja e período com exportação para Excel." },
+      {
+        name: "description",
+        content: "Relatório de vendas item a item por loja e período com exportação para Excel.",
+      },
       { property: "og:title", content: "Vendas Sell-Out | Portal do Fornecedor" },
-      { property: "og:description", content: "Filtre por data, loja e SKU e exporte o relatório de sell-out." },
+      {
+        property: "og:description",
+        content: "Filtre por data, loja e produto e exporte o relatório de sell-out.",
+      },
     ],
   }),
   component: VendasPage,
@@ -34,7 +53,11 @@ function VendasPage() {
   const [loja, setLoja] = useState("todas");
   const [sku, setSku] = useState("todos");
   const [busca, setBusca] = useState("");
+  const [agrupamento, setAgrupamento] = useState<"detalhado" | "dia" | "mes" | "produto">("detalhado");
 
+  const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome ?? id;
+
+  // 1. Filtragem inicial
   const filtradas = useMemo(
     () =>
       vendas.filter((v) => {
@@ -42,7 +65,8 @@ function VendasPage() {
         if (loja !== "todas" && v.lojaId !== loja) return false;
         if (sku !== "todos" && v.sku !== sku) return false;
         if (busca) {
-          const alvo = `${v.sku} ${produtoPorSku(v.sku).descricao}`.toLowerCase();
+          const alvo =
+            `${v.sku} ${codigoProdutoComDigito(v.sku)} ${produtoPorSku(v.sku).descricao} ${nomeLoja(v.lojaId)}`.toLowerCase();
           if (!alvo.includes(busca.toLowerCase())) return false;
         }
         return true;
@@ -50,16 +74,72 @@ function VendasPage() {
     [de, ate, loja, sku, busca],
   );
 
-  const totalValor = filtradas.reduce((acc, v) => acc + v.quantidade * v.valorUnitario, 0);
-  const totalQtd = filtradas.reduce((acc, v) => acc + v.quantidade, 0);
-  const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome ?? id;
+  // 2. Agrupamento dinâmico
+  const agrupadas = useMemo(() => {
+    if (agrupamento === "detalhado") {
+      return filtradas;
+    }
+
+    const mapa = new Map<string, { data: string; lojaId: string; sku: string; quantidade: number; faturamento: number }>();
+
+    filtradas.forEach((v) => {
+      let chave = "";
+      let dataAgrupada = v.data;
+      let lojaAgrupada = v.lojaId;
+      let skuAgrupado = v.sku;
+
+      if (agrupamento === "dia") {
+        chave = `${v.data}-${v.lojaId}-${v.sku}`;
+      } else if (agrupamento === "mes") {
+        const mes = v.data.slice(0, 7); // YYYY-MM
+        chave = `${mes}-${v.lojaId}-${v.sku}`;
+        dataAgrupada = `${mes}-15`; // Usa o dia 15 para representar o faturamento do mês
+      } else if (agrupamento === "produto") {
+        chave = `${v.sku}`;
+        lojaAgrupada = "todas";
+        dataAgrupada = "-";
+      }
+
+      const atual = mapa.get(chave) || {
+        data: dataAgrupada,
+        lojaId: lojaAgrupada,
+        sku: skuAgrupado,
+        quantidade: 0,
+        faturamento: 0,
+      };
+
+      atual.quantidade += v.quantidade;
+      atual.faturamento += v.quantidade * v.valorUnitario;
+      mapa.set(chave, atual);
+    });
+
+    return Array.from(mapa.values()).map((item, index) => ({
+      id: index,
+      data: item.data,
+      lojaId: item.lojaId,
+      sku: item.sku,
+      quantidade: item.quantidade,
+      valorUnitario: item.quantidade > 0 ? item.faturamento / item.quantidade : 0,
+    }));
+  }, [filtradas, agrupamento]);
+
+  const totalValor = useMemo(() => agrupadas.reduce((acc, v) => acc + v.quantidade * v.valorUnitario, 0), [agrupadas]);
+  const totalQtd = useMemo(() => agrupadas.reduce((acc, v) => acc + v.quantidade, 0), [agrupadas]);
 
   function exportar() {
-    const cabecalho = ["Data", "Loja", "SKU", "Produto", "Quantidade", "Valor Unitario", "Valor Total"];
-    const linhas = filtradas.map((v) => [
-      dataBR(v.data),
-      nomeLoja(v.lojaId),
-      v.sku,
+    const cabecalho = [
+      "Data/Periodo",
+      "Loja",
+      "Código Produto",
+      "Produto",
+      "Quantidade Total",
+      "Valor Unitario Medio",
+      "Valor Total",
+    ];
+    const linhas = agrupadas.map((v) => [
+      v.data === "-" ? "Consolidado Geral" : agrupamento === "mes" ? v.data.slice(0, 7) : dataBR(v.data),
+      v.lojaId === "todas" ? "Todas as Lojas (Agrupado)" : nomeLoja(v.lojaId),
+      codigoProdutoComDigito(v.sku),
       produtoPorSku(v.sku).descricao,
       String(v.quantidade),
       v.valorUnitario.toFixed(2).replace(".", ","),
@@ -70,17 +150,22 @@ function VendasPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `sell-out-${de}-a-${ate}.csv`;
+    link.download = `sell-out-${agrupamento}-${de}-a-${ate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-    toast.success("Relatório exportado", { description: `${filtradas.length} linhas em formato Excel (CSV).` });
+    toast.success("Relatório exportado", {
+      description: `${agrupadas.length} linhas em formato Excel (CSV).`,
+    });
   }
 
   return (
-    <PortalLayout titulo="Vendas Sell-Out" descricao="Relatório item a item das vendas realizadas nas lojas Líder">
+    <PortalLayout
+      titulo="Vendas Sell-Out"
+      descricao="Análise e relatórios de vendas realizadas nas lojas Líder com agrupamento dinâmico."
+    >
       <div className="space-y-4">
         <Card className="shadow-panel">
-          <CardContent className="grid gap-4 pt-6 md:grid-cols-2 xl:grid-cols-5">
+          <CardContent className="grid gap-4 pt-6 md:grid-cols-2 xl:grid-cols-6">
             <div className="space-y-2">
               <Label htmlFor="de">Data inicial</Label>
               <Input id="de" type="date" value={de} onChange={(e) => setDe(e.target.value)} />
@@ -112,24 +197,38 @@ function VendasPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os SKUs</SelectItem>
+                  <SelectItem value="todos">Todos os produtos</SelectItem>
                   {produtos.map((p) => (
                     <SelectItem key={p.sku} value={p.sku}>
-                      {p.sku} · {p.descricao}
+                      {codigoProdutoComDigito(p.sku)} · {p.descricao}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="busca">Buscar</Label>
+              <Label>Agrupamento</Label>
+              <Select value={agrupamento} onValueChange={(value: any) => setAgrupamento(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="detalhado">Detalhado (Sem Agrupar)</SelectItem>
+                  <SelectItem value="dia">Agrupar por Dia</SelectItem>
+                  <SelectItem value="mes">Agrupar por Mês</SelectItem>
+                  <SelectItem value="produto">Agrupar por Produto</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="busca">Filtrar por texto</Label>
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
                 <Input
                   id="busca"
+                  placeholder="Código ou descrição..."
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
-                  placeholder="SKU ou descrição"
                   className="pl-9"
                 />
               </div>
@@ -137,11 +236,8 @@ function VendasPage() {
           </CardContent>
         </Card>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-panel">
-          <div className="flex flex-wrap gap-6 text-sm">
-            <span className="text-muted-foreground">
-              Linhas: <span className="font-semibold text-foreground">{numero(filtradas.length)}</span>
-            </span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-4 text-sm">
             <span className="text-muted-foreground">
               Volume: <span className="font-semibold text-foreground">{numero(totalQtd)} un</span>
             </span>
@@ -149,7 +245,7 @@ function VendasPage() {
               Faturamento: <span className="font-semibold text-foreground">{brl(totalValor)}</span>
             </span>
           </div>
-          <Button onClick={exportar} disabled={filtradas.length === 0}>
+          <Button onClick={exportar} disabled={agrupadas.length === 0}>
             <Download className="size-4" /> Exportar para Excel
           </Button>
         </div>
@@ -160,30 +256,43 @@ function VendasPage() {
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-muted">
                   <TableRow>
-                    <TableHead>Data</TableHead>
+                    <TableHead>Data/Período</TableHead>
                     <TableHead>Loja</TableHead>
-                    <TableHead>SKU</TableHead>
+                    <TableHead>Cód. produto</TableHead>
                     <TableHead>Produto</TableHead>
-                    <TableHead className="text-right">Qtd</TableHead>
-                    <TableHead className="text-right">Valor un.</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Qtd Total</TableHead>
+                    <TableHead className="text-right">Val. Unit. Médio</TableHead>
+                    <TableHead className="text-right">Total faturado</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtradas.slice(0, 300).map((v, i) => (
+                  {agrupadas.slice(0, 300).map((v, i) => (
                     <TableRow key={`${v.data}-${v.lojaId}-${v.sku}-${i}`}>
-                      <TableCell>{dataBR(v.data)}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{nomeLoja(v.lojaId)}</TableCell>
-                      <TableCell className="font-mono text-xs">{v.sku}</TableCell>
-                      <TableCell className="max-w-[220px] truncate">{produtoPorSku(v.sku).descricao}</TableCell>
+                      <TableCell>
+                        {v.data === "-" ? "Consolidado Geral" : agrupamento === "mes" ? v.data.slice(0, 7) : dataBR(v.data)}
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {v.lojaId === "todas" ? "Todas as lojas (Agrupado)" : nomeLoja(v.lojaId)}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {codigoProdutoComDigito(v.sku)}
+                      </TableCell>
+                      <TableCell className="max-w-[220px] truncate">
+                        {produtoPorSku(v.sku).descricao}
+                      </TableCell>
                       <TableCell className="text-right">{numero(v.quantidade)}</TableCell>
                       <TableCell className="text-right">{brl(v.valorUnitario)}</TableCell>
-                      <TableCell className="text-right font-medium">{brl(v.quantidade * v.valorUnitario)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {brl(v.quantidade * v.valorUnitario)}
+                      </TableCell>
                     </TableRow>
                   ))}
-                  {filtradas.length === 0 && (
+                  {agrupadas.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                      <TableCell
+                        colSpan={7}
+                        className="py-10 text-center text-sm text-muted-foreground"
+                      >
                         Nenhuma venda encontrada para os filtros selecionados.
                       </TableCell>
                     </TableRow>
@@ -191,9 +300,9 @@ function VendasPage() {
                 </TableBody>
               </Table>
             </div>
-            {filtradas.length > 300 && (
+            {agrupadas.length > 300 && (
               <p className="mt-3 text-xs text-muted-foreground">
-                Exibindo as 300 primeiras linhas. Exporte para Excel para ver o relatório completo.
+                Exibindo as 300 primeiras linhas agrupadas. Exporte para Excel para ver o relatório completo.
               </p>
             )}
           </CardContent>
