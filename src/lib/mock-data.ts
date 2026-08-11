@@ -872,12 +872,22 @@ export const JANELA_VENDA_ESTOQUE_DIAS = 90;
  * projetada a partir da média diária dos últimos 90 dias: (Σ qty / 90) × 30.
  */
 export const vendaMediaMensal = (sku: string, lojaId: string): number => {
+  if (vendas.length === 0) return 0;
+  
+  // Encontra a data mais recente no banco de dados para evitar retornar 0 devido a dados históricos (2025)
+  const datas = vendas.map((v) => v.data).filter(Boolean);
+  const maxData = datas.length > 0 ? datas.reduce((a, b) => (a > b ? a : b)) : "2025-12-15";
+  
+  // Define a janela móvel dos últimos 30 dias retroativos a partir da data máxima
+  const maxDateObj = new Date(maxData + "T12:00:00");
+  const limiteData = new Date(maxDateObj.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const limiteDataISO = limiteData.toISOString().slice(0, 10);
+  
   const total = vendas
-    .filter((v) => v.sku === sku && v.lojaId === lojaId)
+    .filter((v) => v.sku === sku && v.lojaId === lojaId && v.data >= limiteDataISO && v.data <= maxData)
     .reduce((acc, v) => acc + v.quantidade, 0);
-  if (total <= 0) return 0;
-  const mediaDiaria = total / JANELA_VENDA_ESTOQUE_DIAS;
-  return mediaDiaria * 30;
+    
+  return total;
 };
 
 /**
