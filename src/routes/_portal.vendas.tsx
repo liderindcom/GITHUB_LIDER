@@ -53,7 +53,7 @@ function VendasPage() {
   const [loja, setLoja] = useState("todas");
   const [sku, setSku] = useState("todos");
   const [busca, setBusca] = useState("");
-  const [agrupamento, setAgrupamento] = useState<"detalhado" | "dia" | "mes" | "produto">("detalhado");
+  const [agrupamento, setAgrupamento] = useState<"dia" | "mes" | "produto">("dia");
 
   const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome ?? id;
 
@@ -74,12 +74,8 @@ function VendasPage() {
     [de, ate, loja, sku, busca],
   );
 
-  // 2. Agrupamento dinâmico
+  // 2. Agrupamento dinâmico obrigatório (mínimo: diário)
   const agrupadas = useMemo(() => {
-    if (agrupamento === "detalhado") {
-      return filtradas;
-    }
-
     const mapa = new Map<string, { data: string; lojaId: string; sku: string; quantidade: number; faturamento: number }>();
 
     filtradas.forEach((v) => {
@@ -213,7 +209,6 @@ function VendasPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="detalhado">Detalhado (Sem Agrupar)</SelectItem>
                   <SelectItem value="dia">Agrupar por Dia</SelectItem>
                   <SelectItem value="mes">Agrupar por Mês</SelectItem>
                   <SelectItem value="produto">Agrupar por Produto</SelectItem>
