@@ -1,8 +1,9 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Flame, KeyRound, Lock, QrCode, ShieldCheck, Truck, User } from "lucide-react";
+import { ArrowRight, KeyRound, Lock, QrCode, ShieldCheck, Truck, User } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { LiderLogo } from "@/components/lider-logo";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePortal } from "@/context/portal-context";
-import { fornecedor } from "@/lib/mock-data";
+import { fornecedor, normalizarCodigoFornecedor } from "@/lib/mock-data";
+import { fetchFornecedor } from "@/api";
 
 const senhaForte = (senha: string) =>
   senha.length >= 8 && /[^A-Za-z0-9]/.test(senha) && /[A-Za-z]/.test(senha);
@@ -39,23 +41,41 @@ export function LoginScreen() {
   const [codigoMfa, setCodigoMfa] = useState("");
   const [erroOnboarding, setErroOnboarding] = useState<string | null>(null);
 
-  function acessar() {
+  async function acessar() {
     setErro(null);
-    if (codigo.trim().toUpperCase() !== fornecedor.codigo) {
-      setErro("Código do fornecedor não encontrado.");
-      return;
+    const codForn = normalizarCodigoFornecedor(codigo);
+    
+    try {
+      const fornEncontrado = await fetchFornecedor({ data: codForn });
+
+      if (!fornEncontrado) {
+        setErro("Código do fornecedor não encontrado.");
+        return;
+      }
+
+      // Verificar se o acesso está liberado para este fornecedor
+      if (fornEncontrado.acessoLiberado !== 1) {
+        setErro("Acesso não liberado. Entre em contato com a equipe comercial do Grupo Líder.");
+        return;
+      }
+
+      const senhaPadrao = fornEncontrado.cnpjSenhaInicial;
+
+      if (!primeiroAcessoConcluido && senha === senhaPadrao) {
+        setOnboardingAberto(true);
+        return;
+      }
+      if (senha.length < 8) {
+        setErro("Senha inválida. Use a senha cadastrada no primeiro acesso.");
+        return;
+      }
+      entrar(codForn);
+      toast.success("Acesso liberado", { description: `Bem-vindo, ${fornEncontrado.nome}.` });
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      console.error("Erro no login:", err);
+      setErro("Erro de conexão ao servidor. Tente novamente.");
     }
-    if (!primeiroAcessoConcluido && senha === fornecedor.cnpjSenhaInicial) {
-      setOnboardingAberto(true);
-      return;
-    }
-    if (senha.length < 8) {
-      setErro("Senha inválida. Use a senha cadastrada no primeiro acesso.");
-      return;
-    }
-    entrar();
-    toast.success("Acesso liberado", { description: `Bem-vindo, ${fornecedor.nome}.` });
-    navigate({ to: "/dashboard" });
   }
 
   function concluirOnboarding() {
@@ -74,8 +94,9 @@ export function LoginScreen() {
       setErroOnboarding("Informe o código de verificação de 6 dígitos enviado por e-mail.");
       return;
     }
+    const codForn = normalizarCodigoFornecedor(codigo);
     concluirPrimeiroAcesso();
-    entrar();
+    entrar(codForn);
     setOnboardingAberto(false);
     toast.success("Primeiro acesso concluído", { description: "MFA ativado com sucesso." });
     navigate({ to: "/dashboard" });
@@ -88,13 +109,14 @@ export function LoginScreen() {
       <div className="pointer-events-none absolute -left-40 top-[-10rem] size-[34rem] rounded-full bg-primary/20 blur-[140px]" />
       <div className="pointer-events-none absolute -bottom-52 right-[-8rem] size-[30rem] rounded-full bg-warning/20 blur-[150px]" />
 
-
       <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-6 py-12 lg:grid-cols-[1.05fr_minmax(0,26rem)] lg:gap-16">
         <div className="rise-in space-y-10">
-          <div className="flex items-center gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-ember">
-              <Flame className="size-5" />
-            </span>
+          <div className="space-y-3">
+            <LiderLogo
+              variant="hero"
+              priority
+              className="h-14 max-w-[16rem] sm:h-16 sm:max-w-[20rem]"
+            />
             <div className="min-w-0">
               <p className="font-display text-sm font-bold tracking-tight">Portal do Fornecedor</p>
               <p className="text-xs text-muted-foreground">Grupo Líder · Varejo Alimentício</p>
@@ -129,6 +151,9 @@ export function LoginScreen() {
         </div>
 
         <div className="rise-in glow-ember w-full rounded-3xl border border-border bg-elevated/80 p-6 shadow-panel backdrop-blur-xl sm:p-8">
+          <div className="mb-5 flex items-center gap-3 lg:hidden">
+            <LiderLogo variant="full" priority className="h-7" />
+          </div>
           <h2 className="font-display text-2xl font-bold">Acesse sua conta</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Primeiro acesso? Use o CNPJ da empresa (somente números) como senha inicial.
@@ -136,7 +161,10 @@ export function LoginScreen() {
 
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="codigo" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label
+                htmlFor="codigo"
+                className="text-xs uppercase tracking-wider text-muted-foreground"
+              >
                 Código do Fornecedor
               </Label>
               <div className="relative">
@@ -152,7 +180,10 @@ export function LoginScreen() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="senha" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label
+                htmlFor="senha"
+                className="text-xs uppercase tracking-wider text-muted-foreground"
+              >
                 Senha
               </Label>
               <div className="relative">
@@ -184,8 +215,8 @@ export function LoginScreen() {
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              Demonstração: código <span className="font-semibold text-foreground">{fornecedor.codigo}</span>{" "}
-              e senha{" "}
+              Demonstração: código{" "}
+              <span className="font-semibold text-foreground">{fornecedor.codigo}</span> e senha{" "}
               <span className="font-semibold text-foreground">{fornecedor.cnpjSenhaInicial}</span>
             </p>
           </div>
@@ -255,7 +286,10 @@ export function LoginScreen() {
               </p>
             )}
 
-            <Button className="h-11 w-full rounded-xl font-semibold shadow-ember" onClick={concluirOnboarding}>
+            <Button
+              className="h-11 w-full rounded-xl font-semibold shadow-ember"
+              onClick={concluirOnboarding}
+            >
               Concluir cadastro e ativar MFA
             </Button>
           </div>

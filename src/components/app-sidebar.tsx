@@ -1,16 +1,23 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   CalendarClock,
-  Flame,
+  BadgeDollarSign,
+  FileSpreadsheet,
   LayoutDashboard,
   LineChart,
   LogOut,
   Package,
+  PackagePlus,
+  Percent,
+  ReceiptText,
+  Tags,
   ShoppingCart,
   Wallet,
+  TrendingDown,
+  AlertTriangle,
 } from "lucide-react";
 
-
+import { LiderLogo } from "@/components/lider-logo";
 import {
   Sidebar,
   SidebarContent,
@@ -31,8 +38,17 @@ const itens = [
   { title: "Pedidos", url: "/pedidos", icon: ShoppingCart },
   { title: "Vendas Sell-out", url: "/vendas", icon: LineChart },
   { title: "Estoque", url: "/estoque", icon: Package },
+  { title: "Ruptura e Perda Venda", url: "/ruptura-venda", icon: AlertTriangle },
+  { title: "Perdas Físicas", url: "/perdas", icon: TrendingDown },
+  { title: "Relatório MIX", url: "/relatorio-mix", icon: FileSpreadsheet },
+  { title: "Preço Concorrência", url: "/precos", icon: BadgeDollarSign },
+  { title: "Representatividade", url: "/representatividade", icon: Percent },
+  { title: "Sugestão Compra", url: "/sugestao-compra", icon: PackagePlus },
+  { title: "Classificação", url: "/classificacao", icon: Tags },
   { title: "Logística", url: "/logistica", icon: CalendarClock },
+  { title: "Contas a Receber", url: "/contas-receber", icon: ReceiptText },
   { title: "Financeiro", url: "/financeiro", icon: Wallet },
+  { title: "Acesso Fornecedores (Admin)", url: "/admin-fornecedores", icon: Tags },
 ] as const;
 
 export function AppSidebar() {
@@ -44,15 +60,16 @@ export function AppSidebar() {
   return (
     <Sidebar variant="floating" collapsible="icon" className="border-none">
       <SidebarHeader className="px-3 py-4">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-ember">
-            <Flame className="size-4" />
-          </span>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate font-display text-sm font-bold leading-tight">Grupo Líder</p>
-              <p className="truncate text-[0.7rem] text-sidebar-foreground/60">Portal do Fornecedor</p>
-            </div>
+        <div className={collapsed ? "flex justify-center" : "flex min-w-0 flex-col gap-1.5"}>
+          {collapsed ? (
+            <LiderLogo variant="mark" priority />
+          ) : (
+            <>
+              <LiderLogo variant="full" priority className="h-8 max-w-[11rem]" />
+              <p className="truncate pl-0.5 text-[0.7rem] font-medium text-sidebar-foreground/60">
+                Portal do Fornecedor
+              </p>
+            </>
           )}
         </div>
       </SidebarHeader>
@@ -63,7 +80,6 @@ export function AppSidebar() {
             Navegação
           </SidebarGroupLabel>
           <SidebarGroupContent>
-
             <SidebarMenu>
               {itens.map((item) => (
                 <SidebarMenuItem key={item.url}>

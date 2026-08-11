@@ -1,10 +1,24 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   agendamentos as agendamentosMock,
   fornecedor,
   type Agendamento,
+  setActiveSupplierCode,
+  getActiveSupplierCode,
+  globalDbCache,
 } from "@/lib/mock-data";
+import { fetchFornecedor, fetchProdutos, fetchPerdas, fetchVendas } from "@/api";
+import { subMonths, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export type Antecipacao = {
   codigoAuditoria: string;
@@ -20,9 +34,11 @@ type PortalState = {
   autenticado: boolean;
   primeiroAcessoConcluido: boolean;
   mfaAtivo: boolean;
+  codigoFornecedorAtivo: string;
+  dadosFornecedorVersao: number;
   agendamentos: Agendamento[];
   antecipacoes: Antecipacao[];
-  entrar: () => void;
+  entrar: (codigoFornecedor?: string) => void;
   sair: () => void;
   concluirPrimeiroAcesso: () => void;
   adicionarAgendamento: (agendamento: Omit<Agendamento, "id" | "status">) => void;
@@ -41,6 +57,94 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>(agendamentosMock);
   const [antecipacoes, setAntecipacoes] = useState<Antecipacao[]>([]);
   const [carregandoSessao, setCarregandoSessao] = useState(true);
+  const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState(getActiveSupplierCode());
+  const [dadosFornecedorVersao, setDadosFornecedorVersao] = useState(0);
+
+  const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
+    try {
+      setCodigoFornecedorAtivo(code);
+      const codeClean = code.replace("FORN-", "");
+      if (codeClean === "4050") {
+        globalDbCache.fornecedor = null;
+        globalDbCache.produtos = null;
+        globalDbCache.perdas = null;
+        globalDbCache.vendas = null;
+        globalDbCache.estoque = null;
+        globalDbCache.vendasMensais = null;
+        setDadosFornecedorVersao((versao) => versao + 1);
+        return;
+      }
+
+      const [forn, prods, pds, vds] = await Promise.all([
+        fetchFornecedor({ data: code }),
+        fetchProdutos({ data: code }),
+        fetchPerdas({ data: code }),
+        fetchVendas({ data: code }),
+      ]);
+
+      if (forn) {
+        globalDbCache.fornecedor = {
+          codigo: forn.codigo,
+          nome: forn.nome,
+          cnpj: forn.cnpj,
+          cnpjSenhaInicial: forn.cnpjSenhaInicial,
+          destinatario: forn.destinatario,
+          modeloEntrega: forn.modeloEntrega as any,
+          agendaRecebimentoCdam: forn.agendaRecebimentoCdam,
+          filialEntregaPadrao: forn.filialEntregaPadrao,
+          cadastroFinanceiro: {
+            prazoPagamentoDias: forn.prazoPagamentoDias,
+            descontoFinanceiroPct: forn.descontoFinanceiroPct,
+            descontoFinanceiroAteDias: null,
+            condicaoPagamentoLabel: forn.condicaoPagamentoLabel,
+            anticipationEnabled: true,
+          }
+        };
+        globalDbCache.produtos = prods.map((p) => ({
+          ...p,
+          papelMercadologico: p.papelMercadologico as any,
+        }));
+        globalDbCache.perdas = pds;
+        globalDbCache.vendas = vds;
+
+        // Gerar estoque fictício correspondente aos produtos reais da base
+        globalDbCache.estoque = prods.map((p) => ({
+          sku: p.sku,
+          lojaId: "01",
+          estoqueMinimo: 100,
+          estoqueAtual: Math.round(120 + (Number(p.sku) % 250)),
+        }));
+
+        // Agrupar vendas reais por mês para alimentar o gráfico de sell-out temporal de 12 meses
+        const mensalMap = new Map<string, { faturamento: number; volume: number }>();
+        vds.forEach((v) => {
+          const anoMes = v.data.slice(0, 7); // YYYY-MM
+          const atual = mensalMap.get(anoMes) || { faturamento: 0, volume: 0 };
+          atual.faturamento += v.quantidade * v.valorUnitario;
+          atual.volume += v.quantidade;
+          mensalMap.set(anoMes, atual);
+        });
+
+        // Gerar a série histórica dos últimos 12 meses ordenados
+        const hoje = new Date();
+        globalDbCache.vendasMensais = Array.from({ length: 12 }, (_, i) => {
+          const dataMes = subMonths(hoje, 11 - i);
+          const chave = format(dataMes, "yyyy-MM");
+          const real = mensalMap.get(chave) || { faturamento: 0, volume: 0 };
+
+          return {
+            mes: format(dataMes, "MMM/yy", { locale: ptBR }),
+            faturamento: Number(real.faturamento.toFixed(2)),
+            volume: Math.round(real.volume),
+          };
+        });
+      }
+      setDadosFornecedorVersao((versao) => versao + 1);
+    } catch (error) {
+      console.error("Erro ao carregar dados do SQLite no Contexto:", error);
+      setDadosFornecedorVersao((versao) => versao + 1);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -54,11 +158,16 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setAutenticado(dados.autenticado);
       setPrimeiroAcessoConcluido(dados.primeiroAcessoConcluido);
       setMfaAtivo(dados.primeiroAcessoConcluido);
+      if (dados.autenticado) {
+        const code = getActiveSupplierCode();
+        setCodigoFornecedorAtivo(code);
+        carregarDadosReaisFornecedor(code);
+      }
     } catch {
       window.sessionStorage.removeItem(CHAVE_SESSAO);
     }
     setCarregandoSessao(false);
-  }, []);
+  }, [carregarDadosReaisFornecedor]);
 
   useEffect(() => {
     if (typeof window === "undefined" || carregandoSessao) return;
@@ -68,14 +177,23 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     );
   }, [autenticado, primeiroAcessoConcluido, carregandoSessao]);
 
-  const entrar = useCallback(() => setAutenticado(true), []);
+  const entrar = useCallback(
+    (codigoFornecedor?: string) => {
+      if (codigoFornecedor) {
+        setActiveSupplierCode(codigoFornecedor);
+        setCodigoFornecedorAtivo(codigoFornecedor);
+        carregarDadosReaisFornecedor(codigoFornecedor);
+      }
+      setAutenticado(true);
+    },
+    [carregarDadosReaisFornecedor],
+  );
   const sair = useCallback(() => setAutenticado(false), []);
 
   const concluirPrimeiroAcesso = useCallback(() => {
     setPrimeiroAcessoConcluido(true);
     setMfaAtivo(true);
   }, []);
-
 
   const adicionarAgendamento = useCallback((dados: Omit<Agendamento, "id" | "status">) => {
     setAgendamentos((atual) => [
@@ -103,6 +221,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       autenticado,
       primeiroAcessoConcluido,
       mfaAtivo,
+      codigoFornecedorAtivo,
+      dadosFornecedorVersao,
       agendamentos,
       antecipacoes,
       entrar,
@@ -117,6 +237,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       autenticado,
       primeiroAcessoConcluido,
       mfaAtivo,
+      codigoFornecedorAtivo,
+      dadosFornecedorVersao,
       agendamentos,
       antecipacoes,
       entrar,
