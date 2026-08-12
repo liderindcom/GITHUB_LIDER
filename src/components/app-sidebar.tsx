@@ -15,6 +15,7 @@ import {
   Wallet,
   TrendingDown,
   AlertTriangle,
+  PackageCheck,
 } from "lucide-react";
 
 import { LiderLogo } from "@/components/lider-logo";
@@ -38,6 +39,7 @@ const itens = [
   { title: "Pedidos", url: "/pedidos", icon: ShoppingCart },
   { title: "Vendas Sell-out", url: "/vendas", icon: LineChart },
   { title: "Estoque", url: "/estoque", icon: Package },
+  { title: "Meus Itens", url: "/itens", icon: PackageCheck },
   { title: "Ruptura e Perda Venda", url: "/ruptura-venda", icon: AlertTriangle },
   { title: "Perdas Físicas", url: "/perdas", icon: TrendingDown },
   { title: "Relatório MIX", url: "/relatorio-mix", icon: FileSpreadsheet },
