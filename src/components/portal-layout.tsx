@@ -27,7 +27,7 @@ export function PortalLayout({
   descricao: string;
   children: ReactNode;
 }) {
-  const { fornecedor, mfaAtivo, usuarioInterno, mudarFornecedorAtivo } = usePortal();
+  const { fornecedor, mfaAtivo, usuarioInterno, mudarFornecedorAtivo, dadosFornecedorVersao } = usePortal();
   const [fornecedoresList, setFornecedoresList] = useState<any[]>([]);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [busca, setBusca] = useState("");
@@ -134,7 +134,7 @@ export function PortalLayout({
               </div>
             </div>
           </header>
-          <main className="rise-in flex-1 p-4 sm:p-6">{children}</main>
+          <main className="rise-in flex-1 p-4 sm:p-6" key={dadosFornecedorVersao}>{children}</main>
         </SidebarInset>
       </div>
     </SidebarProvider>
