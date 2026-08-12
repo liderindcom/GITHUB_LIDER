@@ -10,6 +10,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Input } from "@/components/ui/input";
 import { fetchFornecedoresList } from "@/api";
 
+const formatarCodigoFornecedorComDigito = (codigo: string): string => {
+  const num = codigo.replace("FORN-", "");
+  if (!/^\d+$/.test(num) || num.length < 2) return num;
+  const base = num.slice(0, -1);
+  const digito = num.slice(-1);
+  return `${base}-${digito}`;
+};
+
 export function PortalLayout({
   titulo,
   descricao,
@@ -74,8 +82,8 @@ export function PortalLayout({
                     <PopoverTrigger asChild>
                       <button className="flex items-center gap-2 rounded-full border border-border bg-card/90 hover:bg-muted/70 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer max-w-[280px]">
                         <ShieldCheck className="size-3.5 text-primary" />
-                        <span className="truncate font-semibold">{fornecedor.nome}</span>
-                        <span className="text-muted-foreground whitespace-nowrap">· {fornecedor.codigo}</span>
+                        <span className="font-semibold text-primary font-mono">{formatarCodigoFornecedorComDigito(fornecedor.codigo)}</span>
+                        <span className="truncate text-muted-foreground">· {fornecedor.nome}</span>
                         <span className="text-[10px] text-primary/70 font-bold ml-1">▼</span>
                       </button>
                     </PopoverTrigger>
@@ -107,8 +115,8 @@ export function PortalLayout({
                                   toast.success(`Navegando como ${f.nome}`);
                                 }}
                               >
-                                <span className="truncate max-w-[180px]">{f.nome}</span>
-                                <span className="font-mono text-[10px] opacity-75">{f.codigo}</span>
+                                <span className="font-mono text-[11px] font-semibold">{formatarCodigoFornecedorComDigito(f.codigo)}</span>
+                                <span className="truncate max-w-[180px] text-muted-foreground">{f.nome}</span>
                               </button>
                             ))
                           )}
@@ -119,8 +127,8 @@ export function PortalLayout({
                 ) : (
                   <div className="hidden items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-xs md:flex">
                     {mfaAtivo && <ShieldCheck className="size-3.5 text-success" />}
-                    <span className="font-semibold">{fornecedor.nome}</span>
-                    <span className="text-muted-foreground">· {fornecedor.codigo}</span>
+                    <span className="font-semibold font-mono">{formatarCodigoFornecedorComDigito(fornecedor.codigo)}</span>
+                    <span className="text-muted-foreground">· {fornecedor.nome}</span>
                   </div>
                 )}
               </div>
