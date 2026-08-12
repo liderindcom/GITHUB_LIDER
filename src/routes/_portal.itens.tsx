@@ -133,8 +133,22 @@ function ItensPage() {
       const orders = pedidosPorSku.get(produto.sku) || [];
       const stockSales = estoqueESalesPorSku.get(produto.sku) || { totalStock: 0, averageSalesDaily: 0, totalCoverage: null };
 
-      const hasPendente = orders.some((o) => o.status === "Pendente");
       const openOrderQty = orders.reduce((acc, curr) => acc + curr.quantidade, 0);
+      const leadTime = sug?.leadTimeEntregaDias || 0;
+      const estoqueCdam = sug?.estoqueCdam || 0;
+      const coberturaCdam = sug?.coberturaAtual ?? null;
+
+      const temEstoqueZeroComPedido = (estoqueCdam === 0 && openOrderQty > 0);
+      const temCoberturaAbaixoLeadTime = (coberturaCdam !== null && coberturaCdam < (leadTime - 3));
+
+      const hasPendente = temEstoqueZeroComPedido || temCoberturaAbaixoLeadTime;
+
+      let pendenciaMotivo = "";
+      if (temEstoqueZeroComPedido) {
+        pendenciaMotivo = "Estoque CDAM zerado com pedidos em aberto para entrar.";
+      } else if (temCoberturaAbaixoLeadTime) {
+        pendenciaMotivo = `Cobertura de estoque (${Math.round(coberturaCdam || 0)}d) abaixo do Lead Time Crítico (${leadTime - 3}d).`;
+      }
 
       // We can use standard composite class (e.g. Aa, Ab) or fallback to "Dd"
       const classe = sug?.classeComposta || "Dd";
@@ -142,7 +156,6 @@ function ItensPage() {
       const vendaMediaMensal = vendaMediaDiaria * 30;
 
       // Coverage: use CDAM coverage from suggestions or total coverage across stores as a backup
-      const coberturaCdam = sug?.coberturaAtual ?? null;
       const coberturaGeral = stockSales.totalCoverage;
 
       return {
@@ -153,6 +166,7 @@ function ItensPage() {
         pedidosAbertos: orders,
         openOrderQty,
         hasPendente,
+        pendenciaMotivo,
         coberturaCdam,
         coberturaGeral,
         totalStock: stockSales.totalStock,
@@ -487,13 +501,13 @@ function ItensPage() {
                               <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="text-center" title={item.pendenciaMotivo}>
                             {item.hasPendente ? (
-                              <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-warning bg-warning-soft border-warning/30 flex items-center justify-center gap-1 mx-auto w-fit">
+                              <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-warning bg-warning-soft border-warning/30 flex items-center justify-center gap-1 mx-auto w-fit cursor-help" title={item.pendenciaMotivo}>
                                 <AlertTriangle className="size-3" /> Sim
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground bg-muted flex items-center justify-center gap-1 mx-auto w-fit">
+                              <Badge variant="outline" className="text-[10px] px-1.5 h-5 text-muted-foreground bg-muted flex items-center justify-center gap-1 mx-auto w-fit cursor-help" title="Nenhuma pendência crítica de abastecimento.">
                                 <CheckCircle2 className="size-3 text-muted-foreground/60" /> Não
                               </Badge>
                             )}
