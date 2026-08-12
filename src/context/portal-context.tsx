@@ -41,6 +41,7 @@ type PortalState = {
   antecipacoes: Antecipacao[];
   entrar: (codigoFornecedor?: string, userInterno?: UsuarioInternoDB) => void;
   sair: () => void;
+  mudarFornecedorAtivo: (codigo: string) => void;
   concluirPrimeiroAcesso: () => void;
   adicionarAgendamento: (agendamento: Omit<Agendamento, "id" | "status">) => void;
   registrarAntecipacao: (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => Antecipacao;
@@ -205,6 +206,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     setUsuarioInterno(null);
   }, []);
 
+  const mudarFornecedorAtivo = useCallback(
+    (code: string) => {
+      setActiveSupplierCode(code);
+      setCodigoFornecedorAtivo(code);
+      carregarDadosReaisFornecedor(code);
+    },
+    [carregarDadosReaisFornecedor],
+  );
+
   const concluirPrimeiroAcesso = useCallback(() => {
     setPrimeiroAcessoConcluido(true);
     setMfaAtivo(true);
@@ -243,6 +253,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       antecipacoes,
       entrar,
       sair,
+      mudarFornecedorAtivo,
       concluirPrimeiroAcesso,
       adicionarAgendamento,
       registrarAntecipacao,
@@ -260,6 +271,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       antecipacoes,
       entrar,
       sair,
+      mudarFornecedorAtivo,
       concluirPrimeiroAcesso,
       adicionarAgendamento,
       registrarAntecipacao,
