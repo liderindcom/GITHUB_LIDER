@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { searchFornecedores, updateSupplierAccess } from "@/api";
+import { usePortal } from "@/context/portal-context";
 
 export const Route = createFileRoute("/_portal/admin-fornecedores")({
   head: () => ({
@@ -31,6 +32,22 @@ export const Route = createFileRoute("/_portal/admin-fornecedores")({
 });
 
 function AdminFornecedoresPage() {
+  const { usuarioInterno } = usePortal();
+
+  if (!usuarioInterno) {
+    return (
+      <PortalLayout titulo="Acesso Restrito" descricao="Esta área é de uso exclusivo de funcionários do Grupo Líder.">
+        <div className="flex flex-col items-center justify-center p-8 bg-card rounded-lg border border-border shadow-panel">
+          <ShieldAlert className="size-12 text-destructive mb-3" />
+          <h2 className="text-lg font-bold">Acesso Negado</h2>
+          <p className="text-xs text-muted-foreground mt-1 max-w-[340px] text-center">
+            Você não possui as permissões necessárias para acessar este painel. Caso seja um colaborador, faça o login administrativo.
+          </p>
+        </div>
+      </PortalLayout>
+    );
+  }
+
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);

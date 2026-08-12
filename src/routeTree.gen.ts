@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as PortalRouteImport } from './routes/_portal'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalAdminFornecedoresRouteImport } from './routes/_portal.admin-fornecedores'
+import { Route as PortalAdminUsuariosRouteImport } from './routes/_portal.admin-usuarios'
 import { Route as PortalClassificacaoRouteImport } from './routes/_portal.classificacao'
 import { Route as PortalContasReceberRouteImport } from './routes/_portal.contas-receber'
 import { Route as PortalDashboardRouteImport } from './routes/_portal.dashboard'
@@ -46,6 +47,11 @@ const LoginRoute = LoginRouteImport.update({
 const PortalAdminFornecedoresRoute = PortalAdminFornecedoresRouteImport.update({
   id: '/admin-fornecedores',
   path: '/admin-fornecedores',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAdminUsuariosRoute = PortalAdminUsuariosRouteImport.update({
+  id: '/admin-usuarios',
+  path: '/admin-usuarios',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalClassificacaoRoute = PortalClassificacaoRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/classificacao': typeof PortalClassificacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
   '/dashboard': typeof PortalDashboardRoute
@@ -149,6 +156,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/classificacao': typeof PortalClassificacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
   '/dashboard': typeof PortalDashboardRoute
@@ -171,6 +179,7 @@ export interface FileRoutesById {
   '/_portal': typeof PortalRouteWithChildren
   '/login': typeof LoginRoute
   '/_portal/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/_portal/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/_portal/classificacao': typeof PortalClassificacaoRoute
   '/_portal/contas-receber': typeof PortalContasReceberRoute
   '/_portal/dashboard': typeof PortalDashboardRoute
@@ -193,6 +202,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/admin-fornecedores'
+    | '/admin-usuarios'
     | '/classificacao'
     | '/contas-receber'
     | '/dashboard'
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/admin-fornecedores'
+    | '/admin-usuarios'
     | '/classificacao'
     | '/contas-receber'
     | '/dashboard'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/_portal'
     | '/login'
     | '/_portal/admin-fornecedores'
+    | '/_portal/admin-usuarios'
     | '/_portal/classificacao'
     | '/_portal/contas-receber'
     | '/_portal/dashboard'
@@ -285,6 +297,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-fornecedores'
       fullPath: '/admin-fornecedores'
       preLoaderRoute: typeof PortalAdminFornecedoresRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/admin-usuarios': {
+      id: '/_portal/admin-usuarios'
+      path: '/admin-usuarios'
+      fullPath: '/admin-usuarios'
+      preLoaderRoute: typeof PortalAdminUsuariosRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/classificacao': {
@@ -397,6 +416,7 @@ declare module '@tanstack/react-router' {
 
 interface PortalRouteChildren {
   PortalAdminFornecedoresRoute: typeof PortalAdminFornecedoresRoute
+  PortalAdminUsuariosRoute: typeof PortalAdminUsuariosRoute
   PortalClassificacaoRoute: typeof PortalClassificacaoRoute
   PortalContasReceberRoute: typeof PortalContasReceberRoute
   PortalDashboardRoute: typeof PortalDashboardRoute
@@ -416,6 +436,7 @@ interface PortalRouteChildren {
 
 const PortalRouteChildren: PortalRouteChildren = {
   PortalAdminFornecedoresRoute: PortalAdminFornecedoresRoute,
+  PortalAdminUsuariosRoute: PortalAdminUsuariosRoute,
   PortalClassificacaoRoute: PortalClassificacaoRoute,
   PortalContasReceberRoute: PortalContasReceberRoute,
   PortalDashboardRoute: PortalDashboardRoute,

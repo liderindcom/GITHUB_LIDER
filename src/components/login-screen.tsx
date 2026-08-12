@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePortal } from "@/context/portal-context";
 import { fornecedor, normalizarCodigoFornecedor } from "@/lib/mock-data";
-import { fetchFornecedor } from "@/api";
+import { fetchFornecedor, loginUsuarioInterno } from "@/api";
 
 const senhaForte = (senha: string) =>
   senha.length >= 8 && /[^A-Za-z0-9]/.test(senha) && /[A-Za-z]/.test(senha);
@@ -43,9 +43,23 @@ export function LoginScreen() {
 
   async function acessar() {
     setErro(null);
-    const codForn = normalizarCodigoFornecedor(codigo);
     
     try {
+      // 1. Tentar login como usuario interno primeiro
+      const userInterno = await loginUsuarioInterno({
+        data: { username: codigo, senha }
+      });
+      if (userInterno) {
+        entrar(undefined, userInterno);
+        toast.success("Acesso administrativo liberado", {
+          description: `Bem-vindo, ${userInterno.nome}.`,
+        });
+        navigate({ to: "/admin-fornecedores" });
+        return;
+      }
+
+      // 2. Se nao for usuario interno, prossegue com fornecedor
+      const codForn = normalizarCodigoFornecedor(codigo);
       const fornEncontrado = await fetchFornecedor({ data: codForn });
 
       if (!fornEncontrado) {

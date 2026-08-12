@@ -16,7 +16,7 @@ import {
   getActiveSupplierCode,
   globalDbCache,
 } from "@/lib/mock-data";
-import { fetchFornecedor, fetchProdutos, fetchPerdas, fetchVendas } from "@/api";
+import { fetchFornecedor, fetchProdutos, fetchPerdas, fetchVendas, type UsuarioInternoDB } from "@/api";
 import { subMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -32,13 +32,14 @@ export type Antecipacao = {
 type PortalState = {
   carregandoSessao: boolean;
   autenticado: boolean;
+  usuarioInterno: UsuarioInternoDB | null;
   primeiroAcessoConcluido: boolean;
   mfaAtivo: boolean;
   codigoFornecedorAtivo: string;
   dadosFornecedorVersao: number;
   agendamentos: Agendamento[];
   antecipacoes: Antecipacao[];
-  entrar: (codigoFornecedor?: string) => void;
+  entrar: (codigoFornecedor?: string, userInterno?: UsuarioInternoDB) => void;
   sair: () => void;
   concluirPrimeiroAcesso: () => void;
   adicionarAgendamento: (agendamento: Omit<Agendamento, "id" | "status">) => void;
@@ -59,6 +60,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [carregandoSessao, setCarregandoSessao] = useState(true);
   const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState(getActiveSupplierCode());
   const [dadosFornecedorVersao, setDadosFornecedorVersao] = useState(0);
+  const [usuarioInterno, setUsuarioInterno] = useState<UsuarioInternoDB | null>(null);
 
   const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
     try {
@@ -154,11 +156,18 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const dados = JSON.parse(bruto) as { autenticado: boolean; primeiroAcessoConcluido: boolean };
+      const dados = JSON.parse(bruto) as { 
+        autenticado: boolean; 
+        primeiroAcessoConcluido: boolean;
+        usuarioInterno?: UsuarioInternoDB | null;
+      };
       setAutenticado(dados.autenticado);
       setPrimeiroAcessoConcluido(dados.primeiroAcessoConcluido);
       setMfaAtivo(dados.primeiroAcessoConcluido);
-      if (dados.autenticado) {
+      if (dados.usuarioInterno) {
+        setUsuarioInterno(dados.usuarioInterno);
+      }
+      if (dados.autenticado && !dados.usuarioInterno) {
         const code = getActiveSupplierCode();
         setCodigoFornecedorAtivo(code);
         carregarDadosReaisFornecedor(code);
@@ -173,13 +182,16 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined" || carregandoSessao) return;
     window.sessionStorage.setItem(
       CHAVE_SESSAO,
-      JSON.stringify({ autenticado, primeiroAcessoConcluido }),
+      JSON.stringify({ autenticado, primeiroAcessoConcluido, usuarioInterno }),
     );
-  }, [autenticado, primeiroAcessoConcluido, carregandoSessao]);
+  }, [autenticado, primeiroAcessoConcluido, usuarioInterno, carregandoSessao]);
 
   const entrar = useCallback(
-    (codigoFornecedor?: string) => {
-      if (codigoFornecedor) {
+    (codigoFornecedor?: string, userInterno?: UsuarioInternoDB) => {
+      if (userInterno) {
+        setUsuarioInterno(userInterno);
+      } else if (codigoFornecedor) {
+        setUsuarioInterno(null);
         setActiveSupplierCode(codigoFornecedor);
         setCodigoFornecedorAtivo(codigoFornecedor);
         carregarDadosReaisFornecedor(codigoFornecedor);
@@ -188,7 +200,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     },
     [carregarDadosReaisFornecedor],
   );
-  const sair = useCallback(() => setAutenticado(false), []);
+  const sair = useCallback(() => {
+    setAutenticado(false);
+    setUsuarioInterno(null);
+  }, []);
 
   const concluirPrimeiroAcesso = useCallback(() => {
     setPrimeiroAcessoConcluido(true);
@@ -219,6 +234,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     () => ({
       carregandoSessao,
       autenticado,
+      usuarioInterno,
       primeiroAcessoConcluido,
       mfaAtivo,
       codigoFornecedorAtivo,
@@ -235,6 +251,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     [
       carregandoSessao,
       autenticado,
+      usuarioInterno,
       primeiroAcessoConcluido,
       mfaAtivo,
       codigoFornecedorAtivo,

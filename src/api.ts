@@ -149,3 +149,41 @@ export const updateSupplierAccess = createServerFn({ method: "POST" })
     stmt.run(acessoLiberado, codigo);
     return { success: true };
   });
+
+
+export type UsuarioInternoDB = {
+  username: string;
+  nome: string;
+  role: string;
+};
+
+export const loginUsuarioInterno = createServerFn({ method: "POST" })
+  .validator((data: { username: string; senha: string }) => data)
+  .handler(async ({ data }) => {
+    const { username, senha } = data;
+    const stmt = db.prepare("SELECT username, nome, role FROM usuarios_internos WHERE username = ? AND senha = ?");
+    const user = stmt.get(username, senha) as UsuarioInternoDB | undefined;
+    return user;
+  });
+
+export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(async () => {
+  const stmt = db.prepare("SELECT username, nome, role FROM usuarios_internos ORDER BY username");
+  return stmt.all() as UsuarioInternoDB[];
+});
+
+export const createUsuarioInterno = createServerFn({ method: "POST" })
+  .validator((data: { username: string; nome: string; senha: string; role: string }) => data)
+  .handler(async ({ data }) => {
+    const { username, nome, senha, role } = data;
+    const stmt = db.prepare("INSERT INTO usuarios_internos (username, nome, senha, role) VALUES (?, ?, ?, ?)");
+    stmt.run(username, nome, senha, role);
+    return { success: true };
+  });
+
+export const deleteUsuarioInterno = createServerFn({ method: "POST" })
+  .validator((username: string) => username)
+  .handler(async ({ data: username }) => {
+    const stmt = db.prepare("DELETE FROM usuarios_internos WHERE username = ?");
+    stmt.run(username);
+    return { success: true };
+  });

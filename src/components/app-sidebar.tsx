@@ -16,6 +16,8 @@ import {
   TrendingDown,
   AlertTriangle,
   PackageCheck,
+  Users,
+  ShieldCheck,
 } from "lucide-react";
 
 import { LiderLogo } from "@/components/lider-logo";
@@ -51,13 +53,28 @@ const itens = [
   { title: "Contas a Receber", url: "/contas-receber", icon: ReceiptText },
   { title: "Financeiro", url: "/financeiro", icon: Wallet },
   { title: "Acesso Fornecedores (Admin)", url: "/admin-fornecedores", icon: Tags },
+  { title: "Usuários Administrativos", url: "/admin-usuarios", icon: Users },
 ] as const;
+
+import { useMemo } from "react";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  const { fornecedor, sair } = usePortal();
+  const { fornecedor, sair, usuarioInterno } = usePortal();
+
+  const itensVisiveis = useMemo(() => {
+    return itens.filter((item) => {
+      if (item.url === "/admin-fornecedores") {
+        return usuarioInterno !== null;
+      }
+      if (item.url === "/admin-usuarios") {
+        return usuarioInterno !== null && usuarioInterno.role === "admin";
+      }
+      return true;
+    });
+  }, [usuarioInterno]);
 
   return (
     <Sidebar variant="floating" collapsible="icon" className="border-none">
@@ -83,7 +100,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {itens.map((item) => (
+              {itensVisiveis.map((item) => (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild isActive={pathname === item.url} tooltip={item.title}>
                     <Link to={item.url} className="flex items-center gap-2">
@@ -101,8 +118,19 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         {!collapsed && (
           <div className="px-2 pb-1">
-            <p className="truncate text-xs font-medium">{fornecedor.nome}</p>
-            <p className="truncate text-xs text-sidebar-foreground/70">{fornecedor.codigo}</p>
+            {usuarioInterno ? (
+              <>
+                <p className="truncate text-xs font-bold text-primary flex items-center gap-1">
+                  <ShieldCheck className="size-3.5" /> {usuarioInterno.nome}
+                </p>
+                <p className="truncate text-[10px] text-sidebar-foreground/60 uppercase">{usuarioInterno.role === "admin" ? "Administrador" : "Colaborador"}</p>
+              </>
+            ) : (
+              <>
+                <p className="truncate text-xs font-medium">{fornecedor.nome}</p>
+                <p className="truncate text-xs text-sidebar-foreground/70">{fornecedor.codigo}</p>
+              </>
+            )}
           </div>
         )}
         <SidebarMenu>
