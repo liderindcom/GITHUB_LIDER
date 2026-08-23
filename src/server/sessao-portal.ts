@@ -75,3 +75,10 @@ export function codigoFornecedorEfetivo(pedido: string): string {
   if (sessao.tipo === "interno") return pedidoNorm;
   return normalizarCodigoFornecedor(sessao.codigo);
 }
+
+export function exigirInterno() {
+  const sessao = lerSessaoPortal();
+  if (!sessao || sessao.tipo !== "interno") {
+    throw new Error("Acesso administrativo exigido.");
+  }
+}

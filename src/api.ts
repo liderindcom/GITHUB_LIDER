@@ -2,13 +2,15 @@ import { createServerFn } from "@tanstack/react-start";
 import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
 import { sqlLojasForaPortal } from "@/lib/lojas-excluidas-portal";
 import { cortePedidosIso } from "@/lib/pedidos-janela";
-import { shareUsaMensal } from "@/lib/vendas-graos";
+import { shareJanelaCurta, shareUsaMensal } from "@/lib/vendas-graos";
 import { db } from "./server/db";
 import {
   codigoFornecedorEfetivo,
   gravarSessaoPortal,
   apagarSessaoPortal,
+  exigirInterno,
 } from "./server/sessao-portal";
+
 
 export type FornecedorDB = {
   codigo: string;
@@ -270,6 +272,7 @@ const joinVendasMensalProduto = `LEFT JOIN produtos p
 
 // Endpoints RPC no lado do servidor (Server Functions)
 export const fetchFornecedoresList = createServerFn({ method: "GET" }).handler(async () => {
+  exigirInterno();
   const stmt = db.prepare(
     "SELECT codigo, nome, cnpj, cnpjSenhaInicial, acessoLiberado FROM fornecedores WHERE acessoLiberado = 1 ORDER BY nome",
   );
@@ -409,7 +412,8 @@ export type FaixaPrecoSubgrupoDB = {
 
 export const fetchFaixasPrecoSubgrupo = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data: fornecedorCodigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("subgrupo_preco_faixa")) return [] as FaixaPrecoSubgrupoDB[];
     const rows = db
       .prepare(
@@ -485,7 +489,8 @@ export type ContaReceberDB = {
 
 export const fetchContasReceber = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data: fornecedorCodigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("contas_receber")) return [] as ContaReceberDB[];
     const rows = db
       .prepare(
@@ -537,7 +542,8 @@ export const fetchContasReceber = createServerFn({ method: "GET" })
 
 export const fetchFaturas = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data: fornecedorCodigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("notas_fiscais")) return [] as FaturaDB[];
     const rows = db
       .prepare(
@@ -597,7 +603,8 @@ export const fetchFaturas = createServerFn({ method: "GET" })
 
 export const fetchPedidos = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data: fornecedorCodigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens")) {
       return [] as PedidoDB[];
     }
@@ -697,10 +704,10 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const janela = data.janela;
     const fornecedorCodigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
-    const usarMensal = shareUsaMensal(janela) && tabelaExiste("vendas_mensal");
-
+    const temSubgrupo = tabelaExiste("vendas_subgrupo");
+    const temMensal = tabelaExiste("vendas_mensal");
     let fim: string | null = null;
-    if (usarMensal) {
+    if (shareUsaMensal(janela) && temMensal) {
       const ate = db.prepare("SELECT MAX(anoMes) AS ate FROM vendas_mensal").get() as {
         ate: string | null;
       };
@@ -711,6 +718,17 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
       fim = fimRow?.fim ?? null;
     }
     const inicio = inicioShare(janela, fim);
+    const coberturaSubgrupo = temSubgrupo
+      ? (db
+          .prepare("SELECT MIN(data) AS dmin, MAX(data) AS dmax FROM vendas_subgrupo")
+          .get() as { dmin: string | null; dmax: string | null })
+      : { dmin: null, dmax: null };
+    const subgrupoCobre =
+      Boolean(temSubgrupo && coberturaSubgrupo.dmin && coberturaSubgrupo.dmax) &&
+      (inicio == null || inicio >= String(coberturaSubgrupo.dmin)) &&
+      (fim == null || fim <= String(coberturaSubgrupo.dmax));
+    const usarMensal =
+      temMensal && (shareUsaMensal(janela) || (shareJanelaCurta(janela) && !subgrupoCobre));
     const inicioMes = anoMesDe(inicio);
     const fimMes = anoMesDe(fim);
 
@@ -825,6 +843,7 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
             SUM(quantidade) AS liderQuantidade
           FROM vendas_subgrupo
           WHERE (? IS NULL OR data >= ?)
+            AND (? IS NULL OR data <= ?)
           GROUP BY 1, 2, 3, 4
         )
         SELECT
@@ -848,7 +867,7 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
         ORDER BY f.fornecedorValor DESC
       `,
           )
-          .all(fornecedorCodigo, inicio, inicio, inicio, inicio) as ShareCategoriaRow[])
+          .all(fornecedorCodigo, inicio, inicio, inicio, inicio, fim, fim) as ShareCategoriaRow[])
       : (db
           .prepare(
             `
@@ -1046,7 +1065,8 @@ export type DocaDB = {
 
 export const fetchNfePendentes = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data: fornecedorCodigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("nfe_pendentes")) return [] as NfePendenteDB[];
     return db
       .prepare(
@@ -1087,7 +1107,8 @@ export type ConciliacaoItemDB = {
 
 export const fetchConciliacaoNfePedido = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data: fornecedorCodigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("nfe_pedido_conciliacao")) return [] as ConciliacaoItemDB[];
     return db
       .prepare(
@@ -1107,6 +1128,7 @@ export const searchFornecedores = createServerFn({ method: "GET" })
     (data: { search: string; limit: number; offset: number; onlyActive?: boolean }) => data,
   )
   .handler(async ({ data }) => {
+    exigirInterno();
     const { search, limit, offset, onlyActive } = data;
     const cleanSearch = `%${normalizarCodigoFornecedor(search) || search.trim()}%`;
 
@@ -1137,6 +1159,7 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 export const updateSupplierAccess = createServerFn({ method: "POST" })
   .validator((data: { codigo: string; acessoLiberado: number }) => data)
   .handler(async ({ data }) => {
+    exigirInterno();
     const { codigo, acessoLiberado } = data;
     const stmt = db.prepare("UPDATE fornecedores SET acessoLiberado = ? WHERE codigo = ?");
     stmt.run(acessoLiberado, normalizarCodigoFornecedor(codigo));
@@ -1146,6 +1169,7 @@ export const updateSupplierAccess = createServerFn({ method: "POST" })
 export const includeSupplier = createServerFn({ method: "POST" })
   .validator((data: { codigo: string }) => data)
   .handler(async ({ data }) => {
+    exigirInterno();
     const codigo = normalizarCodigoFornecedor(data.codigo);
     if (!codigo) {
       throw new Error("Informe o código RMS do fornecedor.");
@@ -1231,6 +1255,7 @@ export const fetchFillratePolitica = createServerFn({ method: "GET" }).handler(a
 export const updateFillrateTaxa = createServerFn({ method: "POST" })
   .validator((data: { taxaMultaPct: number }) => data)
   .handler(async ({ data }) => {
+    exigirInterno();
     const taxaMultaPct = normalizarTaxaMulta(data.taxaMultaPct);
     ensureFillratePolitica();
     db.prepare(
@@ -1241,7 +1266,8 @@ export const updateFillrateTaxa = createServerFn({ method: "POST" })
 
 export const fetchFillrateAcordo = createServerFn({ method: "GET" })
   .validator((codigo: string) => normalizarCodigoFornecedor(codigo))
-  .handler(async ({ data: codigo }) => {
+  .handler(async ({ data: codigoPedido }) => {
+    const codigo = codigoFornecedorEfetivo(codigoPedido);
     ensureFillrateMetaColumn();
     const row = db
       .prepare("SELECT codigo, metaFillRatePct FROM fornecedores WHERE codigo = ?")
@@ -1257,6 +1283,7 @@ export const fetchFillrateAcordo = createServerFn({ method: "GET" })
 export const updateFillrateMeta = createServerFn({ method: "POST" })
   .validator((data: { codigo: string; metaFillRatePct: number }) => data)
   .handler(async ({ data }) => {
+    exigirInterno();
     const codigo = normalizarCodigoFornecedor(data.codigo);
     const metaFillRatePct = normalizarMetaFillRate(data.metaFillRatePct);
     ensureFillrateMetaColumn();
@@ -1656,7 +1683,34 @@ export const encerrarSessaoPortal = createServerFn({ method: "POST" }).handler(a
   return { ok: true };
 });
 
+/** Recoloca o cookie em login antigo (sessionStorage) sem pedir senha de novo. */
+export const restaurarSessaoPortal = createServerFn({ method: "POST" })
+  .validator((data: { tipo: "interno" | "fornecedor"; codigo: string }) => ({
+    tipo: data.tipo,
+    codigo: String(data.codigo ?? "").trim(),
+  }))
+  .handler(async ({ data }) => {
+    if (data.tipo === "interno") {
+      const user = db
+        .prepare("SELECT username FROM usuarios_internos WHERE username = ?")
+        .get(data.codigo) as { username: string } | undefined;
+      if (!user) throw new Error("Sessão interna inválida.");
+      gravarSessaoPortal("interno", user.username);
+      return { ok: true, tipo: "interno" as const, codigo: user.username };
+    }
+    const codigo = normalizarCodigoFornecedor(data.codigo);
+    const row = db
+      .prepare("SELECT codigo, acessoLiberado FROM fornecedores WHERE codigo = ?")
+      .get(codigo) as { codigo: string; acessoLiberado?: number } | undefined;
+    if (!row || row.acessoLiberado !== 1) {
+      throw new Error("Acesso não liberado.");
+    }
+    gravarSessaoPortal("fornecedor", codigo);
+    return { ok: true, tipo: "fornecedor" as const, codigo };
+  });
+
 export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(async () => {
+  exigirInterno();
   const stmt = db.prepare("SELECT username, nome, role FROM usuarios_internos ORDER BY username");
   return stmt.all() as UsuarioInternoDB[];
 });
@@ -1664,6 +1718,7 @@ export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(a
 export const createUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; nome: string; senha: string; role: string }) => data)
   .handler(async ({ data }) => {
+    exigirInterno();
     const { username, nome, senha, role } = data;
     const stmt = db.prepare(
       "INSERT INTO usuarios_internos (username, nome, senha, role) VALUES (?, ?, ?, ?)",
@@ -1675,6 +1730,7 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
 export const deleteUsuarioInterno = createServerFn({ method: "POST" })
   .validator((username: string) => username)
   .handler(async ({ data: username }) => {
+    exigirInterno();
     const stmt = db.prepare("DELETE FROM usuarios_internos WHERE username = ?");
     stmt.run(username);
     return { success: true };
@@ -1704,7 +1760,8 @@ export const submitPropostaPreco = createServerFn({ method: "POST" })
     itens: { sku: string; descricao: string; precoAtual: number; precoProposto: number }[];
   }) => data)
   .handler(async ({ data }) => {
-    const { fornecedorCodigo, justificativa, itens } = data;
+    const { justificativa, itens } = data;
+    const fornecedorCodigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
     const now = new Date();
     const formattedDate = now.toISOString().replace(/T/, "-").replace(/[:.]/g, "").slice(0, 15);
     const loteId = `LOTE-${formattedDate}-${Math.floor(100 + Math.random() * 900)}`;
@@ -1718,7 +1775,7 @@ export const submitPropostaPreco = createServerFn({ method: "POST" })
       for (const item of itemsList) {
         insertStmt.run(
           loteId,
-          normalizarCodigoFornecedor(fornecedorCodigo),
+          fornecedorCodigo,
           item.sku,
           item.descricao,
           item.precoAtual,
@@ -1736,10 +1793,11 @@ export const fetchPropostasPrecos = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo?: string) => fornecedorCodigo)
   .handler(async ({ data: fornecedorCodigo }) => {
     if (fornecedorCodigo) {
-      const code = normalizarCodigoFornecedor(fornecedorCodigo);
+      const code = codigoFornecedorEfetivo(fornecedorCodigo);
       const stmt = db.prepare("SELECT * FROM propostas_precos WHERE fornecedorCodigo = ? ORDER BY criadoEm DESC");
       return stmt.all(code) as PropostaPrecoDB[];
     } else {
+      exigirInterno();
       const stmt = db.prepare("SELECT * FROM propostas_precos ORDER BY status = 'pendente' DESC, criadoEm DESC");
       return stmt.all() as PropostaPrecoDB[];
     }
@@ -1748,6 +1806,7 @@ export const fetchPropostasPrecos = createServerFn({ method: "GET" })
 export const responderPropostaPreco = createServerFn({ method: "POST" })
   .validator((data: { id: number; status: "aprovado" | "rejeitado"; respostaAdmin: string }) => data)
   .handler(async ({ data }) => {
+    exigirInterno();
     const { id, status, respostaAdmin } = data;
 
     const selectStmt = db.prepare("SELECT sku, precoProposto, status FROM propostas_precos WHERE id = ?");

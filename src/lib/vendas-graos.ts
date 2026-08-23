@@ -6,9 +6,12 @@ export const JANELA_MENSAL_MESES = 24;
 
 export type ShareJanelaGrao = "30" | "60" | "90" | "180" | "365" | "tudo";
 
-/** Share curto permanece na diária; longo vai para vendas_mensal. */
+/** Share 180/365/tudo sempre mensal. 30/60/90 só usam diária+subgrupo se a janela couber no cache. */
 export const shareUsaMensal = (janela: ShareJanelaGrao): boolean =>
   janela === "180" || janela === "365" || janela === "tudo";
+
+export const shareJanelaCurta = (janela: ShareJanelaGrao): boolean =>
+  janela === "30" || janela === "60" || janela === "90";
 
 export const GRAOS = {
   vendas: { tabela: "vendas", dimensoes: "loja×dia×sku", janelaDias: JANELA_VENDAS_LOJA_DIAS },

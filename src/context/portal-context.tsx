@@ -28,6 +28,7 @@ import {
   fetchFaturas,
   fetchNfePendentes,
   encerrarSessaoPortal,
+  restaurarSessaoPortal,
   fetchFornecedor,
   fetchPedidos,
   fetchPerdas,
@@ -220,27 +221,46 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setCarregandoSessao(false);
       return;
     }
-    try {
-      const dados = JSON.parse(bruto) as { 
-        autenticado: boolean; 
-        primeiroAcessoConcluido: boolean;
-        usuarioInterno?: UsuarioInternoDB | null;
-      };
-      setAutenticado(dados.autenticado);
-      setPrimeiroAcessoConcluido(dados.primeiroAcessoConcluido);
-      setMfaAtivo(dados.primeiroAcessoConcluido);
-      if (dados.usuarioInterno) {
-        setUsuarioInterno(dados.usuarioInterno);
+    let cancelado = false;
+    void (async () => {
+      try {
+        const dados = JSON.parse(bruto) as {
+          autenticado: boolean;
+          primeiroAcessoConcluido: boolean;
+          usuarioInterno?: UsuarioInternoDB | null;
+        };
+        if (dados.autenticado) {
+          if (dados.usuarioInterno?.username) {
+            await restaurarSessaoPortal({
+              data: { tipo: "interno", codigo: dados.usuarioInterno.username },
+            });
+          } else {
+            await restaurarSessaoPortal({
+              data: { tipo: "fornecedor", codigo: getActiveSupplierCode() },
+            });
+          }
+        }
+        if (cancelado) return;
+        setAutenticado(dados.autenticado);
+        setPrimeiroAcessoConcluido(dados.primeiroAcessoConcluido);
+        setMfaAtivo(dados.primeiroAcessoConcluido);
+        if (dados.usuarioInterno) {
+          setUsuarioInterno(dados.usuarioInterno);
+        }
+        if (dados.autenticado) {
+          const code = getActiveSupplierCode();
+          setCodigoFornecedorAtivo(code);
+          await carregarDadosReaisFornecedor(code);
+        }
+      } catch {
+        window.sessionStorage.removeItem(CHAVE_SESSAO);
+      } finally {
+        if (!cancelado) setCarregandoSessao(false);
       }
-      if (dados.autenticado) {
-        const code = getActiveSupplierCode();
-        setCodigoFornecedorAtivo(code);
-        carregarDadosReaisFornecedor(code);
-      }
-    } catch {
-      window.sessionStorage.removeItem(CHAVE_SESSAO);
-    }
-    setCarregandoSessao(false);
+    })();
+    return () => {
+      cancelado = true;
+    };
   }, [carregarDadosReaisFornecedor]);
 
   useEffect(() => {
