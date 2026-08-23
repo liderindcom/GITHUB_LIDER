@@ -9,6 +9,10 @@ import {
 } from "react";
 
 import {
+  DEMO_FORNECEDOR_CODIGO,
+  normalizarCodigoFornecedor,
+} from "@/lib/fornecedor-codigo";
+import {
   agendamentos as agendamentosMock,
   fornecedor,
   type Agendamento,
@@ -16,7 +20,22 @@ import {
   getActiveSupplierCode,
   globalDbCache,
 } from "@/lib/mock-data";
-import { fetchFornecedor, fetchProdutos, fetchPerdas, fetchVendas, type UsuarioInternoDB } from "@/api";
+import {
+  fetchConciliacaoNfePedido,
+  fetchContasReceber,
+  fetchDocas,
+  fetchEstoque,
+  fetchFaturas,
+  fetchNfePendentes,
+  encerrarSessaoPortal,
+  fetchFornecedor,
+  fetchPedidos,
+  fetchPerdas,
+  fetchProdutos,
+  fetchProdutosBloqueios,
+  fetchVendas,
+  type UsuarioInternoDB,
+} from "@/api";
 import { subMonths, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -66,24 +85,41 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
     try {
       setCodigoFornecedorAtivo(code);
-      const codeClean = code.replace("FORN-", "");
-      if (codeClean === "4050") {
+      const codeClean = normalizarCodigoFornecedor(code);
+
+      if (codeClean === DEMO_FORNECEDOR_CODIGO) {
         globalDbCache.fornecedor = null;
         globalDbCache.produtos = null;
         globalDbCache.perdas = null;
         globalDbCache.vendas = null;
         globalDbCache.estoque = null;
         globalDbCache.vendasMensais = null;
+        globalDbCache.bloqueios = null;
+        globalDbCache.pedidos = null;
+        globalDbCache.faturas = null;
+        globalDbCache.contasReceber = null;
+        globalDbCache.nfePendentes = null;
+        globalDbCache.docas = null;
+        globalDbCache.conciliacao = null;
         setDadosFornecedorVersao((versao) => versao + 1);
         return;
       }
 
-      const [forn, prods, pds, vds] = await Promise.all([
-        fetchFornecedor({ data: code }),
-        fetchProdutos({ data: code }),
-        fetchPerdas({ data: code }),
-        fetchVendas({ data: code }),
-      ]);
+      const [forn, prods, pds, vds, bloqs, estq, peds, fats, crs, nfes, docas, concil] =
+        await Promise.all([
+          fetchFornecedor({ data: code }),
+          fetchProdutos({ data: code }),
+          fetchPerdas({ data: code }),
+          fetchVendas({ data: code }),
+          fetchProdutosBloqueios({ data: code }),
+          fetchEstoque({ data: code }),
+          fetchPedidos({ data: code }),
+          fetchFaturas({ data: code }),
+          fetchContasReceber({ data: code }),
+          fetchNfePendentes({ data: code }),
+          fetchDocas(),
+          fetchConciliacaoNfePedido({ data: code }),
+        ]);
 
       if (forn) {
         globalDbCache.fornecedor = {
@@ -95,8 +131,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           modeloEntrega: forn.modeloEntrega as any,
           agendaRecebimentoCdam: forn.agendaRecebimentoCdam,
           filialEntregaPadrao: forn.filialEntregaPadrao,
+          ...(forn.fornecedorComercialCodigo
+            ? { fornecedorComercialCodigo: forn.fornecedorComercialCodigo }
+            : {}),
+          ...(forn.fornecedorComercialNome
+            ? { fornecedorComercialNome: forn.fornecedorComercialNome }
+            : {}),
           cadastroFinanceiro: {
             prazoPagamentoDias: forn.prazoPagamentoDias,
+            prazoTipo: forn.prazoTipo ?? null,
             descontoFinanceiroPct: forn.descontoFinanceiroPct,
             descontoFinanceiroAteDias: null,
             condicaoPagamentoLabel: forn.condicaoPagamentoLabel,
@@ -109,14 +152,31 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         }));
         globalDbCache.perdas = pds;
         globalDbCache.vendas = vds;
-
-        // Gerar estoque fictício correspondente aos produtos reais da base
-        globalDbCache.estoque = prods.map((p) => ({
-          sku: p.sku,
-          lojaId: "01",
-          estoqueMinimo: 100,
-          estoqueAtual: Math.round(120 + (Number(p.sku) % 250)),
+        globalDbCache.bloqueios = bloqs;
+        globalDbCache.estoque = (estq ?? []).map((e) => ({
+          sku: e.sku,
+          lojaId: e.lojaId,
+          estoqueAtual: e.estoqueAtual,
+          estoqueMinimo: 0,
         }));
+        globalDbCache.pedidos = (peds ?? []).map((p) => {
+          const { entradaCdam, ...rest } = p;
+          return entradaCdam
+            ? { ...rest, destino: "Fornecedor" as const, entradaCdam }
+            : { ...rest, destino: "Fornecedor" as const };
+        });
+        globalDbCache.faturas = (fats ?? []).map((f) => {
+          const { recebimento, prazoTipo, serie, chaveNfe, destTipo, ...rest } = f;
+          return {
+            ...rest,
+            ...(recebimento ? { recebimento } : {}),
+            ...(prazoTipo ? { prazoTipo } : {}),
+          };
+        });
+        globalDbCache.contasReceber = crs ?? [];
+        globalDbCache.nfePendentes = nfes ?? [];
+        globalDbCache.docas = docas ?? [];
+        globalDbCache.conciliacao = concil ?? [];
 
         // Agrupar vendas reais por mês para alimentar o gráfico de sell-out temporal de 12 meses
         const mensalMap = new Map<string, { faturamento: number; volume: number }>();
@@ -128,10 +188,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           mensalMap.set(anoMes, atual);
         });
 
-        // Gerar a série histórica dos últimos 12 meses ordenados
-        const hoje = new Date();
+        // Gerar a série histórica dos últimos 12 meses a partir da última venda real disponível.
+        const dataFinalVendas = vds.reduce(
+          (maior, venda) => (venda.data > maior ? venda.data : maior),
+          "",
+        );
+        const fimSerie = dataFinalVendas ? new Date(`${dataFinalVendas}T00:00:00Z`) : new Date();
         globalDbCache.vendasMensais = Array.from({ length: 12 }, (_, i) => {
-          const dataMes = subMonths(hoje, 11 - i);
+          const dataMes = subMonths(fimSerie, 11 - i);
           const chave = format(dataMes, "yyyy-MM");
           const real = mensalMap.get(chave) || { faturamento: 0, volume: 0 };
 
@@ -168,7 +232,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       if (dados.usuarioInterno) {
         setUsuarioInterno(dados.usuarioInterno);
       }
-      if (dados.autenticado && !dados.usuarioInterno) {
+      if (dados.autenticado) {
         const code = getActiveSupplierCode();
         setCodigoFornecedorAtivo(code);
         carregarDadosReaisFornecedor(code);
@@ -204,6 +268,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const sair = useCallback(() => {
     setAutenticado(false);
     setUsuarioInterno(null);
+    void encerrarSessaoPortal();
   }, []);
 
   const mudarFornecedorAtivo = useCallback(

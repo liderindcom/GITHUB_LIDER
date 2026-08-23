@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowRight, KeyRound, Lock, QrCode, ShieldCheck, Truck, User } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { LiderLogo } from "@/components/lider-logo";
@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePortal } from "@/context/portal-context";
 import { fornecedor, normalizarCodigoFornecedor } from "@/lib/mock-data";
-import { fetchFornecedor, loginUsuarioInterno } from "@/api";
+import { fetchFornecedor, iniciarSessaoFornecedor, loginUsuarioInterno } from "@/api";
 
 const senhaForte = (senha: string) =>
   senha.length >= 8 && /[^A-Za-z0-9]/.test(senha) && /[A-Za-z]/.test(senha);
@@ -31,7 +31,13 @@ export function LoginScreen() {
   const navigate = useNavigate();
   const { entrar, concluirPrimeiroAcesso, primeiroAcessoConcluido } = usePortal();
 
-  const [codigo, setCodigo] = useState(fornecedor.codigo);
+  const [mounted, setMounted] = useState(false);
+  const [codigo, setCodigo] = useState("");
+
+  useEffect(() => {
+    setMounted(true);
+    setCodigo(fornecedor.codigo);
+  }, []);
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
 
@@ -83,6 +89,7 @@ export function LoginScreen() {
         setErro("Senha inválida. Use a senha cadastrada no primeiro acesso.");
         return;
       }
+      await iniciarSessaoFornecedor({ data: { codigo: codForn } });
       entrar(codForn);
       toast.success("Acesso liberado", { description: `Bem-vindo, ${fornEncontrado.nome}.` });
       navigate({ to: "/dashboard" });
@@ -109,6 +116,7 @@ export function LoginScreen() {
       return;
     }
     const codForn = normalizarCodigoFornecedor(codigo);
+    void iniciarSessaoFornecedor({ data: { codigo: codForn } });
     concluirPrimeiroAcesso();
     entrar(codForn);
     setOnboardingAberto(false);
@@ -187,7 +195,7 @@ export function LoginScreen() {
                   id="codigo"
                   value={codigo}
                   onChange={(e) => setCodigo(e.target.value)}
-                  placeholder="FORN-0000"
+                  placeholder="4050"
                   className="h-11 bg-card/60 pl-9"
                 />
               </div>
@@ -228,11 +236,13 @@ export function LoginScreen() {
               <ArrowRight className="ml-1 size-4 transition-transform group-hover:translate-x-1" />
             </Button>
 
-            <p className="text-center text-xs text-muted-foreground">
-              Demonstração: código{" "}
-              <span className="font-semibold text-foreground">{fornecedor.codigo}</span> e senha{" "}
-              <span className="font-semibold text-foreground">{fornecedor.cnpjSenhaInicial}</span>
-            </p>
+            {mounted && (
+              <p className="text-center text-xs text-muted-foreground">
+                Demonstração: código{" "}
+                <span className="font-semibold text-foreground">{fornecedor.codigo}</span> e senha{" "}
+                <span className="font-semibold text-foreground">{fornecedor.cnpjSenhaInicial}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>
