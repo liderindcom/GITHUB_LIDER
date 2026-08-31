@@ -68,12 +68,12 @@ Nunca confiar em `WHERE supplier_id = $client` sem o GUC: defense-in-depth = RLS
 
 ## 4. Índices alinhados à carga
 
-| Query típica | Índice |
-|---|---|
-| Saldos do tenant | PK `(supplier_id, branch_id, sku)` já cobre |
-| Filtro por sku | `(supplier_id, sku)` |
-| Movimentos recentes | `(supplier_id, moved_at DESC)` |
-| Movimentos por sku | `(supplier_id, sku, moved_at DESC)` |
+| Query típica        | Índice                                      |
+| ------------------- | ------------------------------------------- |
+| Saldos do tenant    | PK `(supplier_id, branch_id, sku)` já cobre |
+| Filtro por sku      | `(supplier_id, sku)`                        |
+| Movimentos recentes | `(supplier_id, moved_at DESC)`              |
+| Movimentos por sku  | `(supplier_id, sku, moved_at DESC)`         |
 
 ### Anti-padrões (evitar)
 
@@ -84,11 +84,11 @@ Nunca confiar em `WHERE supplier_id = $client` sem o GUC: defense-in-depth = RLS
 
 ## 5. Paginação e limites
 
-| Endpoint | Estratégia | Limite default | Max |
-|---|---|---|---|
-| `/v1/stock/balances` | keyset `(branch_id, sku)` | 50 | 200 |
-| `/v1/stock/movements` | cursor `moved_at,id` | 50 | 200 |
-| Export massivo | job async (fila) | — | — |
+| Endpoint              | Estratégia                | Limite default | Max |
+| --------------------- | ------------------------- | -------------- | --- |
+| `/v1/stock/balances`  | keyset `(branch_id, sku)` | 50             | 200 |
+| `/v1/stock/movements` | cursor `moved_at,id`      | 50             | 200 |
+| Export massivo        | job async (fila)          | —              | —   |
 
 Janela default de movimentos: **90 dias**. Maior exige export assíncrono.
 
@@ -110,11 +110,11 @@ Todo response de estoque inclui:
 
 ## 7. Alertas derivados (dashboard)
 
-| Código | Condição candidata |
-|---|---|
+| Código   | Condição candidata                                |
+| -------- | ------------------------------------------------- |
 | A-STK-01 | `qty_on_hand <= reorder_point` (ruptura iminente) |
-| A-STK-02 | `qty_on_hand = 0` |
-| A-STK-03 | `slaBreached` no saldo |
+| A-STK-02 | `qty_on_hand = 0`                                 |
+| A-STK-03 | `slaBreached` no saldo                            |
 
 Cálculo preferencial no worker (materializar `alerts`) para não escanear saldos no request home.
 

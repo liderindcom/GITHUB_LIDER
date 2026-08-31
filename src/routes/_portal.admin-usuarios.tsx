@@ -118,7 +118,12 @@ function AdminUsuariosPage() {
       carregarUsuarios();
     } catch (err) {
       console.error(err);
-      toast.error("Erro ao cadastrar novo usuário. Verifique se o username já existe.");
+      const msg = err instanceof Error ? err.message : "";
+      toast.error(
+        msg && !/server action|serverFn/i.test(msg)
+          ? msg
+          : "Não foi possível cadastrar. Recarregue a página (Ctrl+Shift+R) e tente de novo.",
+      );
     }
   };
 

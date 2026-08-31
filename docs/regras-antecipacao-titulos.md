@@ -11,29 +11,29 @@ Permitir que o fornecedor simule e solicite antecipação de títulos a receber 
 
 ## 2. Entidades
 
-| Entidade | Descrição |
-|---|---|
-| `ReceivableTitle` | Título a receber já liquidável no portal (cache ETL) |
-| `AnticipationQuote` | Simulação imutável por TTL (não gera obrigação) |
-| `AnticipationRequest` | Pedido formal com trilha de auditoria |
-| `AnticipationLine` | Vínculo título ↔ pedido (valor face e valor líquido) |
+| Entidade              | Descrição                                            |
+| --------------------- | ---------------------------------------------------- |
+| `ReceivableTitle`     | Título a receber já liquidável no portal (cache ETL) |
+| `AnticipationQuote`   | Simulação imutável por TTL (não gera obrigação)      |
+| `AnticipationRequest` | Pedido formal com trilha de auditoria                |
+| `AnticipationLine`    | Vínculo título ↔ pedido (valor face e valor líquido) |
 
 ## 3. Elegibilidade (gates)
 
 Um título só entra em cotação/pedido se **todas** forem verdadeiras:
 
-| Código | Regra | Default candidato |
-|---|---|---|
-| ELG-01 | `supplier_id` do título = fornecedor autenticado | obrigatório (RLS) |
-| ELG-02 | `status` ∈ `aberto`, `parcialmente_pago` | sim |
-| ELG-03 | `amountOpen > 0` | sim |
+| Código | Regra                                                                 | Default candidato    |
+| ------ | --------------------------------------------------------------------- | -------------------- |
+| ELG-01 | `supplier_id` do título = fornecedor autenticado                      | obrigatório (RLS)    |
+| ELG-02 | `status` ∈ `aberto`, `parcialmente_pago`                              | sim                  |
+| ELG-03 | `amountOpen > 0`                                                      | sim                  |
 | ELG-04 | `dueDate >= today` (não vencido) **ou** política de vencidos liberada | default: só a vencer |
-| ELG-05 | Não está em pedido `pendente` / `em_analise` / `aprovado` ativo | sem double-spend |
-| ELG-06 | `currency = BRL` | MVP |
-| ELG-07 | Fornecedor com `anticipationEnabled = true` | cadastro |
-| ELG-08 | Valor face ≥ `minTitleAmount` | config (ex.: 100.00) |
-| ELG-09 | Somatório do pedido ≤ `maxRequestAmount` | config |
-| ELG-10 | Quantidade de títulos no pedido ≤ `maxTitlesPerRequest` | config (ex.: 50) |
+| ELG-05 | Não está em pedido `pendente` / `em_analise` / `aprovado` ativo       | sem double-spend     |
+| ELG-06 | `currency = BRL`                                                      | MVP                  |
+| ELG-07 | Fornecedor com `anticipationEnabled = true`                           | cadastro             |
+| ELG-08 | Valor face ≥ `minTitleAmount`                                         | config (ex.: 100.00) |
+| ELG-09 | Somatório do pedido ≤ `maxRequestAmount`                              | config               |
+| ELG-10 | Quantidade de títulos no pedido ≤ `maxTitlesPerRequest`               | config (ex.: 50)     |
 
 Qualquer falha → título excluído da cotação com `ineligibilityReason` explícito.
 
@@ -41,13 +41,13 @@ Qualquer falha → título excluído da cotação com `ineligibilityReason` expl
 
 Parâmetros (tabela `anticipation_policy`, versionada):
 
-| Parâmetro | Significado | Exemplo candidato |
-|---|---|---|
-| `baseRateMonthly` | Taxa mensal linear | 0.019 (1,9% a.m.) |
-| `minDays` | Carência mínima cobrada | 5 |
-| `spreadFixed` | Custo fixo por título | 0 |
-| `iofRate` | Placeholder IOF (se aplicável) | 0 até aceite fiscal |
-| `quoteTtlSeconds` | Validade da cotação | 900 (15 min) |
+| Parâmetro         | Significado                    | Exemplo candidato   |
+| ----------------- | ------------------------------ | ------------------- |
+| `baseRateMonthly` | Taxa mensal linear             | 0.019 (1,9% a.m.)   |
+| `minDays`         | Carência mínima cobrada        | 5                   |
+| `spreadFixed`     | Custo fixo por título          | 0                   |
+| `iofRate`         | Placeholder IOF (se aplicável) | 0 até aceite fiscal |
+| `quoteTtlSeconds` | Validade da cotação            | 900 (15 min)        |
 
 Fórmula candidata do desconto por título:
 
@@ -88,11 +88,11 @@ Schemas: `receivable-title.schema.json`, `anticipation-quote.schema.json`, `anti
 
 ## 7. Riscos e bloqueios externos
 
-| Risco | Mitigação |
-|---|---|
-| Taxa real diferente da candidata | Status `aguarda_aceite` Financeiro |
-| Double anticipation | Lock por `title_id` + status ativo |
-| Fraude de sessão | MFA + RLS + audit |
+| Risco                              | Mitigação                            |
+| ---------------------------------- | ------------------------------------ |
+| Taxa real diferente da candidata   | Status `aguarda_aceite` Financeiro   |
+| Double anticipation                | Lock por `title_id` + status ativo   |
+| Fraude de sessão                   | MFA + RLS + audit                    |
 | Overclaim de “aprovado automático” | MVP: sempre `em_analise` após submit |
 
 ## 8. Decisão

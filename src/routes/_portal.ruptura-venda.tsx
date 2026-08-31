@@ -27,10 +27,13 @@ import {
 } from "@/components/ui/table";
 import { brl, numero } from "@/lib/format";
 import {
+  codigoProdutoComDigito,
   coberturaDias,
   estoque,
-  lojas,
+  estoqueMinimoCalculado,
+  nomeLojaPorLocal,
   produtoPorSku,
+  produtoUsoConsumo,
   statusEstoque,
   vendaMediaMensal,
   type StatusEstoque,
@@ -71,8 +74,9 @@ function RupturaVendaPage() {
         if (status !== "Ruptura" && status !== "Atenção") return null;
 
         const produto = produtoPorSku(linha.sku);
-        const loja = lojas.find((item) => item.id === linha.lojaId);
+        if (produtoUsoConsumo(produto)) return null;
         const mediaMensal = vendaMediaMensal(linha.sku, linha.lojaId);
+        if (mediaMensal <= 0) return null;
         const mediaDiaria = mediaMensal / 30;
         const cobertura = coberturaDias(linha.estoqueAtual, mediaMensal);
         const demanda7Dias = mediaDiaria * 7;
@@ -84,9 +88,9 @@ function RupturaVendaPage() {
           sku: linha.sku,
           produto,
           lojaId: linha.lojaId,
-          lojaNome: loja?.nome ?? linha.lojaId,
+          lojaNome: nomeLojaPorLocal(linha.lojaId),
           status,
-          estoqueMinimo: linha.estoqueMinimo,
+          estoqueMinimo: estoqueMinimoCalculado(linha.sku, linha.lojaId),
           estoqueAtual: linha.estoqueAtual,
           mediaDiaria,
           cobertura,
@@ -104,7 +108,7 @@ function RupturaVendaPage() {
         if (situacao === "ruptura" && linha.status !== "Ruptura") return false;
         if (situacao === "atencao" && linha.status !== "Atenção") return false;
         if (busca) {
-          const alvo = `${linha.sku} ${linha.produto.descricao} ${linha.lojaNome}`.toLowerCase();
+          const alvo = `${linha.sku} ${codigoProdutoComDigito(linha.sku)} ${linha.produto.descricao} ${linha.lojaNome}`.toLowerCase();
           if (!alvo.includes(busca.toLowerCase())) return false;
         }
         return true;
@@ -118,7 +122,10 @@ function RupturaVendaPage() {
     return Array.from(map.entries()).map(([id, nome]) => ({ id, nome }));
   }, [linhasBase]);
 
+  const agora = new Date();
+  const diasDecorridosMes = agora.getDate();
   const perdaDiariaTotal = linhas.reduce((acc, linha) => acc + linha.perdaDiaria, 0);
+  const perdaMesCorrente = perdaDiariaTotal * diasDecorridosMes;
   const risco7DiasTotal = linhas.reduce((acc, linha) => acc + linha.risco7Dias, 0);
   const rupturas = linhas.filter((linha) => linha.status === "Ruptura").length;
   const skusAfetados = new Set(linhas.map((linha) => linha.sku)).size;
@@ -150,10 +157,11 @@ function RupturaVendaPage() {
       "Venda media diaria",
       "Cobertura dias",
       "Perda diaria ruptura",
+      "Perda mes corrente",
       "Risco 7 dias",
     ];
     const linhasCsv = linhas.map((linha) => [
-      linha.sku,
+      codigoProdutoComDigito(linha.sku),
       linha.produto.descricao,
       linha.lojaNome,
       linha.status,
@@ -162,6 +170,7 @@ function RupturaVendaPage() {
       linha.mediaDiaria.toFixed(2).replace(".", ","),
       linha.cobertura === null ? "" : String(Math.round(linha.cobertura)),
       linha.perdaDiaria.toFixed(2).replace(".", ","),
+      (linha.perdaDiaria * diasDecorridosMes).toFixed(2).replace(".", ","),
       linha.risco7Dias.toFixed(2).replace(".", ","),
     ]);
     const csv = [cabecalho, ...linhasCsv]
@@ -185,7 +194,12 @@ function RupturaVendaPage() {
       descricao="Estimativa financeira de venda perdida por ruptura e risco por estoque baixo"
     >
       <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <Resumo
+            titulo="Perda no mês corrente"
+            valor={brl(perdaMesCorrente)}
+            tom="danger"
+          />
           <Resumo titulo="Perda diária ruptura" valor={brl(perdaDiariaTotal)} tom="danger" />
           <Resumo titulo="Risco em 7 dias" valor={brl(risco7DiasTotal)} tom="warning" />
           <Resumo titulo="Posições em ruptura" valor={numero(rupturas)} tom="danger" />
@@ -240,8 +254,17 @@ function RupturaVendaPage() {
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>Ruptura considera estoque atual abaixo da venda média diária do produto.</p>
               <p>
+                Uso e consumo (seção 98 / oficina) e itens sem sell-out ficam de fora: não há
+                venda perdida.
+              </p>
+              <p>
                 Perda diária = venda média diária dos últimos 30 dias multiplicada pelo preço de
                 tabela do produto.
+              </p>
+              <p>
+                Perda no mês corrente = perda diária × {diasDecorridosMes} dia
+                {diasDecorridosMes === 1 ? "" : "s"} já decorrido
+                {diasDecorridosMes === 1 ? "" : "s"} neste mês, só nas rupturas de agora.
               </p>
               <p>
                 Risco em 7 dias = demanda estimada para 7 dias menos estoque atual, limitado a zero.
@@ -267,7 +290,7 @@ function RupturaVendaPage() {
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-60">
                       <SelectItem value="todas">Todas</SelectItem>
                       {lojasFiltro.map((loja) => (
                         <SelectItem key={loja.id} value={loja.id}>
@@ -318,25 +341,28 @@ function RupturaVendaPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/60">
+            <Table
+              containerClassName="max-h-[500px] rounded-lg border border-border"
+              className="border-separate border-spacing-0"
+            >
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
+                <TableRow className="bg-muted/60">
                     <TableHead>SKU</TableHead>
                     <TableHead>Produto</TableHead>
                     <TableHead>Loja</TableHead>
                     <TableHead>Situação</TableHead>
-                    <TableHead className="text-right">Estoque</TableHead>
+                    <TableHead className="text-right">Estoque atual / mín.</TableHead>
                     <TableHead className="text-right">Venda/dia</TableHead>
                     <TableHead className="text-right">Cobertura</TableHead>
                     <TableHead className="text-right">Perda/dia</TableHead>
+                    <TableHead className="text-right">Perda no mês</TableHead>
                     <TableHead className="text-right">Risco 7d</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {linhas.map((linha) => (
                     <TableRow key={`${linha.sku}-${linha.lojaId}`}>
-                      <TableCell className="font-mono text-xs">{linha.sku}</TableCell>
+                      <TableCell className="font-mono text-xs">{codigoProdutoComDigito(linha.sku)}</TableCell>
                       <TableCell className="min-w-[240px] font-medium">
                         {linha.produto.descricao}
                       </TableCell>
@@ -346,7 +372,7 @@ function RupturaVendaPage() {
                           {linha.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right font-mono text-xs" title="Estoque atual / estoque mínimo">
                         {numero(linha.estoqueAtual)} / {numero(linha.estoqueMinimo)}
                       </TableCell>
                       <TableCell className="text-right">
@@ -358,6 +384,9 @@ function RupturaVendaPage() {
                         {coberturaTexto(linha.cobertura)}
                       </TableCell>
                       <TableCell className="text-right">{brl(linha.perdaDiaria)}</TableCell>
+                      <TableCell className="text-right">
+                        {brl(linha.perdaDiaria * diasDecorridosMes)}
+                      </TableCell>
                       <TableCell className="text-right font-semibold">
                         {brl(linha.risco7Dias)}
                       </TableCell>
@@ -366,7 +395,7 @@ function RupturaVendaPage() {
                   {linhas.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={9}
+                        colSpan={10}
                         className="py-10 text-center text-sm text-muted-foreground"
                       >
                         Nenhuma ruptura ou posição em atenção encontrada para os filtros.
@@ -375,7 +404,6 @@ function RupturaVendaPage() {
                   )}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
       </div>

@@ -9,14 +9,8 @@ import { usePortal } from "@/context/portal-context";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { fetchFornecedoresList } from "@/api";
-
-const formatarCodigoFornecedorComDigito = (codigo: string): string => {
-  const num = codigo.replace("FORN-", "");
-  if (!/^\d+$/.test(num) || num.length < 2) return num;
-  const base = num.slice(0, -1);
-  const digito = num.slice(-1);
-  return `${base}-${digito}`;
-};
+import { formatarCodigoFornecedorComDigito } from "@/lib/fornecedor-codigo";
+import { FiltroMixHeader } from "@/components/filtro-mix-header";
 
 export function PortalLayout({
   titulo,
@@ -29,6 +23,13 @@ export function PortalLayout({
 }) {
   const { fornecedor, mfaAtivo, usuarioInterno, mudarFornecedorAtivo, dadosFornecedorVersao } = usePortal();
   const [fornecedoresList, setFornecedoresList] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const displayCodigo = mounted ? fornecedor.codigo : "704894";
+  const displayNome = mounted ? fornecedor.nome : "BTD DISTRIBUIDORA E COMERCIO L";
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [busca, setBusca] = useState("");
 
@@ -74,16 +75,17 @@ export function PortalLayout({
                 <h1 className="truncate font-display text-xl font-bold sm:text-2xl">{titulo}</h1>
                 <p className="truncate text-xs text-muted-foreground">{descricao}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <LiderLogo variant="mark" className="size-7 sm:hidden" />
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <div className="flex items-center gap-2">
+                  <LiderLogo variant="mark" className="size-7 sm:hidden" />
                 
                 {usuarioInterno ? (
                   <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                     <PopoverTrigger asChild>
                       <button className="flex items-center gap-2 rounded-full border border-border bg-card/90 hover:bg-muted/70 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer max-w-[280px]">
                         <ShieldCheck className="size-3.5 text-primary" />
-                        <span className="font-semibold text-primary font-mono">{formatarCodigoFornecedorComDigito(fornecedor.codigo)}</span>
-                        <span className="truncate text-muted-foreground">· {fornecedor.nome}</span>
+                        <span className="font-semibold text-primary font-mono">{formatarCodigoFornecedorComDigito(displayCodigo)}</span>
+                        <span className="truncate text-muted-foreground">· {displayNome}</span>
                         <span className="text-[10px] text-primary/70 font-bold ml-1">▼</span>
                       </button>
                     </PopoverTrigger>
@@ -104,7 +106,7 @@ export function PortalLayout({
                               <button
                                 key={f.codigo}
                                 className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
-                                  f.codigo === fornecedor.codigo
+                                  f.codigo === displayCodigo
                                     ? "bg-primary text-primary-foreground font-semibold"
                                     : "hover:bg-muted text-foreground"
                                 }`}
@@ -127,10 +129,13 @@ export function PortalLayout({
                 ) : (
                   <div className="hidden items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-xs md:flex">
                     {mfaAtivo && <ShieldCheck className="size-3.5 text-success" />}
-                    <span className="font-semibold font-mono">{formatarCodigoFornecedorComDigito(fornecedor.codigo)}</span>
-                    <span className="text-muted-foreground">· {fornecedor.nome}</span>
+                    <span className="font-semibold font-mono">{formatarCodigoFornecedorComDigito(displayCodigo)}</span>
+                    <span className="text-muted-foreground">· {displayNome}</span>
                   </div>
                 )}
+                </div>
+                
+                <FiltroMixHeader />
               </div>
             </div>
           </header>

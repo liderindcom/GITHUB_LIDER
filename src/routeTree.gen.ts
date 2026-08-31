@@ -12,23 +12,34 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PortalRouteImport } from './routes/_portal'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PortalAcordoAcessoRouteImport } from './routes/_portal.acordo-acesso'
+import { Route as PortalAcordoFillrateRouteImport } from './routes/_portal.acordo-fillrate'
+import { Route as PortalAdminAcordoAcessoRouteImport } from './routes/_portal.admin-acordo-acesso'
 import { Route as PortalAdminFornecedoresRouteImport } from './routes/_portal.admin-fornecedores'
+import { Route as PortalAdminPrecosRouteImport } from './routes/_portal.admin-precos'
 import { Route as PortalAdminUsuariosRouteImport } from './routes/_portal.admin-usuarios'
+import { Route as PortalAgendaRouteImport } from './routes/_portal.agenda'
 import { Route as PortalClassificacaoRouteImport } from './routes/_portal.classificacao'
+import { Route as PortalConciliacaoRouteImport } from './routes/_portal.conciliacao'
 import { Route as PortalContasReceberRouteImport } from './routes/_portal.contas-receber'
+import { Route as PortalCorrigirSenhaRouteImport } from './routes/_portal.corrigir-senha'
 import { Route as PortalDashboardRouteImport } from './routes/_portal.dashboard'
 import { Route as PortalEstoqueRouteImport } from './routes/_portal.estoque'
 import { Route as PortalFinanceiroRouteImport } from './routes/_portal.financeiro'
 import { Route as PortalItensRouteImport } from './routes/_portal.itens'
 import { Route as PortalLogisticaRouteImport } from './routes/_portal.logistica'
+import { Route as PortalOfertasRebaixasRouteImport } from './routes/_portal.ofertas-rebaixas'
 import { Route as PortalPedidosRouteImport } from './routes/_portal.pedidos'
 import { Route as PortalPerdasRouteImport } from './routes/_portal.perdas'
+import { Route as PortalPrecoSistemaRouteImport } from './routes/_portal.preco-sistema'
 import { Route as PortalPrecosRouteImport } from './routes/_portal.precos'
 import { Route as PortalRelatorioMixRouteImport } from './routes/_portal.relatorio-mix'
 import { Route as PortalRepresentatividadeRouteImport } from './routes/_portal.representatividade'
 import { Route as PortalRupturaVendaRouteImport } from './routes/_portal.ruptura-venda'
 import { Route as PortalSugestaoCompraRouteImport } from './routes/_portal.sugestao-compra'
+import { Route as PortalUsuariosRouteImport } from './routes/_portal.usuarios'
 import { Route as PortalVendasRouteImport } from './routes/_portal.vendas'
+import { Route as PortalVendasAnualRouteImport } from './routes/_portal.vendas-anual'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -44,9 +55,29 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalAcordoAcessoRoute = PortalAcordoAcessoRouteImport.update({
+  id: '/acordo-acesso',
+  path: '/acordo-acesso',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAcordoFillrateRoute = PortalAcordoFillrateRouteImport.update({
+  id: '/acordo-fillrate',
+  path: '/acordo-fillrate',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAdminAcordoAcessoRoute = PortalAdminAcordoAcessoRouteImport.update({
+  id: '/admin-acordo-acesso',
+  path: '/admin-acordo-acesso',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalAdminFornecedoresRoute = PortalAdminFornecedoresRouteImport.update({
   id: '/admin-fornecedores',
   path: '/admin-fornecedores',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAdminPrecosRoute = PortalAdminPrecosRouteImport.update({
+  id: '/admin-precos',
+  path: '/admin-precos',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalAdminUsuariosRoute = PortalAdminUsuariosRouteImport.update({
@@ -54,14 +85,29 @@ const PortalAdminUsuariosRoute = PortalAdminUsuariosRouteImport.update({
   path: '/admin-usuarios',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalAgendaRoute = PortalAgendaRouteImport.update({
+  id: '/agenda',
+  path: '/agenda',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalClassificacaoRoute = PortalClassificacaoRouteImport.update({
   id: '/classificacao',
   path: '/classificacao',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalConciliacaoRoute = PortalConciliacaoRouteImport.update({
+  id: '/conciliacao',
+  path: '/conciliacao',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalContasReceberRoute = PortalContasReceberRouteImport.update({
   id: '/contas-receber',
   path: '/contas-receber',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalCorrigirSenhaRoute = PortalCorrigirSenhaRouteImport.update({
+  id: '/corrigir-senha',
+  path: '/corrigir-senha',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalDashboardRoute = PortalDashboardRouteImport.update({
@@ -89,6 +135,11 @@ const PortalLogisticaRoute = PortalLogisticaRouteImport.update({
   path: '/logistica',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalOfertasRebaixasRoute = PortalOfertasRebaixasRouteImport.update({
+  id: '/ofertas-rebaixas',
+  path: '/ofertas-rebaixas',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalPedidosRoute = PortalPedidosRouteImport.update({
   id: '/pedidos',
   path: '/pedidos',
@@ -97,6 +148,11 @@ const PortalPedidosRoute = PortalPedidosRouteImport.update({
 const PortalPerdasRoute = PortalPerdasRouteImport.update({
   id: '/perdas',
   path: '/perdas',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalPrecoSistemaRoute = PortalPrecoSistemaRouteImport.update({
+  id: '/preco-sistema',
+  path: '/preco-sistema',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalPrecosRoute = PortalPrecosRouteImport.update({
@@ -125,142 +181,218 @@ const PortalSugestaoCompraRoute = PortalSugestaoCompraRouteImport.update({
   path: '/sugestao-compra',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalUsuariosRoute = PortalUsuariosRouteImport.update({
+  id: '/usuarios',
+  path: '/usuarios',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalVendasRoute = PortalVendasRouteImport.update({
   id: '/vendas',
   path: '/vendas',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalVendasAnualRoute = PortalVendasAnualRouteImport.update({
+  id: '/vendas-anual',
+  path: '/vendas-anual',
   getParentRoute: () => PortalRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/acordo-acesso': typeof PortalAcordoAcessoRoute
+  '/acordo-fillrate': typeof PortalAcordoFillrateRoute
+  '/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/admin-precos': typeof PortalAdminPrecosRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
+  '/agenda': typeof PortalAgendaRoute
   '/classificacao': typeof PortalClassificacaoRoute
+  '/conciliacao': typeof PortalConciliacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
+  '/corrigir-senha': typeof PortalCorrigirSenhaRoute
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
   '/financeiro': typeof PortalFinanceiroRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
+  '/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
   '/pedidos': typeof PortalPedidosRoute
   '/perdas': typeof PortalPerdasRoute
+  '/preco-sistema': typeof PortalPrecoSistemaRoute
   '/precos': typeof PortalPrecosRoute
   '/relatorio-mix': typeof PortalRelatorioMixRoute
   '/representatividade': typeof PortalRepresentatividadeRoute
   '/ruptura-venda': typeof PortalRupturaVendaRoute
   '/sugestao-compra': typeof PortalSugestaoCompraRoute
+  '/usuarios': typeof PortalUsuariosRoute
   '/vendas': typeof PortalVendasRoute
+  '/vendas-anual': typeof PortalVendasAnualRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/acordo-acesso': typeof PortalAcordoAcessoRoute
+  '/acordo-fillrate': typeof PortalAcordoFillrateRoute
+  '/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/admin-precos': typeof PortalAdminPrecosRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
+  '/agenda': typeof PortalAgendaRoute
   '/classificacao': typeof PortalClassificacaoRoute
+  '/conciliacao': typeof PortalConciliacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
+  '/corrigir-senha': typeof PortalCorrigirSenhaRoute
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
   '/financeiro': typeof PortalFinanceiroRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
+  '/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
   '/pedidos': typeof PortalPedidosRoute
   '/perdas': typeof PortalPerdasRoute
+  '/preco-sistema': typeof PortalPrecoSistemaRoute
   '/precos': typeof PortalPrecosRoute
   '/relatorio-mix': typeof PortalRelatorioMixRoute
   '/representatividade': typeof PortalRepresentatividadeRoute
   '/ruptura-venda': typeof PortalRupturaVendaRoute
   '/sugestao-compra': typeof PortalSugestaoCompraRoute
+  '/usuarios': typeof PortalUsuariosRoute
   '/vendas': typeof PortalVendasRoute
+  '/vendas-anual': typeof PortalVendasAnualRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_portal': typeof PortalRouteWithChildren
   '/login': typeof LoginRoute
+  '/_portal/acordo-acesso': typeof PortalAcordoAcessoRoute
+  '/_portal/acordo-fillrate': typeof PortalAcordoFillrateRoute
+  '/_portal/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/_portal/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/_portal/admin-precos': typeof PortalAdminPrecosRoute
   '/_portal/admin-usuarios': typeof PortalAdminUsuariosRoute
+  '/_portal/agenda': typeof PortalAgendaRoute
   '/_portal/classificacao': typeof PortalClassificacaoRoute
+  '/_portal/conciliacao': typeof PortalConciliacaoRoute
   '/_portal/contas-receber': typeof PortalContasReceberRoute
+  '/_portal/corrigir-senha': typeof PortalCorrigirSenhaRoute
   '/_portal/dashboard': typeof PortalDashboardRoute
   '/_portal/estoque': typeof PortalEstoqueRoute
   '/_portal/financeiro': typeof PortalFinanceiroRoute
   '/_portal/itens': typeof PortalItensRoute
   '/_portal/logistica': typeof PortalLogisticaRoute
+  '/_portal/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
   '/_portal/pedidos': typeof PortalPedidosRoute
   '/_portal/perdas': typeof PortalPerdasRoute
+  '/_portal/preco-sistema': typeof PortalPrecoSistemaRoute
   '/_portal/precos': typeof PortalPrecosRoute
   '/_portal/relatorio-mix': typeof PortalRelatorioMixRoute
   '/_portal/representatividade': typeof PortalRepresentatividadeRoute
   '/_portal/ruptura-venda': typeof PortalRupturaVendaRoute
   '/_portal/sugestao-compra': typeof PortalSugestaoCompraRoute
+  '/_portal/usuarios': typeof PortalUsuariosRoute
   '/_portal/vendas': typeof PortalVendasRoute
+  '/_portal/vendas-anual': typeof PortalVendasAnualRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/acordo-acesso'
+    | '/acordo-fillrate'
+    | '/admin-acordo-acesso'
     | '/admin-fornecedores'
+    | '/admin-precos'
     | '/admin-usuarios'
+    | '/agenda'
     | '/classificacao'
+    | '/conciliacao'
     | '/contas-receber'
+    | '/corrigir-senha'
     | '/dashboard'
     | '/estoque'
     | '/financeiro'
     | '/itens'
     | '/logistica'
+    | '/ofertas-rebaixas'
     | '/pedidos'
     | '/perdas'
+    | '/preco-sistema'
     | '/precos'
     | '/relatorio-mix'
     | '/representatividade'
     | '/ruptura-venda'
     | '/sugestao-compra'
+    | '/usuarios'
     | '/vendas'
+    | '/vendas-anual'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/acordo-acesso'
+    | '/acordo-fillrate'
+    | '/admin-acordo-acesso'
     | '/admin-fornecedores'
+    | '/admin-precos'
     | '/admin-usuarios'
+    | '/agenda'
     | '/classificacao'
+    | '/conciliacao'
     | '/contas-receber'
+    | '/corrigir-senha'
     | '/dashboard'
     | '/estoque'
     | '/financeiro'
     | '/itens'
     | '/logistica'
+    | '/ofertas-rebaixas'
     | '/pedidos'
     | '/perdas'
+    | '/preco-sistema'
     | '/precos'
     | '/relatorio-mix'
     | '/representatividade'
     | '/ruptura-venda'
     | '/sugestao-compra'
+    | '/usuarios'
     | '/vendas'
+    | '/vendas-anual'
   id:
     | '__root__'
     | '/'
     | '/_portal'
     | '/login'
+    | '/_portal/acordo-acesso'
+    | '/_portal/acordo-fillrate'
+    | '/_portal/admin-acordo-acesso'
     | '/_portal/admin-fornecedores'
+    | '/_portal/admin-precos'
     | '/_portal/admin-usuarios'
+    | '/_portal/agenda'
     | '/_portal/classificacao'
+    | '/_portal/conciliacao'
     | '/_portal/contas-receber'
+    | '/_portal/corrigir-senha'
     | '/_portal/dashboard'
     | '/_portal/estoque'
     | '/_portal/financeiro'
     | '/_portal/itens'
     | '/_portal/logistica'
+    | '/_portal/ofertas-rebaixas'
     | '/_portal/pedidos'
     | '/_portal/perdas'
+    | '/_portal/preco-sistema'
     | '/_portal/precos'
     | '/_portal/relatorio-mix'
     | '/_portal/representatividade'
     | '/_portal/ruptura-venda'
     | '/_portal/sugestao-compra'
+    | '/_portal/usuarios'
     | '/_portal/vendas'
+    | '/_portal/vendas-anual'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -292,11 +424,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_portal/acordo-acesso': {
+      id: '/_portal/acordo-acesso'
+      path: '/acordo-acesso'
+      fullPath: '/acordo-acesso'
+      preLoaderRoute: typeof PortalAcordoAcessoRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/acordo-fillrate': {
+      id: '/_portal/acordo-fillrate'
+      path: '/acordo-fillrate'
+      fullPath: '/acordo-fillrate'
+      preLoaderRoute: typeof PortalAcordoFillrateRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/admin-acordo-acesso': {
+      id: '/_portal/admin-acordo-acesso'
+      path: '/admin-acordo-acesso'
+      fullPath: '/admin-acordo-acesso'
+      preLoaderRoute: typeof PortalAdminAcordoAcessoRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/admin-fornecedores': {
       id: '/_portal/admin-fornecedores'
       path: '/admin-fornecedores'
       fullPath: '/admin-fornecedores'
       preLoaderRoute: typeof PortalAdminFornecedoresRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/admin-precos': {
+      id: '/_portal/admin-precos'
+      path: '/admin-precos'
+      fullPath: '/admin-precos'
+      preLoaderRoute: typeof PortalAdminPrecosRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/admin-usuarios': {
@@ -306,6 +466,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAdminUsuariosRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/agenda': {
+      id: '/_portal/agenda'
+      path: '/agenda'
+      fullPath: '/agenda'
+      preLoaderRoute: typeof PortalAgendaRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/classificacao': {
       id: '/_portal/classificacao'
       path: '/classificacao'
@@ -313,11 +480,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalClassificacaoRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/conciliacao': {
+      id: '/_portal/conciliacao'
+      path: '/conciliacao'
+      fullPath: '/conciliacao'
+      preLoaderRoute: typeof PortalConciliacaoRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/contas-receber': {
       id: '/_portal/contas-receber'
       path: '/contas-receber'
       fullPath: '/contas-receber'
       preLoaderRoute: typeof PortalContasReceberRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/corrigir-senha': {
+      id: '/_portal/corrigir-senha'
+      path: '/corrigir-senha'
+      fullPath: '/corrigir-senha'
+      preLoaderRoute: typeof PortalCorrigirSenhaRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/dashboard': {
@@ -355,6 +536,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalLogisticaRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/ofertas-rebaixas': {
+      id: '/_portal/ofertas-rebaixas'
+      path: '/ofertas-rebaixas'
+      fullPath: '/ofertas-rebaixas'
+      preLoaderRoute: typeof PortalOfertasRebaixasRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/pedidos': {
       id: '/_portal/pedidos'
       path: '/pedidos'
@@ -367,6 +555,13 @@ declare module '@tanstack/react-router' {
       path: '/perdas'
       fullPath: '/perdas'
       preLoaderRoute: typeof PortalPerdasRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/preco-sistema': {
+      id: '/_portal/preco-sistema'
+      path: '/preco-sistema'
+      fullPath: '/preco-sistema'
+      preLoaderRoute: typeof PortalPrecoSistemaRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/precos': {
@@ -404,6 +599,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalSugestaoCompraRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/usuarios': {
+      id: '/_portal/usuarios'
+      path: '/usuarios'
+      fullPath: '/usuarios'
+      preLoaderRoute: typeof PortalUsuariosRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/vendas': {
       id: '/_portal/vendas'
       path: '/vendas'
@@ -411,47 +613,76 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalVendasRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/vendas-anual': {
+      id: '/_portal/vendas-anual'
+      path: '/vendas-anual'
+      fullPath: '/vendas-anual'
+      preLoaderRoute: typeof PortalVendasAnualRouteImport
+      parentRoute: typeof PortalRoute
+    }
   }
 }
 
 interface PortalRouteChildren {
+  PortalAcordoAcessoRoute: typeof PortalAcordoAcessoRoute
+  PortalAcordoFillrateRoute: typeof PortalAcordoFillrateRoute
+  PortalAdminAcordoAcessoRoute: typeof PortalAdminAcordoAcessoRoute
   PortalAdminFornecedoresRoute: typeof PortalAdminFornecedoresRoute
+  PortalAdminPrecosRoute: typeof PortalAdminPrecosRoute
   PortalAdminUsuariosRoute: typeof PortalAdminUsuariosRoute
+  PortalAgendaRoute: typeof PortalAgendaRoute
   PortalClassificacaoRoute: typeof PortalClassificacaoRoute
+  PortalConciliacaoRoute: typeof PortalConciliacaoRoute
   PortalContasReceberRoute: typeof PortalContasReceberRoute
+  PortalCorrigirSenhaRoute: typeof PortalCorrigirSenhaRoute
   PortalDashboardRoute: typeof PortalDashboardRoute
   PortalEstoqueRoute: typeof PortalEstoqueRoute
   PortalFinanceiroRoute: typeof PortalFinanceiroRoute
   PortalItensRoute: typeof PortalItensRoute
   PortalLogisticaRoute: typeof PortalLogisticaRoute
+  PortalOfertasRebaixasRoute: typeof PortalOfertasRebaixasRoute
   PortalPedidosRoute: typeof PortalPedidosRoute
   PortalPerdasRoute: typeof PortalPerdasRoute
+  PortalPrecoSistemaRoute: typeof PortalPrecoSistemaRoute
   PortalPrecosRoute: typeof PortalPrecosRoute
   PortalRelatorioMixRoute: typeof PortalRelatorioMixRoute
   PortalRepresentatividadeRoute: typeof PortalRepresentatividadeRoute
   PortalRupturaVendaRoute: typeof PortalRupturaVendaRoute
   PortalSugestaoCompraRoute: typeof PortalSugestaoCompraRoute
+  PortalUsuariosRoute: typeof PortalUsuariosRoute
   PortalVendasRoute: typeof PortalVendasRoute
+  PortalVendasAnualRoute: typeof PortalVendasAnualRoute
 }
 
 const PortalRouteChildren: PortalRouteChildren = {
+  PortalAcordoAcessoRoute: PortalAcordoAcessoRoute,
+  PortalAcordoFillrateRoute: PortalAcordoFillrateRoute,
+  PortalAdminAcordoAcessoRoute: PortalAdminAcordoAcessoRoute,
   PortalAdminFornecedoresRoute: PortalAdminFornecedoresRoute,
+  PortalAdminPrecosRoute: PortalAdminPrecosRoute,
   PortalAdminUsuariosRoute: PortalAdminUsuariosRoute,
+  PortalAgendaRoute: PortalAgendaRoute,
   PortalClassificacaoRoute: PortalClassificacaoRoute,
+  PortalConciliacaoRoute: PortalConciliacaoRoute,
   PortalContasReceberRoute: PortalContasReceberRoute,
+  PortalCorrigirSenhaRoute: PortalCorrigirSenhaRoute,
   PortalDashboardRoute: PortalDashboardRoute,
   PortalEstoqueRoute: PortalEstoqueRoute,
   PortalFinanceiroRoute: PortalFinanceiroRoute,
   PortalItensRoute: PortalItensRoute,
   PortalLogisticaRoute: PortalLogisticaRoute,
+  PortalOfertasRebaixasRoute: PortalOfertasRebaixasRoute,
   PortalPedidosRoute: PortalPedidosRoute,
   PortalPerdasRoute: PortalPerdasRoute,
+  PortalPrecoSistemaRoute: PortalPrecoSistemaRoute,
   PortalPrecosRoute: PortalPrecosRoute,
   PortalRelatorioMixRoute: PortalRelatorioMixRoute,
   PortalRepresentatividadeRoute: PortalRepresentatividadeRoute,
   PortalRupturaVendaRoute: PortalRupturaVendaRoute,
   PortalSugestaoCompraRoute: PortalSugestaoCompraRoute,
+  PortalUsuariosRoute: PortalUsuariosRoute,
   PortalVendasRoute: PortalVendasRoute,
+  PortalVendasAnualRoute: PortalVendasAnualRoute,
 }
 
 const PortalRouteWithChildren =

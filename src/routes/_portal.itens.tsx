@@ -35,13 +35,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { usePortal } from "@/context/portal-context";
-import { numero } from "@/lib/format";
+import { dataBR, numero } from "@/lib/format";
+import { formatarNumeroPedido } from "@/lib/pedido-numero";
 import { 
   produtos, 
   estoque, 
   pedidos, 
   vendas, 
+  codigoProdutoComDigito,
   produtoPorSku,
+  marcaProduto,
+  descricaoComercial,
+  formatarClasseComposta,
   type Produto, 
   type Pedido 
 } from "@/lib/mock-data";
@@ -71,7 +76,7 @@ function ItensPage() {
   // Load suggestions which contains composite classes, stock, sales, coverage
   const sugestoes = useMemo(() => {
     void dadosFornecedorVersao;
-    return calcularSugestoesCompraCdam("90"); // 90 days window
+    return calcularSugestoesCompraCdam("30"); // 90 days window
   }, [dadosFornecedorVersao]);
 
   // Map to help access calculated suggestions per SKU
@@ -93,7 +98,7 @@ function ItensPage() {
           const saldo = Math.max(0, item.quantidadePedida - item.quantidadeFaturada);
           if (saldo > 0) {
             list.push({
-              id: pedido.numero,
+              id: formatarNumeroPedido(pedido.numero),
               status: pedido.status,
               dataEmissao: pedido.emissao,
               quantidade: saldo
@@ -118,7 +123,7 @@ function ItensPage() {
       // Average Daily Sales (based on 90 days of vendas)
       const skuVendas = vendas.filter(v => v.sku === sku);
       const totalSales = skuVendas.reduce((acc, curr) => acc + curr.quantidade, 0);
-      const averageSalesDaily = totalSales / 90;
+      const averageSalesDaily = totalSales / 30;
 
       const totalCoverage = averageSalesDaily > 0 ? totalStock / averageSalesDaily : null;
       map.set(sku, { totalStock, averageSalesDaily, totalCoverage });
@@ -150,8 +155,7 @@ function ItensPage() {
         pendenciaMotivo = `Cobertura de estoque (${Math.round(coberturaCdam || 0)}d) abaixo do Lead Time Crítico (${leadTime - 3}d).`;
       }
 
-      // We can use standard composite class (e.g. Aa, Ab) or fallback to "Dd"
-      const classe = sug?.classeComposta || "Dd";
+      const classe = formatarClasseComposta(produto.classeComposta || sug?.classeComposta || "Dd");
       const vendaMediaDiaria = sug?.vendaMediaDiaria || stockSales.averageSalesDaily;
       const vendaMediaMensal = vendaMediaDiaria * 30;
 
@@ -180,7 +184,7 @@ function ItensPage() {
       // Filter by text search
       if (busca) {
         const query = busca.toLowerCase();
-        const target = `${item.produto.sku} ${item.produto.descricao} ${item.produto.subgrupo}`.toLowerCase();
+        const target = `${item.produto.sku} ${codigoProdutoComDigito(item.produto.sku)} ${item.produto.descricao} ${item.produto.descricaoMarketing ?? ""} ${item.produto.ean ?? ""} ${item.produto.referencia ?? ""} ${item.produto.marca ?? ""} ${item.produto.subgrupo}`.toLowerCase();
         if (!target.includes(query)) return false;
       }
 
@@ -235,7 +239,13 @@ function ItensPage() {
   function exportar() {
     const cabecalho = [
       "SKU",
+      "EAN",
+      "Referencia",
+      "Marca",
+      "Descricao marketing",
       "Descricao",
+      "Data sai linha",
+      "Em linha",
       "Subgrupo",
       "Classe",
       "Venda Media Diaria (un)",
@@ -249,8 +259,14 @@ function ItensPage() {
     ];
 
     const linhasCsv = listaFiltrada.map((item) => [
-      item.produto.sku,
+      codigoProdutoComDigito(item.produto.sku),
+      item.produto.ean || "",
+      item.produto.referencia || "",
+      marcaProduto(item.produto),
+      item.produto.descricaoMarketing || "",
       item.produto.descricao,
+      item.produto.datSaiLin || "",
+      item.produto.emLinha === 0 ? "NAO" : "SIM",
       item.produto.subgrupo || "",
       item.classe,
       item.vendaMediaDiaria.toFixed(2),
@@ -343,7 +359,7 @@ function ItensPage() {
           <CardContent className="p-4 pt-0 space-y-4">
             <div className="grid gap-3 sm:grid-cols-4">
               <div className="space-y-1">
-                <Label htmlFor="busca" className="text-xs font-semibold">Pesquisar SKU, Descrição ou Subgrupo</Label>
+                <Label htmlFor="busca" className="text-xs font-semibold">Pesquisar SKU, EAN, referência, marca ou descrição</Label>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
                   <Input
@@ -414,12 +430,18 @@ function ItensPage() {
         {/* Main Table */}
         <Card className="shadow-panel">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/60">
+            <Table
+              containerClassName="max-h-[500px]"
+              className="border-separate border-spacing-0"
+            >
+              <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
+                <TableRow className="bg-muted/60">
                     <TableHead className="w-[80px]">SKU</TableHead>
-                    <TableHead className="min-w-[200px]">Descrição do Item</TableHead>
+                    <TableHead className="min-w-[110px]">EAN</TableHead>
+                    <TableHead>Referência</TableHead>
+                    <TableHead>Marca</TableHead>
+                    <TableHead className="min-w-[220px]">Descrição de marketing</TableHead>
+                    <TableHead>Saiu de linha</TableHead>
                     <TableHead>Subgrupo</TableHead>
                     <TableHead className="text-right">Venda Média Diária</TableHead>
                     <TableHead className="text-right">Venda Média Mensal</TableHead>
@@ -433,7 +455,7 @@ function ItensPage() {
                 <TableBody>
                   {listaFiltrada.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground text-xs">
+                      <TableCell colSpan={14} className="text-center py-8 text-muted-foreground text-xs">
                         Nenhum item encontrado com os filtros selecionados.
                       </TableCell>
                     </TableRow>
@@ -476,9 +498,27 @@ function ItensPage() {
 
                       return (
                         <TableRow key={item.produto.sku} className="hover:bg-muted/40 transition-colors">
-                          <TableCell className="font-mono text-xs font-semibold">{item.produto.sku}</TableCell>
+                          <TableCell className="font-mono text-xs font-semibold">{codigoProdutoComDigito(item.produto.sku)}</TableCell>
+                          <TableCell className="font-mono text-[11px]">{item.produto.ean || "—"}</TableCell>
+                          <TableCell className="font-mono text-[11px]">{item.produto.referencia || "—"}</TableCell>
+                          <TableCell className="text-xs">{marcaProduto(item.produto)}</TableCell>
                           <TableCell className="font-medium text-xs max-w-[260px] truncate" title={item.produto.descricao}>
-                            {item.produto.descricao}
+                            <span>{descricaoComercial(item.produto)}</span>
+                            {item.produto.descricaoMarketing &&
+                              item.produto.descricaoMarketing !== item.produto.descricao && (
+                                <span className="mt-0.5 block truncate text-[10px] font-normal text-muted-foreground">
+                                  {item.produto.descricao}
+                                </span>
+                              )}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {item.produto.emLinha === 0 ? (
+                              <span className="text-warning">
+                                {item.produto.datSaiLin ? dataBR(item.produto.datSaiLin) : "Fora"}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Em linha</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]">
                             {item.produto.subgrupo}
@@ -490,9 +530,15 @@ function ItensPage() {
                             {numero(Math.round(item.vendaMediaMensal))}
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge className={"text-[10px] px-1.5 py-0.5 h-5 uppercase " + classBadgeStyle}>
-                              {item.classe}
-                            </Badge>
+                            {item.classe === "Aa" ? (
+                              <span className="inline-flex items-center justify-center gap-1 rounded bg-amber-950 border border-amber-500/40 px-2 py-1 text-[10px] font-extrabold text-amber-300 shadow-sm animate-pulse">
+                                ⭐ Aa <span className="text-[8px] uppercase tracking-wider text-amber-200">Top Star</span>
+                              </span>
+                            ) : (
+                              <Badge className={"text-[10px] px-1.5 py-0.5 h-5 font-mono " + classBadgeStyle}>
+                                {item.classe}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs font-medium">
                             {item.openOrderQty > 0 ? (
@@ -525,8 +571,7 @@ function ItensPage() {
                     })
                   )}
                 </TableBody>
-              </Table>
-            </div>
+            </Table>
           </CardContent>
         </Card>
       </div>

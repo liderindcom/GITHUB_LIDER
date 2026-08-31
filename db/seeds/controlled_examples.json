@@ -5,14 +5,14 @@
   "suppliers": [
     {
       "supplierId": "11111111-1111-1111-1111-111111111111",
-      "supplierCode": "FORN-001",
+      "supplierCode": "001",
       "cnpj": "11222333000181",
       "legalName": "Fornecedor Piloto Alfa LTDA",
       "anticipationEnabled": true
     },
     {
       "supplierId": "22222222-2222-2222-2222-222222222222",
-      "supplierCode": "FORN-002",
+      "supplierCode": "002",
       "cnpj": "44555666000172",
       "legalName": "Fornecedor Piloto Beta LTDA",
       "anticipationEnabled": false
@@ -127,6 +127,148 @@
       }
     ]
   },
+  "productClassifications": {
+    "generatedAt": "2026-08-05T13:20:00Z",
+    "homologationStatus": "candidato",
+    "supplierId": "11111111-1111-1111-1111-111111111111",
+    "dataFreshness": {
+      "sourceUpdatedAt": "2026-08-05T12:50:00Z",
+      "syncedAt": "2026-08-05T13:20:00Z",
+      "ageSeconds": 1800,
+      "slaLabel": "atualizado ha 30min",
+      "slaBreached": false
+    },
+    "page": { "limit": 50, "hasMore": false, "nextCursor": null },
+    "rows": [
+      {
+        "sku": "SKU-1001",
+        "description": "Produto Alfa 1kg",
+        "departmentCode": "100",
+        "department": "Mercearia",
+        "sectionCode": "13",
+        "section": "Mercearia Doce",
+        "groupCode": "1",
+        "group": "Achocolatados",
+        "subgroupCode": "1",
+        "subgroup": "Achocolatado em po",
+        "family": "Cafe da manha",
+        "commercialRole": "destino",
+        "abcClass": "A",
+        "sellOutAmount": "12500.00",
+        "sellOutQty": 980,
+        "avgDailySales90Amount": "138.89",
+        "subgroupSalesSharePct": 100,
+        "subgroupCumulativeSharePct": 100,
+        "grossMarginPct": 29.4,
+        "stockQty": 138,
+        "stockoutBranchCount": 0,
+        "fillRatePct": 75,
+        "writesToErp": false
+      },
+      {
+        "sku": "SKU-1002",
+        "description": "Produto Alfa 5kg",
+        "departmentCode": "100",
+        "department": "Mercearia",
+        "sectionCode": "6",
+        "section": "Mercearia Doce",
+        "groupCode": "6",
+        "group": "Leites culinarios",
+        "subgroupCode": "2",
+        "subgroup": "Leite condensado",
+        "family": "Sobremesas",
+        "commercialRole": "rotina",
+        "abcClass": "A",
+        "sellOutAmount": "9400.00",
+        "sellOutQty": 740,
+        "avgDailySales90Amount": "104.44",
+        "subgroupSalesSharePct": 100,
+        "subgroupCumulativeSharePct": 100,
+        "grossMarginPct": 25.8,
+        "stockQty": 0,
+        "stockoutBranchCount": 1,
+        "fillRatePct": 37.5,
+        "writesToErp": false
+      }
+    ]
+  },
+  "purchaseOrders": {
+    "generatedAt": "2026-08-05T12:15:00Z",
+    "homologationStatus": "candidato",
+    "supplierId": "11111111-1111-1111-1111-111111111111",
+    "dataFreshness": {
+      "sourceUpdatedAt": "2026-08-05T11:45:00Z",
+      "syncedAt": "2026-08-05T12:15:00Z",
+      "ageSeconds": 1800,
+      "slaLabel": "atualizado ha 30min",
+      "slaBreached": false
+    },
+    "page": { "limit": 50, "hasMore": false, "nextCursor": null },
+    "rows": [
+      {
+        "orderId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "orderNumber": "PC-000152",
+        "orderKind": "supplier_direct",
+        "originName": "Compras Grupo Lider",
+        "destinationName": "Fornecedor direto",
+        "referenceBranchId": "024",
+        "issueDate": "2026-08-01",
+        "expectedDeliveryDate": "2026-08-04",
+        "cdamEntryDate": "2026-08-04",
+        "deliveryLeadTimeDays": 3,
+        "status": "entregue",
+        "agendaContext": "compras_recebimento",
+        "agendaCode": "recebimento_nf_e",
+        "agendaParity": "conforme_origem_fiscal_compra",
+        "qtyOrderedTotal": 480,
+        "qtyInvoicedTotal": 360,
+        "fillRatePct": 75,
+        "ruleSummary": "Pedido emitido diretamente ao fornecedor; a entrada fiscal ocorre por agenda de compra/recebimento.",
+        "writesToErp": false,
+        "lines": [
+          {
+            "sku": "SKU-1001",
+            "description": "Produto Alfa 1kg",
+            "qtyOrdered": 480,
+            "qtyInvoiced": 360,
+            "fillRatePct": 75,
+            "unitPrice": "12.40"
+          }
+        ]
+      },
+      {
+        "orderId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "orderNumber": "PC-000157",
+        "orderKind": "cdam_central_depot",
+        "originName": "Compras Grupo Lider",
+        "destinationName": "CDAM - Deposito Central",
+        "referenceBranchId": "CDAM",
+        "issueDate": "2026-08-01",
+        "expectedDeliveryDate": "2026-08-06",
+        "cdamEntryDate": "2026-08-05",
+        "deliveryLeadTimeDays": 4,
+        "status": "entregue",
+        "agendaContext": "transferencia_cdam",
+        "agendaCode": "66",
+        "agendaParity": "65/148",
+        "qtyOrderedTotal": 960,
+        "qtyInvoicedTotal": 360,
+        "fillRatePct": 37.5,
+        "ruleSummary": "Pedido abastece o deposito central; transferencias posteriores para lojas devem permanecer separadas do pedido direto ao fornecedor.",
+        "writesToErp": false,
+        "lines": [
+          {
+            "sku": "SKU-1002",
+            "description": "Produto Alfa 5kg",
+            "qtyOrdered": 960,
+            "qtyInvoiced": 360,
+            "fillRatePct": 37.5,
+            "unitPrice": "8.20"
+          }
+        ]
+      }
+    ]
+  },
   "anticipationQuote": {
     "quoteId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
     "supplierId": "11111111-1111-1111-1111-111111111111",
@@ -165,7 +307,7 @@
   "authSession": {
     "userId": "33333333-3333-3333-3333-333333333333",
     "supplierId": "11111111-1111-1111-1111-111111111111",
-    "supplierCode": "FORN-001",
+    "supplierCode": "001",
     "cnpj": "11222333000181",
     "displayName": "Usuario Piloto Alfa",
     "roles": ["supplier_admin"],

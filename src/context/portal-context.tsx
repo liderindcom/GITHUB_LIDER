@@ -8,10 +8,7 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  DEMO_FORNECEDOR_CODIGO,
-  normalizarCodigoFornecedor,
-} from "@/lib/fornecedor-codigo";
+import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
 import {
   agendamentos as agendamentosMock,
   fornecedor,
@@ -21,6 +18,11 @@ import {
   globalDbCache,
 } from "@/lib/mock-data";
 import {
+  FILTRO_VAZIO,
+  setFiltroMercadologicoStore,
+  type FiltroMercadologico,
+} from "@/lib/filtro-mercadologico";
+import {
   fetchConciliacaoNfePedido,
   fetchContasReceber,
   fetchDocas,
@@ -29,12 +31,14 @@ import {
   fetchNfePendentes,
   encerrarSessaoPortal,
   restaurarSessaoPortal,
+  fetchMinhaContaFornecedor,
   fetchFornecedor,
   fetchPedidos,
   fetchPerdas,
   fetchProdutos,
   fetchProdutosBloqueios,
   fetchVendas,
+  fetchTransferenciasCdam,
   type UsuarioInternoDB,
 } from "@/api";
 import { subMonths, format } from "date-fns";
@@ -49,23 +53,39 @@ export type Antecipacao = {
   valorLiquido: number;
 };
 
+export type ContaFornecedorSessao = {
+  nome: string;
+  email: string;
+  precisaTrocarSenha: boolean;
+};
+
 type PortalState = {
   carregandoSessao: boolean;
   autenticado: boolean;
   usuarioInterno: UsuarioInternoDB | null;
+  usuarioFornecedor: ContaFornecedorSessao | null;
   primeiroAcessoConcluido: boolean;
   mfaAtivo: boolean;
   codigoFornecedorAtivo: string;
   dadosFornecedorVersao: number;
   agendamentos: Agendamento[];
   antecipacoes: Antecipacao[];
-  entrar: (codigoFornecedor?: string, userInterno?: UsuarioInternoDB) => void;
+  entrar: (
+    codigoFornecedor?: string,
+    userInterno?: UsuarioInternoDB,
+    contaFornecedor?: ContaFornecedorSessao,
+  ) => void;
   sair: () => void;
   mudarFornecedorAtivo: (codigo: string) => void;
   concluirPrimeiroAcesso: () => void;
+  marcarSenhaCorrigida: () => void;
   adicionarAgendamento: (agendamento: Omit<Agendamento, "id" | "status">) => void;
   registrarAntecipacao: (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => Antecipacao;
   fornecedor: typeof fornecedor;
+  classificacaoDados: string;
+  setClassificacaoDados: (val: string) => void;
+  filtroMercadologico: FiltroMercadologico;
+  setFiltroMercadologico: (val: FiltroMercadologico) => void;
 };
 
 const PortalContext = createContext<PortalState | null>(null);
@@ -82,36 +102,33 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState(getActiveSupplierCode());
   const [dadosFornecedorVersao, setDadosFornecedorVersao] = useState(0);
   const [usuarioInterno, setUsuarioInterno] = useState<UsuarioInternoDB | null>(null);
+  const [usuarioFornecedor, setUsuarioFornecedor] = useState<ContaFornecedorSessao | null>(null);
+  const [classificacaoDados, setClassificacaoDados] = useState<string>("departamento");
+  const [filtroMercadologico, setFiltroMercadologicoState] =
+    useState<FiltroMercadologico>(FILTRO_VAZIO);
+
+  useEffect(() => {
+    setFiltroMercadologicoStore(filtroMercadologico);
+  }, [filtroMercadologico]);
+
+  const setFiltroMercadologico = useCallback((val: FiltroMercadologico) => {
+    setFiltroMercadologicoStore(val);
+    setFiltroMercadologicoState(val);
+    setDadosFornecedorVersao((versao) => versao + 1);
+  }, []);
 
   const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
     try {
       setCodigoFornecedorAtivo(code);
-      const codeClean = normalizarCodigoFornecedor(code);
-
-      if (codeClean === DEMO_FORNECEDOR_CODIGO) {
-        globalDbCache.fornecedor = null;
-        globalDbCache.produtos = null;
-        globalDbCache.perdas = null;
-        globalDbCache.vendas = null;
-        globalDbCache.estoque = null;
-        globalDbCache.vendasMensais = null;
-        globalDbCache.bloqueios = null;
-        globalDbCache.pedidos = null;
-        globalDbCache.faturas = null;
-        globalDbCache.contasReceber = null;
-        globalDbCache.nfePendentes = null;
-        globalDbCache.docas = null;
-        globalDbCache.conciliacao = null;
-        setDadosFornecedorVersao((versao) => versao + 1);
-        return;
-      }
-
-      const [forn, prods, pds, vds, bloqs, estq, peds, fats, crs, nfes, docas, concil] =
+      const [forn, prods, pds, vds, bloqs, estq, peds, fats, crs, nfes, docas, concil, transfs] =
         await Promise.all([
           fetchFornecedor({ data: code }),
           fetchProdutos({ data: code }),
           fetchPerdas({ data: code }),
-          fetchVendas({ data: code }),
+          fetchVendas({ data: code }).catch((err) => {
+            console.error("Erro ao carregar vendas do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchVendas>>;
+          }),
           fetchProdutosBloqueios({ data: code }),
           fetchEstoque({ data: code }),
           fetchPedidos({ data: code }),
@@ -120,6 +137,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           fetchNfePendentes({ data: code }),
           fetchDocas(),
           fetchConciliacaoNfePedido({ data: code }),
+          fetchTransferenciasCdam({ data: code }).catch((err) => {
+            console.error("Erro ao carregar transferencias CDAM:", err);
+            return [] as Awaited<ReturnType<typeof fetchTransferenciasCdam>>;
+          }),
         ]);
 
       if (forn) {
@@ -130,8 +151,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           cnpjSenhaInicial: forn.cnpjSenhaInicial,
           destinatario: forn.destinatario,
           modeloEntrega: forn.modeloEntrega as any,
-          agendaRecebimentoCdam: forn.agendaRecebimentoCdam,
+          agendaRecebimentoCdam: forn.agendaRecebimentoCdam as any,
           filialEntregaPadrao: forn.filialEntregaPadrao,
+          isentoCobranca: forn.isentoCobranca as any,
+          acessoDataInicio: forn.acessoDataInicio,
+          acessoDataFim: forn.acessoDataFim,
           ...(forn.fornecedorComercialCodigo
             ? { fornecedorComercialCodigo: forn.fornecedorComercialCodigo }
             : {}),
@@ -175,9 +199,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           };
         });
         globalDbCache.contasReceber = crs ?? [];
-        globalDbCache.nfePendentes = nfes ?? [];
+        globalDbCache.nfePendentes = (nfes ?? []) as any;
         globalDbCache.docas = docas ?? [];
         globalDbCache.conciliacao = concil ?? [];
+        globalDbCache.transferenciasCdam = transfs ?? [];
 
         // Agrupar vendas reais por mês para alimentar o gráfico de sell-out temporal de 12 meses
         const mensalMap = new Map<string, { faturamento: number; volume: number }>();
@@ -228,6 +253,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           autenticado: boolean;
           primeiroAcessoConcluido: boolean;
           usuarioInterno?: UsuarioInternoDB | null;
+          usuarioFornecedor?: ContaFornecedorSessao | null;
         };
         if (dados.autenticado) {
           if (dados.usuarioInterno?.username) {
@@ -246,6 +272,20 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         setMfaAtivo(dados.primeiroAcessoConcluido);
         if (dados.usuarioInterno) {
           setUsuarioInterno(dados.usuarioInterno);
+        }
+        if (dados.usuarioFornecedor) {
+          setUsuarioFornecedor(dados.usuarioFornecedor);
+        }
+        if (dados.autenticado && !dados.usuarioInterno) {
+          const conta = await fetchMinhaContaFornecedor();
+          if (conta) {
+            setUsuarioFornecedor({
+              nome: conta.nome,
+              email: conta.email,
+              precisaTrocarSenha: Boolean(conta.precisaTrocarSenha),
+            });
+            setPrimeiroAcessoConcluido(!conta.precisaTrocarSenha);
+          }
         }
         if (dados.autenticado) {
           const code = getActiveSupplierCode();
@@ -267,19 +307,31 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined" || carregandoSessao) return;
     window.sessionStorage.setItem(
       CHAVE_SESSAO,
-      JSON.stringify({ autenticado, primeiroAcessoConcluido, usuarioInterno }),
+      JSON.stringify({ autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor }),
     );
-  }, [autenticado, primeiroAcessoConcluido, usuarioInterno, carregandoSessao]);
+  }, [autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor, carregandoSessao]);
 
   const entrar = useCallback(
-    (codigoFornecedor?: string, userInterno?: UsuarioInternoDB) => {
+    (
+      codigoFornecedor?: string,
+      userInterno?: UsuarioInternoDB,
+      contaFornecedor?: ContaFornecedorSessao,
+    ) => {
       if (userInterno) {
         setUsuarioInterno(userInterno);
+        setUsuarioFornecedor(null);
+        const jaAtivo = getActiveSupplierCode();
+        setActiveSupplierCode(jaAtivo);
+        setCodigoFornecedorAtivo(jaAtivo);
+        void carregarDadosReaisFornecedor(jaAtivo);
+        setPrimeiroAcessoConcluido(true);
       } else if (codigoFornecedor) {
         setUsuarioInterno(null);
+        setUsuarioFornecedor(contaFornecedor ?? null);
         setActiveSupplierCode(codigoFornecedor);
         setCodigoFornecedorAtivo(codigoFornecedor);
         carregarDadosReaisFornecedor(codigoFornecedor);
+        setPrimeiroAcessoConcluido(!contaFornecedor?.precisaTrocarSenha);
       }
       setAutenticado(true);
     },
@@ -288,6 +340,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const sair = useCallback(() => {
     setAutenticado(false);
     setUsuarioInterno(null);
+    setUsuarioFornecedor(null);
     void encerrarSessaoPortal();
   }, []);
 
@@ -295,6 +348,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     (code: string) => {
       setActiveSupplierCode(code);
       setCodigoFornecedorAtivo(code);
+      setFiltroMercadologicoStore(FILTRO_VAZIO);
+      setFiltroMercadologicoState(FILTRO_VAZIO);
       carregarDadosReaisFornecedor(code);
     },
     [carregarDadosReaisFornecedor],
@@ -303,6 +358,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const concluirPrimeiroAcesso = useCallback(() => {
     setPrimeiroAcessoConcluido(true);
     setMfaAtivo(true);
+  }, []);
+
+  const marcarSenhaCorrigida = useCallback(() => {
+    setUsuarioFornecedor((atual) =>
+      atual ? { ...atual, precisaTrocarSenha: false } : atual,
+    );
+    setPrimeiroAcessoConcluido(true);
   }, []);
 
   const adicionarAgendamento = useCallback((dados: Omit<Agendamento, "id" | "status">) => {
@@ -330,6 +392,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       carregandoSessao,
       autenticado,
       usuarioInterno,
+      usuarioFornecedor,
       primeiroAcessoConcluido,
       mfaAtivo,
       codigoFornecedorAtivo,
@@ -340,14 +403,20 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       sair,
       mudarFornecedorAtivo,
       concluirPrimeiroAcesso,
+      marcarSenhaCorrigida,
       adicionarAgendamento,
       registrarAntecipacao,
       fornecedor,
+      classificacaoDados,
+      setClassificacaoDados,
+      filtroMercadologico,
+      setFiltroMercadologico,
     }),
     [
       carregandoSessao,
       autenticado,
       usuarioInterno,
+      usuarioFornecedor,
       primeiroAcessoConcluido,
       mfaAtivo,
       codigoFornecedorAtivo,
@@ -358,8 +427,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       sair,
       mudarFornecedorAtivo,
       concluirPrimeiroAcesso,
+      marcarSenhaCorrigida,
       adicionarAgendamento,
       registrarAntecipacao,
+      classificacaoDados,
+      setClassificacaoDados,
+      filtroMercadologico,
+      setFiltroMercadologico,
     ],
   );
 

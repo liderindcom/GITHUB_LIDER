@@ -2,7 +2,9 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   CalendarClock,
   BadgeDollarSign,
+  BadgePercent,
   FileSpreadsheet,
+  KeyRound,
   LayoutDashboard,
   LineChart,
   LogOut,
@@ -18,6 +20,10 @@ import {
   PackageCheck,
   Users,
   ShieldCheck,
+  ClipboardCheck,
+  Scale,
+  TrendingUp,
+  Coins,
 } from "lucide-react";
 
 import { LiderLogo } from "@/components/lider-logo";
@@ -39,42 +45,70 @@ import { usePortal } from "@/context/portal-context";
 const itens = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Pedidos", url: "/pedidos", icon: ShoppingCart },
+  { title: "Acordo Fill Rate", url: "/acordo-fillrate", icon: ClipboardCheck },
   { title: "Vendas Sell-out", url: "/vendas", icon: LineChart },
+  { title: "Vendas Anual", url: "/vendas-anual", icon: TrendingUp },
   { title: "Estoque", url: "/estoque", icon: Package },
   { title: "Meus Itens", url: "/itens", icon: PackageCheck },
   { title: "Ruptura e Perda Venda", url: "/ruptura-venda", icon: AlertTriangle },
   { title: "Perdas Físicas", url: "/perdas", icon: TrendingDown },
   { title: "Relatório MIX", url: "/relatorio-mix", icon: FileSpreadsheet },
   { title: "Preço Concorrência", url: "/precos", icon: BadgeDollarSign },
-  { title: "Representatividade", url: "/representatividade", icon: Percent },
+  { title: "Tabela de Preço (Sistema)", url: "/preco-sistema", icon: Coins },
+  { title: "Share de Vendas", url: "/representatividade", icon: Percent },
   { title: "Sugestão Compra", url: "/sugestao-compra", icon: PackagePlus },
+  { title: "Ofertas e Rebaixas", url: "/ofertas-rebaixas", icon: Tags },
   { title: "Classificação", url: "/classificacao", icon: Tags },
   { title: "Logística", url: "/logistica", icon: CalendarClock },
+  { title: "Conciliação NF-e", url: "/conciliacao", icon: Scale },
   { title: "Contas a Receber", url: "/contas-receber", icon: ReceiptText },
   { title: "Financeiro", url: "/financeiro", icon: Wallet },
+  { title: "Corrigir senha", url: "/corrigir-senha", icon: KeyRound },
+  { title: "Usuários", url: "/usuarios", icon: Users },
+  { title: "Taxa de acesso 1%", url: "/acordo-acesso", icon: BadgePercent },
+  { title: "Aprovação de Preços", url: "/admin-precos", icon: ShieldCheck },
   { title: "Acesso Fornecedores (Admin)", url: "/admin-fornecedores", icon: Tags },
+  { title: "Acordo de acesso", url: "/admin-acordo-acesso", icon: BadgePercent },
   { title: "Usuários Administrativos", url: "/admin-usuarios", icon: Users },
 ] as const;
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  const { fornecedor, sair, usuarioInterno } = usePortal();
+  const { fornecedor, sair, usuarioInterno, usuarioFornecedor } = usePortal();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const displayNome = mounted ? fornecedor.nome : "Nestlé Brasil S/A";
+  const displayCodigo = mounted ? fornecedor.codigo : "704894";
 
   const itensVisiveis = useMemo(() => {
+    const precisaTrocar = Boolean(usuarioFornecedor?.precisaTrocarSenha) && !usuarioInterno;
     return itens.filter((item) => {
-      if (item.url === "/admin-fornecedores") {
+      if (precisaTrocar) {
+        return item.url === "/corrigir-senha";
+      }
+      if (
+        item.url === "/admin-fornecedores" ||
+        item.url === "/admin-precos" ||
+        item.url === "/admin-acordo-acesso"
+      ) {
         return usuarioInterno !== null;
       }
       if (item.url === "/admin-usuarios") {
         return usuarioInterno !== null && usuarioInterno.role === "admin";
       }
+      if (item.url === "/usuarios" || item.url === "/acordo-acesso" || item.url === "/corrigir-senha") {
+        return usuarioInterno === null;
+      }
       return true;
     });
-  }, [usuarioInterno]);
+  }, [usuarioInterno, usuarioFornecedor?.precisaTrocarSenha]);
 
   return (
     <Sidebar variant="floating" collapsible="icon" className="border-none">
@@ -123,12 +157,14 @@ export function AppSidebar() {
                 <p className="truncate text-xs font-bold text-primary flex items-center gap-1">
                   <ShieldCheck className="size-3.5" /> {usuarioInterno.nome}
                 </p>
-                <p className="truncate text-[10px] text-sidebar-foreground/60 uppercase">{usuarioInterno.role === "admin" ? "Administrador" : "Colaborador"}</p>
+                <p className="truncate text-[10px] text-sidebar-foreground/60 uppercase">
+                  {usuarioInterno.role === "admin" ? "Administrador" : "Colaborador"}
+                </p>
               </>
             ) : (
               <>
-                <p className="truncate text-xs font-medium">{fornecedor.nome}</p>
-                <p className="truncate text-xs text-sidebar-foreground/70">{fornecedor.codigo}</p>
+                <p className="truncate text-xs font-medium">{displayNome}</p>
+                <p className="truncate text-xs text-sidebar-foreground/70">{displayCodigo}</p>
               </>
             )}
           </div>

@@ -14,7 +14,8 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "Portal do Fornecedor | Grupo Líder" },
       {
         property: "og:description",
-        content: "Pedidos, vendas sell-out, estoque, agendamento de NF-e e antecipação de recebíveis.",
+        content:
+          "Pedidos, vendas sell-out, estoque, agendamento de NF-e e antecipação de recebíveis.",
       },
     ],
   }),

@@ -1,10 +1,15 @@
 import * as React from "react";
+import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <div className="relative w-full overflow-auto">
+type TableProps = React.HTMLAttributes<HTMLTableElement> & {
+  containerClassName?: string;
+};
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, containerClassName, ...props }, ref) => (
+    <div className={cn("relative w-full overflow-auto", containerClassName)}>
       <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
     </div>
   ),
@@ -53,19 +58,44 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
 );
 TableRow.displayName = "TableRow";
 
+export type TableHeadProps = React.ThHTMLAttributes<HTMLTableCellElement> & {
+  sortDirection?: "asc" | "desc" | null;
+};
+
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
-  React.ThHTMLAttributes<HTMLTableCellElement>
->(({ className, ...props }, ref) => (
-  <th
-    ref={ref}
-    className={cn(
-      "h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
-      className,
-    )}
-    {...props}
-  />
-));
+  TableHeadProps
+>(({ className, children, sortDirection, onClick, ...props }, ref) => {
+  const isSortable = onClick !== undefined;
+
+  return (
+    <th
+      ref={ref}
+      onClick={onClick}
+      className={cn(
+        "h-10 px-2 text-left align-middle font-medium bg-stone-100 text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+        isSortable && "cursor-pointer select-none hover:bg-stone-200/80 hover:text-foreground transition-colors",
+        className,
+      )}
+      {...props}
+    >
+      <div className="flex items-center gap-1.5">
+        <span>{children}</span>
+        {isSortable && (
+          <span className="inline-flex shrink-0">
+            {sortDirection === "asc" ? (
+              <ArrowUp className="size-3 text-primary" />
+            ) : sortDirection === "desc" ? (
+              <ArrowDown className="size-3 text-primary" />
+            ) : (
+              <ArrowUpDown className="size-3 opacity-30 hover:opacity-100 transition-opacity" />
+            )}
+          </span>
+        )}
+      </div>
+    </th>
+  );
+});
 TableHead.displayName = "TableHead";
 
 const TableCell = React.forwardRef<

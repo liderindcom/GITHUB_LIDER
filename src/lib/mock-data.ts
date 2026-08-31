@@ -1,13 +1,34 @@
 import { addDays, format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { lojaForaDoPortalFornecedor } from "@/lib/lojas-excluidas-portal";
+import {
+  DEMO_FORNECEDOR_CODIGO,
+  normalizarCodigoFornecedor,
+} from "@/lib/fornecedor-codigo";
+import {
+  getFiltroMercadologico,
+  produtoPassaFiltro,
+  rotuloComprador,
+  rotuloDepartamento,
+  rotuloGrupo,
+  rotuloSecao,
+  rotuloSubgrupo,
+} from "@/lib/filtro-mercadologico";
+
+export { DEMO_FORNECEDOR_CODIGO, normalizarCodigoFornecedor };
+
+export { lojaForaDoPortalFornecedor };
 
 /**
  * Cadastro comercial/financeiro do fornecedor junto ao Grupo Líder.
  * Fonte candidata: RM/RMS (condição de pagamento e desconto financeiro negociados).
  */
+export type TipoPrazoPagamento = "DDE" | "DDR";
+
 export type CadastroFinanceiro = {
-  /** Prazo padrão em dias corridos a partir da emissão da NF-e. */
+  /** Prazo em dias. Base: DDE = emissão da NF; DDR = recebimento. */
   prazoPagamentoDias: number;
+  prazoTipo?: TipoPrazoPagamento | null;
   /**
    * Desconto financeiro contratual (% sobre o valor da nota).
    * 0 = não há desconto financeiro no cadastro.
@@ -28,7 +49,14 @@ export type CadastroFinanceiro = {
  * Evidência RMS (VW03_NFEENTRADA + AA2CTIPO): entrega física no depósito/CD,
  * não nas lojas. Abastecimento loja = transferência interna (agendas 65/66/148).
  */
-export type ModeloEntregaFornecedor = "somente_cdam" | "loja_direta" | "misto";
+export type ModeloEntregaFornecedor = "somente_cdam" | "loja" | "loja_direta" | "misto";
+
+export const rotuloModeloEntrega = (modelo?: string | null) => {
+  if (modelo === "somente_cdam") return "Somente CDAM/depósito";
+  if (modelo === "loja" || modelo === "loja_direta") return "Somente loja";
+  if (modelo === "misto") return "Misto (loja e CDAM)";
+  return modelo || "Sem evidência de NF";
+};
 
 export type VendaMensal = {
   mes: string;
@@ -45,12 +73,17 @@ export type FornecedorType = {
   modeloEntrega: ModeloEntregaFornecedor;
   agendaRecebimentoCdam: number;
   filialEntregaPadrao: string;
+  fornecedorComercialCodigo?: string | null;
+  fornecedorComercialNome?: string | null;
   cadastroFinanceiro: CadastroFinanceiro;
+  isentoCobranca?: number;
+  acessoDataInicio?: string | null;
+  acessoDataFim?: string | null;
 };
 
 export const fornecedores: FornecedorType[] = [
   {
-    codigo: "FORN-4050",
+    codigo: "4050",
     nome: "Nestlé Brasil S/A",
     cnpj: "60.409.075/0001-52",
     cnpjSenhaInicial: "60409075000152",
@@ -60,6 +93,7 @@ export const fornecedores: FornecedorType[] = [
     filialEntregaPadrao: "201",
     cadastroFinanceiro: {
       prazoPagamentoDias: 28,
+      prazoTipo: "DDE",
       descontoFinanceiroPct: 1.5,
       descontoFinanceiroAteDias: null,
       condicaoPagamentoLabel: "28 ddl · desconto financeiro 1,5%",
@@ -67,7 +101,7 @@ export const fornecedores: FornecedorType[] = [
     },
   },
   {
-    codigo: "FORN-704894",
+    codigo: "704894",
     nome: "BTD DISTRIBUIDORA E COMERCIO LTDA",
     cnpj: "05.123.456/0001-99",
     cnpjSenhaInicial: "05123456000199",
@@ -77,25 +111,55 @@ export const fornecedores: FornecedorType[] = [
     filialEntregaPadrao: "201",
     cadastroFinanceiro: {
       prazoPagamentoDias: 30,
+      prazoTipo: "DDE",
       descontoFinanceiroPct: 2.0,
       descontoFinanceiroAteDias: null,
       condicaoPagamentoLabel: "30 ddl · desconto financeiro 2,0%",
       anticipationEnabled: true,
     },
   },
+  {
+    codigo: "25167",
+    nome: "BTM DIST DE ALIMENTOS LTDA",
+    cnpj: "31.709.365/0001-13",
+    cnpjSenhaInicial: "31709365000113",
+    destinatario: "Grupo Líder",
+    modeloEntrega: "somente_cdam" as ModeloEntregaFornecedor,
+    agendaRecebimentoCdam: 35,
+    filialEntregaPadrao: "201",
+    cadastroFinanceiro: {
+      prazoPagamentoDias: 35,
+      prazoTipo: "DDE",
+      descontoFinanceiroPct: 0.0,
+      descontoFinanceiroAteDias: null,
+      condicaoPagamentoLabel: "35 ddl",
+      anticipationEnabled: true,
+    },
+  },
+  {
+    codigo: "13003",
+    nome: "LATICINIOS TIROLEZ LTDA",
+    cnpj: "55.885.321/0011-84",
+    cnpjSenhaInicial: "55885321001184",
+    destinatario: "Grupo Líder",
+    modeloEntrega: "somente_cdam" as ModeloEntregaFornecedor,
+    agendaRecebimentoCdam: null,
+    filialEntregaPadrao: "2011",
+    cadastroFinanceiro: {
+      prazoPagamentoDias: 30,
+      prazoTipo: "DDE",
+      descontoFinanceiroPct: 3.0,
+      descontoFinanceiroAteDias: null,
+      condicaoPagamentoLabel: "DDE 1P 30 DIAS C/3% DESC FC",
+      anticipationEnabled: true,
+    },
+  },
 ];
 
-export const normalizarCodigoFornecedor = (code: string): string => {
-  const normalizado = code.trim().toUpperCase();
-  const comPrefixo = normalizado.startsWith("FORN-") ? normalizado : `FORN-${normalizado}`;
-  if (comPrefixo === "FORN-704894") return "FORN-704894";
-  return comPrefixo;
-};
-
 export const getActiveSupplierCode = (): string => {
-  if (typeof window === "undefined") return "FORN-4050";
+  if (typeof window === "undefined") return DEMO_FORNECEDOR_CODIGO;
   return normalizarCodigoFornecedor(
-    window.sessionStorage.getItem("portal-lider-sessao-fornecedor") || "FORN-4050",
+    window.sessionStorage.getItem("portal-lider-sessao-fornecedor") || DEMO_FORNECEDOR_CODIGO,
   );
 };
 
@@ -108,6 +172,12 @@ export const setActiveSupplierCode = (code: string) => {
   }
 };
 
+export type ProdutoBloqueioDB = {
+  sku: string;
+  lojaId: string;
+  bloqueio: number;
+};
+
 export const globalDbCache: {
   fornecedor: FornecedorType | null;
   produtos: Produto[] | null;
@@ -115,6 +185,50 @@ export const globalDbCache: {
   perdas: Perda[] | null;
   estoque: EstoqueLinha[] | null;
   vendasMensais: VendaMensal[] | null;
+  bloqueios: ProdutoBloqueioDB[] | null;
+  pedidos: Pedido[] | null;
+  faturas: Fatura[] | null;
+  contasReceber: ContaReceberFornecedor[] | null;
+  nfePendentes: Array<{
+    id: string;
+    numeroNota: string;
+    chaveNfe: string;
+    lojaId: string;
+    destTipo: string;
+    situacaoDescricao: string;
+    agendaPrevisao?: string;
+    status: string;
+    fornecedorCodigo: string;
+  }> | null;
+  docas: Array<{
+    lojaId: string;
+    doca: string;
+    tipo: string;
+    horaInicio: string;
+    horaFim: string;
+  }> | null;
+  conciliacao: Array<{
+    id: string;
+    fornecedorCodigo: string;
+    numeroNota: string;
+    chaveNfe: string;
+    pedido: string;
+    sku: string;
+    descricaoXml: string;
+    quantidadeXml: number;
+    quantidadePedida: number;
+    precoXml: number;
+    precoPedido: number;
+    divergenciaPreco: number;
+    divergenciaQuantidade: number;
+    itemDesacordo: number;
+  }> | null;
+  transferenciasCdam: Array<{
+    sku: string;
+    lojaId: string;
+    data: string;
+    quantidade: number;
+  }> | null;
 } = {
   fornecedor: null,
   produtos: null,
@@ -122,6 +236,14 @@ export const globalDbCache: {
   perdas: null,
   estoque: null,
   vendasMensais: null,
+  bloqueios: null,
+  pedidos: null,
+  faturas: null,
+  contasReceber: null,
+  nfePendentes: null,
+  docas: null,
+  conciliacao: null,
+  transferenciasCdam: null,
 };
 
 export const fornecedor = new Proxy({} as FornecedorType, {
@@ -136,31 +258,118 @@ export const fornecedor = new Proxy({} as FornecedorType, {
 }) as unknown as FornecedorType;
 
 export type Loja = {
+  /** Numero da loja (vendas no cache). */
   id: string;
+  /** GET_COD_LOCAL = numero*10+DV (estoque, bloqueio, perda). */
+  idLocal: string;
   nome: string;
   /** L = loja, D = depósito/CD (AA2CTIPO.TIP_LOJ_CLI). */
   tipo?: "L" | "D";
 };
 
-const idsLojasReais = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "15", "17", "18", "19", "24", "27", "28", "29", "31", "32", "33", "35", "36", "37", "38", "40", "41", "42", "43", "44", "48", "49", "50", "54", "94", "175", "248", "272", "329", "388", "418", "540", "2011", "2038"];
+/** Nomes oficiais InteLider listUsuarioFilial 2026-08-17. id=numero; idLocal=GET_COD_LOCAL. */
+const lojasOficiais: Array<[string, string, string, "L" | "D"]> = [
+  ["1", "19", "L01 LIDER CONDOR", "L"],
+  ["2", "27", "L02 LIDER ALCINDO CACELA", "L"],
+  ["3", "35", "L03 LIDER DOCA", "L"],
+  ["4", "43", "L04 LIDER OBIDOS", "L"],
+  ["5", "51", "L05 LIDER CASTANHEIRA", "L"],
+  ["6", "60", "L06 MAG CASTANHEIRA", "L"],
+  ["7", "78", "L07 LIDER PCA BRASIL", "L"],
+  ["8", "86", "L08 LIDER BATISTA CAMPOS", "L"],
+  ["9", "94", "L09 LIDER HUMAITA", "L"],
+  ["10", "108", "L10 LIDER CASTANHAL", "L"],
+  ["11", "116", "L11 LIDER ICOARACI", "L"],
+  ["12", "124", "L12 LIDER BR", "L"],
+  ["15", "159", "L15 LIDER MATRIZ", "L"],
+  ["17", "175", "L17 LIDER CANUDOS", "L"],
+  ["18", "183", "L18 LIDER C.NOVA", "L"],
+  ["19", "191", "L19 MAG CASTANHAL", "L"],
+  ["21", "213", "L21 - ARMAZEM LIDER", "L"],
+  ["22", "221", "L22 CAFE LIDER", "L"],
+  ["24", "248", "L24 LIDER QUINTINO", "L"],
+  ["27", "272", "L27 LIDER PEDREIRA", "L"],
+  ["28", "280", "L28 LIDER INDEPENDENCIA", "L"],
+  ["31", "310", "L31 LIDER BARCARENA", "L"],
+  ["32", "329", "L32 LIDER MARABA", "L"],
+  ["33", "337", "L33 LIDER AUGUSTO MONTENEGRO", "L"],
+  ["34", "345", "L34 LIDER PORTO", "L"],
+  ["35", "353", "PANIFICADORA LIDER", "L"],
+  ["36", "361", "L36 LIDER PARAGOMINAS", "L"],
+  ["37", "370", "L37 LIDER CAPANEMA", "L"],
+  ["38", "388", "L38 LIDER ABAETETUBA", "L"],
+  ["40", "400", "L40 LIDER MARAMBAIA", "L"],
+  ["41", "418", "L41 MAGAZAN CASA", "L"],
+  ["42", "426", "L42 LIDER SALINOPOLIS", "L"],
+  ["43", "434", "L43 - OTICA LIDER", "L"],
+  ["44", "442", "L44 LIDER GUAMA", "L"],
+  ["47", "477", "L47 LIDER 14 DE MARCO", "L"],
+  ["48", "485", "L48 LIDER SAO FRANCISCO", "L"],
+  ["50", "507", "L50 LIDER ESTRELA", "L"],
+  ["54", "540", "L54 LIDER DUQUE", "L"],
+  ["55", "558", "L55 LIDER MOSQUEIRO", "L"],
+  ["29", "291", "L29 FAZENDA TRES MARIAS I", "L"],
+  ["30", "308", "L30 FAZENDA TRES MARIAS II", "L"],
+  ["39", "399", "L39 CLINICA LIDER", "L"],
+  ["200", "2003", "MANUTENCAO LIDER", "D"],
+  ["205", "2050", "LIDER CIDADE NOVA", "D"],
+  ["210", "2100", "CD ARAGUAINA", "D"],
+  ["201", "2011", "L201-DEPOSITO AUG.MONTENEGRO", "D"],
+  ["203", "2038", "L203-CENTRO DISTRIBUICAO FARMALIDER", "D"],
+];
 
-const nomesEspecificos: Record<string, string> = {
-  "01": "Loja 01 - Líder Batista Campos",
-  "05": "Loja 05 - Líder Doca",
-  "12": "Loja 12 - Líder Humaitá",
-  "201": "CDAM - Depósito Aug. Montenegro",
-  "13": "CDAM - Depósito central (legado mock)",
+export const lojas: Loja[] = lojasOficiais.map(([id, idLocal, nome, tipo]) => ({
+  id,
+  idLocal,
+  nome,
+  tipo,
+}));
+
+const lojaPorNumero = new Map<string, Loja>();
+const lojaPorLocal = new Map<string, Loja>();
+for (const loja of lojas) {
+  lojaPorNumero.set(loja.id, loja);
+  lojaPorNumero.set(loja.id.padStart(2, "0"), loja);
+  lojaPorLocal.set(loja.idLocal, loja);
+}
+
+const normalizarIdLoja = (id: string) => String(id ?? "").trim().replace(/^0+(?=\d)/, "");
+
+export const lojaPorCodigo = (id: string, modo: "numero" | "local" = "numero"): Loja | undefined => {
+  const cru = String(id ?? "").trim();
+  const normal = normalizarIdLoja(cru);
+  if (modo === "local") return lojaPorLocal.get(cru) ?? lojaPorLocal.get(normal);
+  return lojaPorNumero.get(cru) ?? lojaPorNumero.get(normal);
 };
 
-export const lojas: Loja[] = [
-  ...idsLojasReais.map((id) => ({
-    id,
-    nome: nomesEspecificos[id] || `Loja ${id.padStart(2, "0")} - Líder`,
-    tipo: id === "201" || id === "13" ? ("D" as const) : ("L" as const),
-  })),
-  { id: "13", nome: "CDAM - Depósito central (legado mock)", tipo: "D" as const },
-  { id: "201", nome: "CDAM - Depósito Aug. Montenegro", tipo: "D" as const },
-].filter((item, index, self) => self.findIndex((t) => t.id === item.id) === index);
+export const normalizarParaFilial = (id: string): string => {
+  const cru = String(id ?? "").trim();
+  const normal = cru.replace(/^0+(?=\d)/, "");
+  const loja = lojaPorLocal.get(cru) || lojaPorLocal.get(normal) || lojaPorNumero.get(cru) || lojaPorNumero.get(normal);
+  return loja ? loja.id : normal;
+};
+
+/** Nome oficial. Numero (vendas) ou GET_COD_LOCAL (estoque/perda). 3+ digitos = local. */
+export const nomeLoja = (id: string): string => {
+  const cru = String(id ?? "").trim();
+  if (!cru) return cru;
+  const normal = normalizarIdLoja(cru);
+  if (cru.length >= 3) {
+    return lojaPorLocal.get(cru)?.nome ?? lojaPorNumero.get(normal)?.nome ?? `Loja ${cru}`;
+  }
+  return lojaPorNumero.get(cru)?.nome ?? lojaPorNumero.get(normal)?.nome ?? `Loja ${cru}`;
+};
+
+export const nomeLojaPorLocal = (id: string): string =>
+  lojaPorCodigo(id, "local")?.nome ?? nomeLoja(id);
+
+export const mesmoCodigoLoja = (a: string, b: string): boolean => {
+  if (normalizarIdLoja(a) === normalizarIdLoja(b)) return true;
+  const lojaA = lojaPorCodigo(a) ?? lojaPorCodigo(a, "local");
+  const lojaB = lojaPorCodigo(b) ?? lojaPorCodigo(b, "local");
+  if (lojaA && lojaB) return lojaA.id === lojaB.id;
+  return false;
+};
 
 /** Agendas RMS relevantes ao portal do fornecedor (mapa + evidência empírica). */
 export const agendasRms = {
@@ -206,12 +415,85 @@ export type Produto = {
   familia: string;
   papelMercadologico: "Destino" | "Rotina" | "Conveniência" | "Sazonal";
   precoTabela: number;
+  /** Custo unitario do sistema (AA3CITEM.GIT_CUS_MED). Nao se calcula. */
   cmvUnit: number;
+  precoMinSubgrupo?: number;
+  precoMaxSubgrupo?: number;
   fornecedorCodigo?: string;
   compradorCodigo?: string;
   compradorNome?: string;
   embalagemCompra?: number;
   tipoEmbalagemCompra?: string;
+  linha?: string | null;
+  ean?: string | null;
+  referencia?: string | null;
+  descricaoMarketing?: string | null;
+  datSaiLin?: string | null;
+  emLinha?: number | null;
+  precoFaixa2?: number | null;
+  precoFaixa3?: number | null;
+  precoOferta?: number | null;
+  ofertaInicio?: string | null;
+  ofertaFim?: string | null;
+  ofertaVigente?: number | null;
+  qtdAtacado?: number | null;
+  marca?: string | null;
+  fornecedorComercialCodigo?: string | null;
+  fornecedorComercialNome?: string | null;
+  /** Classe ABCD composta (valor + volume) no subgrupo, ex.: Aa, Bc. */
+  classeComposta?: string | null;
+  sistematica?: string | null;
+};
+
+export { formatarClasseComposta } from "@/lib/classe-abcd";
+
+/** Material de uso/consumo interno: não vai a gôndola e não gera sell-out. */
+export function produtoUsoConsumo(produto: {
+  departamentoCodigo?: string | null;
+  departamento?: string | null;
+  secaoCodigo?: string | null;
+  secao?: string | null;
+  grupo?: string | null;
+  subgrupo?: string | null;
+  categoria?: string | null;
+}): boolean {
+  const secaoCod = String(produto.secaoCodigo ?? "").replace(/^0+/, "");
+  const deptoCod = String(produto.departamentoCodigo ?? "").replace(/^0+/, "");
+  if (secaoCod === "98") return true;
+  if (deptoCod === "650") return true;
+  const texto = [
+    produto.departamento,
+    produto.secao,
+    produto.grupo,
+    produto.subgrupo,
+    produto.categoria,
+  ]
+    .join(" ")
+    .toUpperCase();
+  return /USO E CONSUMO|EXPEDIENTE E CONSUMO|CONSUMO INTERNO/.test(texto);
+}
+
+export const marcaProduto = (produto: { marca?: string | null; descricao?: string }) => {
+  const marca = produto.marca?.trim();
+  return marca || "Marca não informada";
+};
+
+export const referenciaComercial = (produto: {
+  referencia?: string | null;
+  familia?: string;
+  categoria?: string;
+}) => {
+  const referencia = produto.referencia?.trim();
+  if (referencia) return referencia;
+  return produto.familia ? `${produto.familia} · ${produto.categoria ?? ""}`.trim() : (produto.categoria ?? "");
+};
+
+export const descricaoComercial = (produto: {
+  descricaoMarketing?: string | null;
+  descricao: string;
+}) => {
+  const marketing = produto.descricaoMarketing?.trim();
+  return marketing || produto.descricao;
 };
 
 const all_produtos: Produto[] = [
@@ -302,7 +584,7 @@ const all_produtos: Produto[] = [
     papelMercadologico: "Destino",
     precoTabela: 25.54,
     cmvUnit: 18.2,
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     compradorCodigo: "32",
     compradorNome: "ORIMAR RODRIGUES",
     embalagemCompra: 12,
@@ -326,7 +608,7 @@ const all_produtos: Produto[] = [
     papelMercadologico: "Rotina",
     precoTabela: 33.46,
     cmvUnit: 24.1,
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     compradorCodigo: "51",
     compradorNome: "LEONARDO SILVA",
     embalagemCompra: 20,
@@ -350,7 +632,7 @@ const all_produtos: Produto[] = [
     papelMercadologico: "Destino",
     precoTabela: 31.93,
     cmvUnit: 22.8,
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     compradorCodigo: "49",
     compradorNome: "IZABEL GOMES",
     embalagemCompra: 6,
@@ -374,7 +656,7 @@ const all_produtos: Produto[] = [
     papelMercadologico: "Rotina",
     precoTabela: 32.51,
     cmvUnit: 23.4,
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     compradorCodigo: "49",
     compradorNome: "IZABEL GOMES",
     embalagemCompra: 30,
@@ -407,35 +689,89 @@ const createDynamicArrayProxy = <T>(getSource: () => T[]): T[] => {
   }) as unknown as T[];
 };
 
-export const produtos = createDynamicArrayProxy(() => {
-  if (globalDbCache.produtos) {
-    return globalDbCache.produtos;
-  }
+export const produtosTodosDoFornecedor = (): Produto[] => {
+  if (globalDbCache.produtos) return globalDbCache.produtos;
   return all_produtos.filter(
-    (p) => (p.fornecedorCodigo ?? "FORN-4050") === getActiveSupplierCode(),
+    (p) => (p.fornecedorCodigo ?? "4050") === getActiveSupplierCode(),
   );
+};
+
+export const produtos = createDynamicArrayProxy(() => {
+  const filtro = getFiltroMercadologico();
+  const todos = produtosTodosDoFornecedor();
+  return todos.filter((p) => produtoPassaFiltro(p, filtro));
 });
 
-export const produtoPorSku = (sku: string) => produtos.find((p) => p.sku === sku)!;
+const produtoFallback = (sku: string): Produto => ({
+  sku,
+  codigoProdutoRms: sku,
+  digitoProdutoRms: "",
+  descricao: sku,
+  categoria: "",
+  departamentoCodigo: "",
+  departamento: "",
+  secaoCodigo: "",
+  secao: "",
+  grupoCodigo: "",
+  grupo: "",
+  subgrupoCodigo: "",
+  subgrupo: "",
+  familia: "",
+  papelMercadologico: "Rotina",
+  precoTabela: 0,
+  cmvUnit: 0,
+});
+
+export const produtoPorSku = (sku: string) =>
+  produtosTodosDoFornecedor().find((p) => p.sku === sku) ?? produtoFallback(sku);
 
 export const codigoProdutoComDigito = (sku: string) => {
   const produto = produtoPorSku(sku);
-  return `${produto.codigoProdutoRms}-${produto.digitoProdutoRms}`;
+  if (produto.codigoProdutoRms && produto.digitoProdutoRms) {
+    return `${produto.codigoProdutoRms}-${produto.digitoProdutoRms}`;
+  }
+  return sku;
 };
 
-export const mercadologico = (codigo: string, descricao: string) => `${codigo} - ${descricao}`;
+/** CMV da venda = quantidade × custo unitario do sistema. */
+export const cmvDaVenda = (quantidade: number, produto: Produto): number =>
+  Math.max(0, quantidade) * produto.cmvUnit;
 
-export const departamentoMercadologico = (produto: Produto) =>
-  mercadologico(produto.departamentoCodigo, produto.departamento);
+/** Tira "12 - " se a descrição já veio com o código (cadastro misto no RMS). */
+export const nomeMercadologicoSemCodigo = (codigo: string, descricao: string) => {
+  const cod = String(codigo ?? "").trim();
+  let nome = String(descricao ?? "").trim();
+  if (!cod || !nome) return nome;
+  const prefixos = [`${cod} - `, `${cod}-`, `${cod} – `];
+  for (let volta = 0; volta < 3; volta++) {
+    const atual = nome;
+    for (const prefixo of prefixos) {
+      if (nome.length > prefixo.length && nome.toUpperCase().startsWith(prefixo.toUpperCase())) {
+        nome = nome.slice(prefixo.length).trim();
+        break;
+      }
+    }
+    if (nome === atual) break;
+  }
+  return nome;
+};
 
-export const secaoMercadologica = (produto: Produto) =>
-  mercadologico(produto.secaoCodigo, produto.secao);
+export const mercadologico = (codigo: string, descricao: string) => {
+  const cod = String(codigo ?? "").trim();
+  const nome = nomeMercadologicoSemCodigo(cod, descricao);
+  if (cod && nome) return `${cod} - ${nome}`;
+  return nome || cod;
+};
 
-export const grupoMercadologico = (produto: Produto) =>
-  mercadologico(produto.grupoCodigo, produto.grupo);
+export const departamentoMercadologico = (produto: Produto) => rotuloDepartamento(produto);
 
-export const subgrupoMercadologico = (produto: Produto) =>
-  mercadologico(produto.subgrupoCodigo, produto.subgrupo);
+export const secaoMercadologica = (produto: Produto) => rotuloSecao(produto);
+
+export const grupoMercadologico = (produto: Produto) => rotuloGrupo(produto);
+
+export const subgrupoMercadologico = (produto: Produto) => rotuloSubgrupo(produto);
+
+export const compradorMercadologico = (produto: Produto) => rotuloComprador(produto);
 
 export type PedidoStatus = "Aberto" | "Faturado" | "Pendente" | "Entregue" | "Cancelado";
 export type PedidoDestino = "Fornecedor" | "CDAM";
@@ -615,7 +951,7 @@ const all_pedidos: Pedido[] = [
     status: "Cancelado",
     itens: [{ sku: "10010", quantidadePedida: 240, quantidadeFaturada: 0, precoUnitario: 12.6 }],
   },
-  // Pedidos BTD Distribuidora (FORN-704894)
+  // Pedidos BTD Distribuidora (704894)
   {
     numero: "PC-990010",
     destino: "Fornecedor",
@@ -657,11 +993,208 @@ const all_pedidos: Pedido[] = [
       { sku: "37", quantidadePedida: 1500, quantidadeFaturada: 1450, precoUnitario: 32.51 },
     ],
   },
+  {
+    numero: "PC-1123713",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Consul."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "35",
+    status: "Entregue",
+    itens: [
+      { sku: "3184972", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 1649.0 }
+    ]
+  },
+  {
+    numero: "PC-1126056",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Panasonic."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "35",
+    status: "Entregue",
+    itens: [
+      { sku: "3127566", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 4189.0 }
+    ]
+  },
+  {
+    numero: "PC-1126062",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Esmaltec."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "35",
+    status: "Entregue",
+    itens: [
+      { sku: "3041877", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 979.0 }
+    ]
+  },
+  {
+    numero: "PC-1124390",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Panasonic e Consul."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "35",
+    status: "Entregue",
+    itens: [
+      { sku: "3033157", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 1599.0 },
+      { sku: "3072750", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 2959.0 }
+    ]
+  },
+  {
+    numero: "PC-1123557",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido em aberto pendente de faturamento pela Dako."
+    },
+    emissao: d(-6),
+    entregaPrevista: d(4),
+    lojaId: "35",
+    status: "Aberto",
+    itens: [
+      { sku: "3187843", quantidadePedida: 1, quantidadeFaturada: 0, precoUnitario: 1989.0 }
+    ]
+  },
+  {
+    numero: "PC-1123560",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido em aberto pendente de faturamento pela Atlas."
+    },
+    emissao: d(-6),
+    entregaPrevista: d(4),
+    lojaId: "35",
+    status: "Aberto",
+    itens: [
+      { sku: "3151113", quantidadePedida: 1, quantidadeFaturada: 0, precoUnitario: 1439.0 }
+    ]
+  },
+  {
+    numero: "PC-1124470",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Panasonic."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "78",
+    status: "Entregue",
+    itens: [
+      { sku: "3072752", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 2669.0 }
+    ]
+  },
+  {
+    numero: "PC-1126818",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Brastemp."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "35",
+    status: "Entregue",
+    itens: [
+      { sku: "219992", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 1099.0 }
+    ]
+  },
+  {
+    numero: "PC-1124432",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido entregue e faturado pela Clarice."
+    },
+    emissao: d(-14),
+    entregaPrevista: d(-10),
+    lojaId: "60",
+    status: "Entregue",
+    itens: [
+      { sku: "3245593", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 569.0 }
+    ]
+  },
+  {
+    numero: "PC-1124172",
+    destino: "Fornecedor",
+    origemOperacional: "Compras Grupo Lider",
+    destinoOperacional: "Fornecedor direto",
+    agenda: {
+      contexto: "Compras/Recebimento",
+      agendaEntrada: "Recebimento de NF-e",
+      agendaParidade: "Conforme origem fiscal da compra",
+      regra: "Pedido em aberto pendente de faturamento pela Clarice."
+    },
+    emissao: d(-6),
+    entregaPrevista: d(4),
+    lojaId: "60",
+    status: "Aberto",
+    itens: [
+      { sku: "3245593", quantidadePedida: 1, quantidadeFaturada: 0, precoUnitario: 569.0 }
+    ]
+  }
 ];
 
 export const pedidos = createDynamicArrayProxy(() => {
+  if (globalDbCache.pedidos) {
+    return globalDbCache.pedidos.filter((p) => !lojaForaDoPortalFornecedor(p.lojaId));
+  }
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  return all_pedidos.filter((p) => p.itens.some((item) => activeSkus.has(item.sku)));
+  return all_pedidos.map((p) => ({
+    ...p,
+    numero: p.numero.startsWith("PC-") ? p.numero.substring(3) : p.numero,
+  })).filter((p) => p.itens.some((item) => activeSkus.has(item.sku)));
 });
 
 export const totalPedido = (pedido: Pedido) =>
@@ -754,16 +1287,16 @@ function gerarVendas(): VendaItem[] {
 const all_vendas: VendaItem[] = gerarVendas();
 
 export const vendas = createDynamicArrayProxy(() => {
-  if (globalDbCache.vendas) {
-    return globalDbCache.vendas;
-  }
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  return all_vendas.filter((v) => activeSkus.has(v.sku));
+  const fonte = globalDbCache.vendas
+    ? globalDbCache.vendas
+    : all_vendas.filter((v) => activeSkus.has(v.sku));
+  return fonte.filter((v) => activeSkus.has(v.sku) && !lojaForaDoPortalFornecedor(v.lojaId));
 });
 
 const all_vendasMensais = (code: string) => {
-  const faturamento = code === "FORN-704894" ? 2070000 : 418000;
-  const volume = code === "FORN-704894" ? 150000 : 31500;
+  const faturamento = code === "704894" ? 2070000 : 418000;
+  const volume = code === "704894" ? 150000 : 31500;
   return Array.from({ length: 12 }, (_, i) => {
     const mes = subMonths(hoje, 11 - i);
     const fator = 1 + i * 0.08;
@@ -844,21 +1377,55 @@ const all_estoque: EstoqueLinha[] = [
 ];
 
 export const estoque = createDynamicArrayProxy(() => {
-  if (globalDbCache.estoque) {
-    return globalDbCache.estoque;
-  }
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  return all_estoque.filter((e) => activeSkus.has(e.sku));
+  const fonte = globalDbCache.estoque
+    ? globalDbCache.estoque
+    : all_estoque.filter((e) => activeSkus.has(e.sku));
+  return fonte.filter((e) => activeSkus.has(e.sku) && !lojaForaDoPortalFornecedor(e.lojaId));
+});
+
+export const transferenciasCdam = createDynamicArrayProxy(() => {
+  const fonte = globalDbCache.transferenciasCdam ?? [];
+  const activeSkus = new Set(produtos.map((p) => p.sku));
+  return fonte.filter((t) => activeSkus.has(t.sku));
 });
 
 export type StatusEstoque = "Ruptura" | "Atenção" | "Confortável" | "Excesso";
 
 export const COBERTURA_EXCESSIVA_DIAS = 60;
 
+/** Teto do minimo: 10 dias de venda. */
+export const ESTOQUE_MINIMO_TETO_DIAS = 10;
+
+const diasJanelaVendaMedia = 30;
+
+const embalagemPadraoSku = (sku: string): number => {
+  const produto = produtos.find((item) => item.sku === sku);
+  const emb = Number(produto?.embalagemCompra ?? 1);
+  return Number.isFinite(emb) && emb > 0 ? emb : 1;
+};
+
+/**
+ * Minimo (SKU x loja), nao e coluna RMS.
+ * - venda = 0 ou media diaria < embalagem padrao → 1 embalagem
+ * - senao → 10 dias de venda (nunca acima disso)
+ */
+export const estoqueMinimoCalculado = (sku: string, lojaId: string): number => {
+  const vendaPeriodo = Math.max(0, vendaMediaMensal(sku, lojaId));
+  const mediaDiaria = vendaPeriodo / diasJanelaVendaMedia;
+  const embalagem = embalagemPadraoSku(sku);
+  if (vendaPeriodo === 0 || mediaDiaria < embalagem) return embalagem;
+  return Math.ceil(mediaDiaria * ESTOQUE_MINIMO_TETO_DIAS);
+};
+
 export const statusEstoque = (linha: EstoqueLinha): StatusEstoque => {
-  if (linha.estoqueAtual === 0) return "Ruptura";
-  if (linha.estoqueAtual <= linha.estoqueMinimo) return "Atenção";
   const mediaMensal = vendaMediaMensal(linha.sku, linha.lojaId);
+  const mediaDiaria = mediaMensal / 30;
+  const minimo = estoqueMinimoCalculado(linha.sku, linha.lojaId);
+
+  if (linha.estoqueAtual < mediaDiaria) return "Ruptura";
+  if (linha.estoqueAtual <= minimo) return "Atenção";
+  
   const cobertura = coberturaDias(linha.estoqueAtual, mediaMensal);
   if (cobertura !== null && cobertura > COBERTURA_EXCESSIVA_DIAS) return "Excesso";
   return "Confortável";
@@ -871,23 +1438,50 @@ export const JANELA_VENDA_ESTOQUE_DIAS = 90;
  * Venda média mensal em unidades (SKU × loja),
  * projetada a partir da média diária dos últimos 90 dias: (Σ qty / 90) × 30.
  */
+let lastVendasRef: any = null;
+let cachedSalesMap = new Map<string, number>();
+
+export const mapaVendaMediaMensal = (): Map<string, number> => {
+  const fonte = globalDbCache.vendas ?? vendas;
+  if (fonte === lastVendasRef && cachedSalesMap.size > 0) {
+    return cachedSalesMap;
+  }
+
+  const map = new Map<string, number>();
+  if (fonte.length === 0) {
+    lastVendasRef = fonte;
+    cachedSalesMap = map;
+    return map;
+  }
+
+  let maxData = "2025-12-15";
+  for (let i = 0; i < fonte.length; i++) {
+    const d = fonte[i].data;
+    if (d && d > maxData) maxData = d;
+  }
+
+  const janela = JANELA_VENDA_ESTOQUE_DIAS;
+  const limiteDataISO = new Date(new Date(maxData + "T12:00:00").getTime() - janela * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const fatorMensal = 30 / janela;
+
+  for (let i = 0; i < fonte.length; i++) {
+    const v = fonte[i];
+    if (v.data >= limiteDataISO && v.data <= maxData) {
+      const filId = normalizarParaFilial(v.lojaId);
+      map.set(v.sku + "_" + filId, (map.get(v.sku + "_" + filId) || 0) + v.quantidade * fatorMensal);
+    }
+  }
+
+  lastVendasRef = fonte;
+  cachedSalesMap = map;
+  return map;
+};
+
 export const vendaMediaMensal = (sku: string, lojaId: string): number => {
-  if (vendas.length === 0) return 0;
-  
-  // Encontra a data mais recente no banco de dados para evitar retornar 0 devido a dados históricos (2025)
-  const datas = vendas.map((v) => v.data).filter(Boolean);
-  const maxData = datas.length > 0 ? datas.reduce((a, b) => (a > b ? a : b)) : "2025-12-15";
-  
-  // Define a janela móvel dos últimos 30 dias retroativos a partir da data máxima
-  const maxDateObj = new Date(maxData + "T12:00:00");
-  const limiteData = new Date(maxDateObj.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const limiteDataISO = limiteData.toISOString().slice(0, 10);
-  
-  const total = vendas
-    .filter((v) => v.sku === sku && v.lojaId === lojaId && v.data >= limiteDataISO && v.data <= maxData)
-    .reduce((acc, v) => acc + v.quantidade, 0);
-    
-  return total;
+  const filId = normalizarParaFilial(lojaId);
+  return mapaVendaMediaMensal().get(sku + "_" + filId) || 0;
 };
 
 /**
@@ -904,7 +1498,11 @@ export const coberturaDias = (estoqueAtual: number, vendaMediaMensalUn: number):
 export type DirecaoNota = "fornecedor_para_lider" | "outra";
 
 /** Natureza operacional do documento no RMS (não misturar com transferência loja). */
-export type NaturezaDocumento = "recebimento_fornecedor_cdam" | "transferencia_interna" | "outra";
+export type NaturezaDocumento =
+  | "recebimento_fornecedor_cdam"
+  | "recebimento_fornecedor_loja"
+  | "transferencia_interna"
+  | "outra";
 
 export type Fatura = {
   id: string;
@@ -921,23 +1519,32 @@ export type Fatura = {
   /** Valor líquido após desconto financeiro do cadastro. */
   valorLiquido: number;
   status: "A vencer" | "Pago";
-  /** Filial de destino da NF (Nestlé: depósito/CDAM, não loja). */
+  /** Filial de destino da NF (loja ou CDAM). */
   lojaId: string;
   /** Código do fornecedor emitente (escopo do portal). */
   fornecedorCodigo: string;
   /** Só notas do fornecedor para o Grupo Líder entram no financeiro do portal. */
   direcao: DirecaoNota;
   destinatario: string;
-  /** Agenda RMS de entrada/recebimento (ex.: 28). Nunca 65/66/148. */
+  /** Agenda RMS de entrada/recebimento. Nunca 65/66/148. */
   agendaRms: number;
   natureza: NaturezaDocumento;
+  recebimento?: string;
+  prazoTipo?: TipoPrazoPagamento | null;
 };
 
 const arredondar2 = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
 
-/** Data de pagamento = emissão + prazo (dias) do cadastro. */
-export const calcularDataPagamento = (emissaoIso: string, prazoDias: number): string => {
-  const base = new Date(`${emissaoIso}T12:00:00`);
+/** Data de pagamento. DDE = emissão + prazo. DDR exige data de recebimento (nao inventar). */
+export const calcularDataPagamento = (
+  emissaoIso: string,
+  prazoDias: number,
+  tipo: TipoPrazoPagamento | null | undefined = "DDE",
+  recebimentoIso?: string | null,
+): string | null => {
+  const ancora = tipo === "DDR" ? recebimentoIso : emissaoIso;
+  if (!ancora) return null;
+  const base = new Date(`${ancora}T12:00:00`);
   return format(addDays(base, prazoDias), "yyyy-MM-dd");
 };
 
@@ -974,7 +1581,12 @@ const montarFatura = (input: FaturaInput): Fatura => {
     id: input.id,
     numeroNota: input.numeroNota,
     emissao: input.emissao,
-    dataPagamento: calcularDataPagamento(input.emissao, cadastro.prazoPagamentoDias),
+    dataPagamento:
+      calcularDataPagamento(
+        input.emissao,
+        cadastro.prazoPagamentoDias,
+        cadastro.prazoTipo,
+      ) ?? "",
     valor: input.valor,
     descontoFinanceiro,
     valorLiquido: arredondar2(input.valor - descontoFinanceiro),
@@ -1062,7 +1674,7 @@ const faturasBrutas: FaturaInput[] = [
     valor: 50000,
     status: "A vencer",
     lojaId: "201",
-    fornecedorCodigo: "FORN-9999",
+    fornecedorCodigo: "9999",
     direcao: "fornecedor_para_lider",
     destinatario: "Grupo Líder",
     agendaRms: agendasRms.recebimentoFornecedorCdam,
@@ -1076,7 +1688,7 @@ const faturasBrutas: FaturaInput[] = [
     valor: 22000,
     status: "A vencer",
     lojaId: "01",
-    fornecedorCodigo: "FORN-4050",
+    fornecedorCodigo: "4050",
     direcao: "fornecedor_para_lider",
     destinatario: "Grupo Líder",
     agendaRms: agendasRms.transferenciaEntrada,
@@ -1090,7 +1702,7 @@ const faturasBrutas: FaturaInput[] = [
     valor: 15000,
     status: "A vencer",
     lojaId: "05",
-    fornecedorCodigo: "FORN-4050",
+    fornecedorCodigo: "4050",
     direcao: "fornecedor_para_lider",
     destinatario: "Grupo Líder",
     agendaRms: agendasRms.entradaNfGenericaOuDev,
@@ -1112,19 +1724,28 @@ const agendasTransferencia = new Set<number>([
  * - natureza recebimento fornecedor (exclui transferência interna)
  * - se modeloEntrega = somente_cdam: só filial tipo depósito/CD
  */
-export const faturasDoFornecedor = (codigoFornecedor: string = fornecedor.codigo): Fatura[] =>
-  faturas.filter((f) => {
-    if (f.fornecedorCodigo !== codigoFornecedor) return false;
+export const faturasDoFornecedor = (codigoFornecedor: string = fornecedor.codigo): Fatura[] => {
+  const code = normalizarCodigoFornecedor(codigoFornecedor);
+  if (globalDbCache.faturas) {
+    return globalDbCache.faturas.filter(
+      (f) => f.fornecedorCodigo === code && !agendasTransferencia.has(f.agendaRms),
+    );
+  }
+  const activeForn = fornecedor;
+
+  return faturas.filter((f) => {
+    if (f.fornecedorCodigo !== code) return false;
     if (f.direcao !== "fornecedor_para_lider") return false;
-    if (f.destinatario !== fornecedor.destinatario) return false;
+    if (f.destinatario !== activeForn.destinatario) return false;
     if (f.natureza !== "recebimento_fornecedor_cdam") return false;
     if (agendasTransferencia.has(f.agendaRms)) return false;
-    if (fornecedor.modeloEntrega === "somente_cdam") {
-      const filial = lojas.find((l) => l.id === f.lojaId);
+    if (activeForn.modeloEntrega === "somente_cdam") {
+      const filial = lojaPorCodigo(f.lojaId) ?? lojaPorCodigo(f.lojaId, "local");
       if (filial?.tipo !== "D") return false;
     }
     return true;
   });
+};
 
 export type ContaReceberStatus = "Aberto" | "Programado" | "Em análise" | "Descontado";
 
@@ -1239,14 +1860,26 @@ export const contasReceberFornecedor: ContaReceberFornecedor[] = [
     proximoPagamentoId: "FAT-OUTRO-1",
     origem: "Comercial",
     observacao: "Não deve aparecer para o fornecedor autenticado.",
-    fornecedorCodigo: "FORN-9999",
+    fornecedorCodigo: "9999",
   },
 ];
 
 export const contasReceberDoFornecedor = (
   codigoFornecedor: string = fornecedor.codigo,
-): ContaReceberFornecedor[] =>
-  contasReceberFornecedor.filter((conta) => conta.fornecedorCodigo === codigoFornecedor);
+): ContaReceberFornecedor[] => {
+  const code = normalizarCodigoFornecedor(codigoFornecedor);
+  const hoje = new Date();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const aberta = (conta: ContaReceberFornecedor) =>
+    conta.status !== "Descontado" &&
+    (!conta.vencimento || conta.vencimento >= hojeIso);
+  if (globalDbCache.contasReceber) {
+    return globalDbCache.contasReceber.filter(
+      (conta) => conta.fornecedorCodigo === code && aberta(conta),
+    );
+  }
+  return contasReceberFornecedor.filter((conta) => conta.fornecedorCodigo === code && aberta(conta));
+};
 
 /** Taxa mensal candidata de antecipação (motor separado do desconto financeiro do cadastro). */
 export const TAXA_ANTECIPACAO_MENSAL = 0.018;
@@ -1324,7 +1957,7 @@ export type Perda = {
 const all_perdas: Perda[] = [
   // Dados Reais coletados do Fornecedor 704894 (BTD)
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "2011",
     lojaNome: "Loja 2011 - Lider Augusto Montenegro",
     sku: "4244",
@@ -1336,7 +1969,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 19,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "337",
     lojaNome: "Loja 337 - Lider Castanhal",
     sku: "1017",
@@ -1348,7 +1981,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 146,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "183",
     lojaNome: "Loja 183 - Lider Marabá",
     sku: "3213",
@@ -1360,7 +1993,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 21,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "426",
     lojaNome: "Loja 426 - Lider Cidade Nova",
     sku: "37",
@@ -1372,7 +2005,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 39,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "175",
     lojaNome: "Loja 175 - Lider Icoaraci",
     sku: "4244",
@@ -1384,7 +2017,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 56,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "400",
     lojaNome: "Loja 400 - Lider Ananindeua",
     sku: "1017",
@@ -1396,7 +2029,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 16,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "116",
     lojaNome: "Loja 116 - Lider Reduto",
     sku: "3213",
@@ -1408,7 +2041,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 20,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "248",
     lojaNome: "Loja 248 - Lider Pedreira",
     sku: "37",
@@ -1420,7 +2053,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 20,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "280",
     lojaNome: "Loja 280 - Lider Guamá",
     sku: "4244",
@@ -1432,7 +2065,7 @@ const all_perdas: Perda[] = [
     ocorrencias: 3,
   },
   {
-    fornecedorCodigo: "FORN-704894",
+    fornecedorCodigo: "704894",
     lojaId: "78",
     lojaNome: "Loja 78 - Lider Canudos",
     sku: "1017",
@@ -1445,6 +2078,199 @@ const all_perdas: Perda[] = [
   },
 ];
 
-export const perdas = createDynamicArrayProxy(() =>
-  all_perdas.filter((p) => p.fornecedorCodigo === getActiveSupplierCode()),
-);
+export const perdas = createDynamicArrayProxy(() => {
+  const activeSkus = new Set(produtos.map((p) => p.sku));
+  const fonte = globalDbCache.perdas
+    ? globalDbCache.perdas
+    : all_perdas.filter((p) => p.fornecedorCodigo === getActiveSupplierCode());
+  return fonte.filter((p) => activeSkus.has(p.sku) && !lojaForaDoPortalFornecedor(p.lojaId));
+});
+
+export const obterBloqueioProdutoLoja = (sku: string, lojaId: string): number => {
+  if (globalDbCache.bloqueios) {
+    const bloq = globalDbCache.bloqueios.find((b) => b.sku === sku && b.lojaId === lojaId);
+    return bloq ? bloq.bloqueio : 0;
+  }
+  return 0;
+};
+
+
+export type RebaixaMock = {
+  id: string;
+  sku: string;
+  descricao: string;
+  lojaId: string;
+  lojaNome: string;
+  precoVendaAnterior: number;
+  precoVendaOferta: number;
+  descontoPercentual: number;
+  dataInicio: string;
+  dataFim: string;
+  tipoRebaixa: string;
+  quantidadeVenda: number;
+  reembolsoEstimado: number;
+};
+
+export type OfertaValidadeMock = {
+  id: string;
+  sku: string;
+  descricao: string;
+  lojaId: string;
+  lojaNome: string;
+  precoNormal: number;
+  precoOferta: number;
+  dataVencimento: string;
+  dataInicio: string;
+  dataFim: string;
+  quantidadeInicial: number;
+  quantidadeVendida: number;
+  status: 'Ativa' | 'Próxima ao Fim' | 'Expirada';
+};
+
+export const nestleRebaixasMock: RebaixaMock[] = [
+  {
+    id: '1',
+    sku: '3566870',
+    descricao: 'Ninho Soluvel Inst Lata 380g',
+    lojaId: '1',
+    lojaNome: 'L01 LIDER CONDOR',
+    precoVendaAnterior: 18.90,
+    precoVendaOferta: 15.58,
+    descontoPercentual: 17.5,
+    dataInicio: '2026-08-10',
+    dataFim: '2026-09-10',
+    tipoRebaixa: 'Margem Garantida',
+    quantidadeVenda: 450,
+    reembolsoEstimado: 1494.00,
+  },
+  {
+    id: '2',
+    sku: '3566870',
+    descricao: 'Ninho Soluvel Inst Lata 380g',
+    lojaId: '4',
+    lojaNome: 'L04 LIDER OBIDOS',
+    precoVendaAnterior: 18.90,
+    precoVendaOferta: 15.58,
+    descontoPercentual: 17.5,
+    dataInicio: '2026-08-10',
+    dataFim: '2026-09-10',
+    tipoRebaixa: 'Margem Garantida',
+    quantidadeVenda: 120,
+    reembolsoEstimado: 398.40,
+  },
+  {
+    id: '3',
+    sku: '2368706',
+    descricao: 'Cereal Mucilon Milho Sachê 180g',
+    lojaId: '2',
+    lojaNome: 'L02 LIDER ALCINDO CACELA',
+    precoVendaAnterior: 9.50,
+    precoVendaOferta: 7.90,
+    descontoPercentual: 16.8,
+    dataInicio: '2026-08-15',
+    dataFim: '2026-09-15',
+    tipoRebaixa: 'Acordo Comercial',
+    quantidadeVenda: 890,
+    reembolsoEstimado: 1424.00,
+  },
+  {
+    id: '4',
+    sku: '33061424',
+    descricao: 'Chocolate KitKat Milk 41,5g',
+    lojaId: '3',
+    lojaNome: 'L03 LIDER DOCA',
+    precoVendaAnterior: 4.50,
+    precoVendaOferta: 3.49,
+    descontoPercentual: 22.4,
+    dataInicio: '2026-08-20',
+    dataFim: '2026-09-20',
+    tipoRebaixa: 'Preço de Custo',
+    quantidadeVenda: 1500,
+    reembolsoEstimado: 1515.00,
+  }
+];
+
+export const realRebaixasDb = [
+  { id: '24065', sku: '2676745', descricao: 'JAQUETA MOL MASC C/CAPUZ FICO PTO', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 10.09, precoVendaOferta: 8.07, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 242.4, supplierCodigo: '107251' }, 
+  { id: '23665', sku: '1583352', descricao: 'REG MACHAO MALHA JUV FAKINI AMA/12', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 2.69, precoVendaOferta: 2.15, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 64.8, supplierCodigo: '200598' }, 
+  { id: '24303', sku: '384526', descricao: 'BL COTT FEM MALWEE PTO/M', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 17.55, precoVendaOferta: 14.04, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 421.2, supplierCodigo: '103460' }, 
+  { id: '23581', sku: '1362445', descricao: 'PIJAMA BLUSA+SHORT INF MALWEE ROS/06', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 1.15, precoVendaOferta: 0.92, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 27.6, supplierCodigo: '103460' }, 
+  { id: '23785', sku: '1136356', descricao: 'BLUSA G POLO FEM MALWEE GOI/G', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 4.47, precoVendaOferta: 3.58, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 106.8, supplierCodigo: '103460' }, 
+  { id: '23663', sku: '1583425', descricao: 'CAM G POLO MALHA INF FAKINI MAR/06', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 2.69, precoVendaOferta: 2.15, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 64.8, supplierCodigo: '200598' }, 
+  { id: '18563', sku: '68861', descricao: 'CONJ MALHA BEBE MA LIL', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 40.39, precoVendaOferta: 32.31, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 969.6, supplierCodigo: '200598' }, 
+  { id: '21629', sku: '2670127', descricao: 'CALCA MOL MA JUV LUNENDER PTO/18', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.17, precoVendaOferta: 2.54, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 75.6, supplierCodigo: '107251' }, 
+  { id: '18089', sku: '2676753', descricao: 'JAQUETA MOL MASC C/CAPUZ FICO VDE/GG', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 10.09, precoVendaOferta: 8.07, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 242.4, supplierCodigo: '107251' }, 
+  { id: '18379', sku: '60828', descricao: 'CONJ MEIA MALHA BEBE MO BCL', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 7.6, precoVendaOferta: 6.08, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 182.4, supplierCodigo: '103460' }, 
+  { id: '18651', sku: '1462857', descricao: 'CAM XADREZ INF FAKINI AZL', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 1.81, precoVendaOferta: 1.45, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 43.2, supplierCodigo: '200598' }, 
+  { id: '18559', sku: '62863', descricao: 'CONJ MALHA BEBE MO BCO', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 39.34, precoVendaOferta: 31.47, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 944.4, supplierCodigo: '103460' }, 
+  { id: '18767', sku: '1637495', descricao: 'BLUSA MLH MA JUV MALWEE 42697 VDE/14', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 4.04, precoVendaOferta: 3.23, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 97.2, supplierCodigo: '103460' }, 
+  { id: '21679', sku: '1751280', descricao: 'BLUSA MLH INF FAKINI 3576 ROS/06', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.61, precoVendaOferta: 2.89, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 86.4, supplierCodigo: '200598' }, 
+  { id: '22181', sku: '2883627', descricao: 'VESTIDO BB MLH MA FORFUN AMA', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 7.5, precoVendaOferta: 6.0, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 180.0, supplierCodigo: '200598' }, 
+  { id: '18401', sku: '1916688', descricao: 'CAM MC MASC MALWEE VRM/P', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 9.72, precoVendaOferta: 7.78, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 232.8, supplierCodigo: '103460' }, 
+  { id: '19543', sku: '1756451', descricao: 'CASACO ESP FEM MALWEE 47298 OFF/GG', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 36.89, precoVendaOferta: 29.51, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 885.6, supplierCodigo: '103460' }, 
+  { id: '21517', sku: '1848550', descricao: 'VEST MLH MA RN FAKINI 2011 BCO/M', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 2.42, precoVendaOferta: 1.94, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 57.6, supplierCodigo: '200598' }, 
+  { id: '21689', sku: '2500256', descricao: 'CAM MLH JUV MO LUNENDER MAR/14', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.62, precoVendaOferta: 2.9, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 86.4, supplierCodigo: '107251' }, 
+  { id: '22459', sku: '1969307', descricao: 'CAM PL MASC MALWEE VIN/GG', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 10.19, precoVendaOferta: 8.15, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 244.8, supplierCodigo: '103460' }, 
+  { id: '22571', sku: '2355388', descricao: 'MACACAO MLH INF FAKINI MAR/04', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 11.73, precoVendaOferta: 9.38, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 282.0, supplierCodigo: '200598' }, 
+  { id: '21675', sku: '1390309', descricao: 'CONJ BLUSA+SHORT PATATI PATATA', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.52, precoVendaOferta: 2.82, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 84.0, supplierCodigo: '103460' }, 
+  { id: '19109', sku: '1743775', descricao: 'VEST ESP FEM LUNENDER 42240', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 11.07, precoVendaOferta: 8.86, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 265.2, supplierCodigo: '107251' }, 
+  { id: '21735', sku: '2445336', descricao: 'BL MLH FEM MALWEE', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.98, precoVendaOferta: 3.18, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 96.0, supplierCodigo: '103460' }, 
+  { id: '21759', sku: '2167875', descricao: 'CAM MLH BB MO LUNENDER MAR/02', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 4.29, precoVendaOferta: 3.43, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 103.2, supplierCodigo: '107251' }
+];
+
+export const rebaixasMock: RebaixaMock[] = createDynamicArrayProxy(() => {
+  const code = getActiveSupplierCode();
+  const matchingReal = realRebaixasDb.filter((r) => r.supplierCodigo === code);
+  if (matchingReal.length > 0) {
+    return matchingReal;
+  }
+  return nestleRebaixasMock;
+});
+
+export const ofertasValidadeMock: OfertaValidadeMock[] = [
+  {
+    id: '101',
+    sku: '30526116',
+    descricao: 'Leite UHT Integral Ninho 1L',
+    lojaId: '1',
+    lojaNome: 'L01 LIDER CONDOR',
+    precoNormal: 6.90,
+    precoOferta: 4.99,
+    dataVencimento: '2026-09-05',
+    dataInicio: '2026-08-20',
+    dataFim: '2026-09-04',
+    quantidadeInicial: 2020,
+    quantidadeVendida: 820,
+    status: 'Ativa',
+  },
+  {
+    id: '102',
+    sku: '33504806',
+    descricao: 'Iogurte Grego Tradicional Nestlé 400g',
+    lojaId: '5',
+    lojaNome: 'L05 LIDER CASTANHEIRA',
+    precoNormal: 8.50,
+    precoOferta: 5.90,
+    dataVencimento: '2026-08-30',
+    dataInicio: '2026-08-18',
+    dataFim: '2026-08-29',
+    quantidadeInicial: 600,
+    quantidadeVendida: 150,
+    status: 'Próxima ao Fim',
+  },
+  {
+    id: '103',
+    sku: '33061424',
+    descricao: 'Chocolate KitKat Milk 41,5g',
+    lojaId: '2',
+    lojaNome: 'L02 LIDER ALCINDO CACELA',
+    precoNormal: 4.50,
+    precoOferta: 2.99,
+    dataVencimento: '2026-08-22',
+    dataInicio: '2026-08-01',
+    dataFim: '2026-08-21',
+    quantidadeInicial: 950,
+    quantidadeVendida: 950,
+    status: 'Expirada',
+  }
+];

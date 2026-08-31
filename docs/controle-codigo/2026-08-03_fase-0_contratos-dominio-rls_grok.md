@@ -4,7 +4,7 @@
 **Autor/agente:** grok  
 **Fase:** 0 — design de domínio e contratos  
 **Pedido/msg_id:** `msg_20260803_151437_314` (BICO_DEV_SCHEMA_PORTAL)  
-**Status:** validado_local / candidato  
+**Status:** validado_local / candidato
 
 ## 1. Objetivo
 
@@ -34,28 +34,28 @@ Entregar design arquitetural de domínio, contratos JSON Schema da API, regras d
 
 ## 5. Critérios
 
-| Critério | Resultado | Evidência |
-|---|---|---|
-| Sem segredo em código | aprovado | Validador proíbe tokens de conexão/senha |
-| Sem hot path RMS/RM na API | aprovado | Design: API só PostgreSQL portal |
-| RLS por supplier_id | aprovado | Migrations + doc RLS |
-| Anti-overclaim | aprovado | Status candidato/aguarda_aceite; writesToErp false |
-| Testes locais | aprovado | `validate_contracts.py` |
+| Critério                   | Resultado | Evidência                                          |
+| -------------------------- | --------- | -------------------------------------------------- |
+| Sem segredo em código      | aprovado  | Validador proíbe tokens de conexão/senha           |
+| Sem hot path RMS/RM na API | aprovado  | Design: API só PostgreSQL portal                   |
+| RLS por supplier_id        | aprovado  | Migrations + doc RLS                               |
+| Anti-overclaim             | aprovado  | Status candidato/aguarda_aceite; writesToErp false |
+| Testes locais              | aprovado  | `validate_contracts.py`                            |
 
 ## 6. KPIs CODE
 
-| KPI | Resultado | Evidência |
-|---|---|---|
-| CODE-01 | Ativo | Validador OK |
-| CODE-02 | Ativo | Fase 0 design; sem promoção |
-| CODE-03 | Ativo | Exemplos + regras de elegibilidade/preço documentadas |
-| CODE-04 | Ativo | Bico Gemini; registro CODE |
-| CODE-05 | Ativo | Taxas e piloto não homologados |
-| CODE-06 | N/A | — |
-| CODE-07 | Ativo | msg_id e caminhos |
-| CODE-08 | Ativo | Schemas + SQL enxutos |
-| CODE-09 | Ativo | Repo novo isolado |
-| CODE-10 | N/A | Sem produção |
+| KPI     | Resultado | Evidência                                             |
+| ------- | --------- | ----------------------------------------------------- |
+| CODE-01 | Ativo     | Validador OK                                          |
+| CODE-02 | Ativo     | Fase 0 design; sem promoção                           |
+| CODE-03 | Ativo     | Exemplos + regras de elegibilidade/preço documentadas |
+| CODE-04 | Ativo     | Bico Gemini; registro CODE                            |
+| CODE-05 | Ativo     | Taxas e piloto não homologados                        |
+| CODE-06 | N/A       | —                                                     |
+| CODE-07 | Ativo     | msg_id e caminhos                                     |
+| CODE-08 | Ativo     | Schemas + SQL enxutos                                 |
+| CODE-09 | Ativo     | Repo novo isolado                                     |
+| CODE-10 | N/A       | Sem produção                                          |
 
 ## 7. Validações
 

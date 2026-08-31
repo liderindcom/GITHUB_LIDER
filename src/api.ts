@@ -1,15 +1,55 @@
 import { createServerFn } from "@tanstack/react-start";
-import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
+import { normalizarCodigoFornecedor, soDigitos } from "@/lib/fornecedor-codigo";
 import { sqlLojasForaPortal } from "@/lib/lojas-excluidas-portal";
-import { cortePedidosIso } from "@/lib/pedidos-janela";
-import { shareJanelaCurta, shareUsaMensal } from "@/lib/vendas-graos";
+import { cortePedidosIso, mesFechadoIso } from "@/lib/pedidos-janela";
+import { JANELA_SKU_DIA_DIAS, shareJanelaCurta, shareUsaMensal } from "@/lib/vendas-graos";
+import { classificarCurvaAbcd } from "@/lib/classe-abcd";
+import { USUARIOS_FORNECEDOR_MAX } from "@/lib/usuarios-fornecedor";
 import { db } from "./server/db";
+import { DESCONTO_ACESSO_PORTAL_PCT, segmentoIntelider, valorUmPctCompra } from "@/lib/acordo-acesso";
 import {
   codigoFornecedorEfetivo,
   gravarSessaoPortal,
   apagarSessaoPortal,
   exigirInterno,
+  exigirSessaoFornecedor,
+  lerSessaoPortal,
+  resolverCodigoFornecedorDados,
 } from "./server/sessao-portal";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
+export function ensureFornecedoresColumns() {
+  // Safe migrations run on startup in db.ts
+}
+
+function ensureUsuariosFornecedor() {
+  try {
+    db.exec("ALTER TABLE usuarios_fornecedor ADD COLUMN precisaTrocarSenha INTEGER DEFAULT 0;");
+  } catch {
+    /* coluna já existe */
+  }
+}
+
+export type UsuarioFornecedorRow = {
+  id: string;
+  fornecedorCodigo: string;
+  nome: string;
+  email: string;
+  senhaHash: string;
+  ativo: number;
+  criadoEm: string;
+  precisaTrocarSenha?: number;
+};
+
+function flagPrecisaTrocarSenha(row: {
+  precisaTrocarSenha?: number;
+  precisatrocarsenha?: number;
+}) {
+  return Number(row.precisaTrocarSenha ?? row.precisatrocarsenha ?? 0) === 1;
+}
 
 
 export type FornecedorDB = {
@@ -29,6 +69,9 @@ export type FornecedorDB = {
   condicaoPagamentoLabel: string;
   acessoLiberado?: number;
   metaFillRatePct?: number;
+  isentoCobranca?: number;
+  acessoDataInicio?: string | null;
+  acessoDataFim?: string | null;
 };
 
 export type ProdutoDB = {
@@ -187,7 +230,7 @@ const tabelaExiste = (nome: string) =>
 /** Sortimento: fiscal ∪ grupo ∪ gabarito. Pedido/NF/financeiro continuam fiscais. */
 const sqlSkuVisivel = (alias = "p") =>
   tabelaExiste("produto_visibilidade")
-    ? `${alias}.sku IN (SELECT sku FROM produto_visibilidade WHERE fornecedorCodigo = ?)`
+    ? `EXISTS (SELECT 1 FROM produto_visibilidade WHERE fornecedorCodigo = ? AND sku = ${alias}.sku)`
     : `${alias}.fornecedorCodigo = ?`;
 
 export type ShareJanela = "30" | "60" | "90" | "180" | "365" | "tudo";
@@ -279,21 +322,79 @@ export const fetchFornecedoresList = createServerFn({ method: "GET" }).handler(a
   return stmt.all() as FornecedorDB[];
 });
 
+function vigenciaAcessoOk(row: {
+  isentoCobranca?: number | null;
+  acessoDataInicio?: string | null;
+  acessoDataFim?: string | null;
+}) {
+  if (Number(row.isentoCobranca) === 1) return true;
+  const inicio = String(row.acessoDataInicio ?? "").slice(0, 10);
+  const fim = String(row.acessoDataFim ?? "").slice(0, 10);
+  if (!inicio || !fim) return true;
+  const hoje = new Date();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  return hojeIso >= inicio && hojeIso <= fim;
+}
+
+function buscarFornecedorPorLogin(ident: string): FornecedorDB | undefined {
+  ensureFornecedoresColumns();
+  const codigo = resolverCodigoFornecedorDados(normalizarCodigoFornecedor(ident));
+  const porCodigo = db.prepare("SELECT * FROM fornecedores WHERE codigo = ?").get(codigo) as
+    | FornecedorDB
+    | undefined;
+  if (porCodigo) return porCodigo;
+  const cnpj = soDigitos(ident);
+  if (cnpj.length < 11) return undefined;
+  return db
+    .prepare(
+      `SELECT * FROM fornecedores
+        WHERE cnpjSenhaInicial = ?
+           OR replace(replace(replace(replace(cnpj, '.', ''), '/', ''), '-', ''), ' ', '') = ?`,
+    )
+    .get(cnpj, cnpj) as FornecedorDB | undefined;
+}
+
+function cnpjDoFornecedor(forn: FornecedorDB): string {
+  return soDigitos(forn.cnpjSenhaInicial || forn.cnpj);
+}
+
+function senhaCnpjConfere(senha: string, forn: FornecedorDB): boolean {
+  const cadastro = cnpjDoFornecedor(forn);
+  return cadastro.length >= 11 && soDigitos(senha) === cadastro;
+}
+
+function exigirFornecedorLiberado(ident: string): FornecedorDB {
+  const forn = buscarFornecedorPorLogin(ident);
+  if (!forn) {
+    throw new Error("Fornecedor não encontrado. Use o código RMS (ex.: 20922-8) ou o CNPJ.");
+  }
+  if (forn.acessoLiberado !== 1) {
+    throw new Error("Acesso não liberado. Entre em contato com a equipe comercial do Grupo Líder.");
+  }
+  if (!vigenciaAcessoOk(forn)) {
+    throw new Error("Acesso fora do período de vigência contratado.");
+  }
+  return forn;
+}
+
+function emailLoginValido(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function nomeUsuarioDoEmail(email: string, fallback: string): string {
+  const local = String(email.split("@")[0] || "").replace(/[._-]+/g, " ").trim();
+  if (!local) return fallback.slice(0, 80);
+  const titulo = local.replace(/\b\w/g, (c) => c.toUpperCase());
+  return titulo.slice(0, 80);
+}
+
 export const fetchFornecedor = createServerFn({ method: "GET" })
-  .validator((codigo: string) => normalizarCodigoFornecedor(codigo))
-  .handler(async ({ data: codigo }) => {
-    const stmt = db.prepare("SELECT * FROM fornecedores WHERE codigo = ?");
-    return stmt.get(codigo) as FornecedorDB | undefined;
+  .validator((codigo: string) => soDigitos(codigo) || String(codigo ?? "").trim())
+  .handler(async ({ data: ident }) => {
+    return buscarFornecedorPorLogin(ident);
   });
 
 let cachedLiderAbcMap: Map<string, string> | null = null;
-
-const classeAbcdAcumulado = (pctAnterior: number): "A" | "B" | "C" | "D" => {
-  if (pctAnterior < 50) return "A";
-  if (pctAnterior < 80) return "B";
-  if (pctAnterior < 98) return "C";
-  return "D";
-};
 
 function getLiderWideAbcClasses() {
   if (cachedLiderAbcMap) return cachedLiderAbcMap;
@@ -336,36 +437,16 @@ function getLiderWideAbcClasses() {
       volume: number;
     }>;
 
-    const porSubgrupo = new Map<string, typeof rows>();
-    for (const r of rows) {
-      const subgrupoKey = `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}.${r.subgrupoCodigo}`;
-      const list = porSubgrupo.get(subgrupoKey) || [];
-      list.push(r);
-      porSubgrupo.set(subgrupoKey, list);
-    }
-
-    for (const subgrupoRows of porSubgrupo.values()) {
-      const porValor = [...subgrupoRows].sort((a, b) => b.valor - a.valor);
-      const totalValor = porValor.reduce((acc, x) => acc + x.valor, 0);
-      let acumuladoValor = 0;
-      const classeValor = new Map<string, string>();
-      for (const x of porValor) {
-        const pct = totalValor > 0 ? (acumuladoValor / totalValor) * 100 : 100;
-        classeValor.set(x.sku, classeAbcdAcumulado(pct));
-        acumuladoValor += x.valor;
-      }
-
-      const porVol = [...subgrupoRows].sort((a, b) => b.volume - a.volume);
-      const totalVol = porVol.reduce((acc, x) => acc + x.volume, 0);
-      let acumuladoVol = 0;
-      for (const x of porVol) {
-        const pct = totalVol > 0 ? (acumuladoVol / totalVol) * 100 : 100;
-        const clQ = classeAbcdAcumulado(pct).toLowerCase();
-        const vCl = classeValor.get(x.sku) || "D";
-        const composite = `${vCl}${clQ}`;
-        map.set(x.sku, composite);
-        acumuladoVol += x.volume;
-      }
+    const classificados = classificarCurvaAbcd(
+      rows.map((r) => ({
+        sku: r.sku,
+        grupo: `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}.${r.subgrupoCodigo}`,
+        valor: r.valor || 0,
+        volume: r.volume || 0,
+      })),
+    );
+    for (const [sku, resultado] of classificados) {
+      map.set(sku, resultado.classeComposta);
     }
   } catch (err) {
     console.error("Erro ao calcular Lider-wide ABC classes:", err);
@@ -375,6 +456,34 @@ function getLiderWideAbcClasses() {
   return map;
 }
 
+let cachedNomesComprador: Map<string, string> | null = null;
+
+function mapaNomesComprador(): Map<string, string> {
+  if (cachedNomesComprador) return cachedNomesComprador;
+  const mapa = new Map<string, string>();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT compradorCodigo AS codigo, MAX(compradorNome) AS nome
+         FROM produtos
+         WHERE compradorCodigo IS NOT NULL AND TRIM(compradorCodigo) <> ''
+           AND compradorNome IS NOT NULL AND TRIM(compradorNome) <> ''
+         GROUP BY compradorCodigo`,
+      )
+      .all() as { codigo: string; nome: string }[];
+    for (const row of rows) {
+      const codigo = String(row.codigo ?? "").trim();
+      const nome = String(row.nome ?? "").trim();
+      if (!codigo || !nome || nome === `Comprador ${codigo}`) continue;
+      mapa.set(codigo, nome);
+    }
+  } catch (err) {
+    console.error("Erro ao montar mapa de compradores:", err);
+  }
+  cachedNomesComprador = mapa;
+  return mapa;
+}
+
 export const fetchProdutos = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
@@ -382,13 +491,29 @@ export const fetchProdutos = createServerFn({ method: "GET" })
     const stmt = db.prepare(`SELECT * FROM produtos p WHERE ${sqlSkuVisivel("p")}`);
     const products = stmt.all(fornecedorCodigo);
     const abcMap = getLiderWideAbcClasses();
+    const nomesComprador = mapaNomesComprador();
     return products.map((p) => {
-      const fatClass = String((p as any).abc || "D").toUpperCase().trim();
+      const storedCls = String((p as any).abc || "").trim();
       const dynamicCls = abcMap.get(p.sku);
-      const volClass = dynamicCls && dynamicCls.length > 1 ? dynamicCls[1] : "d";
+      const fatClass = (
+        (dynamicCls && dynamicCls[0]) ||
+        storedCls[0] ||
+        "D"
+      ).toUpperCase();
+      const volClass = (
+        (dynamicCls && dynamicCls.length > 1 && dynamicCls[1]) ||
+        storedCls[1] ||
+        "d"
+      ).toLowerCase();
       const cls = fatClass + volClass;
+      const codigo = String((p as any).compradorCodigo ?? "").trim();
+      const nomeDireto = String((p as any).compradorNome ?? "").trim();
+      const nome = nomeDireto && nomeDireto !== `Comprador ${codigo}`
+        ? nomeDireto
+        : (codigo && nomesComprador.get(codigo)) || nomeDireto;
       return {
         ...p,
+        compradorNome: nome || (p as any).compradorNome,
         classeComposta: cls,
       };
     }) as any[];
@@ -492,15 +617,19 @@ export const fetchContasReceber = createServerFn({ method: "GET" })
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("contas_receber")) return [] as ContaReceberDB[];
+    const hoje = new Date();
+    const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
     const rows = db
       .prepare(
         `SELECT id, documento, tipo, descricao, emissao, competencia, vencimento,
                 valor, status, abatimentoProximoPagamento, origem, observacao, fornecedorCodigo
          FROM contas_receber
          WHERE fornecedorCodigo = ?
-         ORDER BY vencimento DESC, id DESC`,
+           AND status <> 'Descontado'
+           AND (vencimento IS NULL OR vencimento = '' OR vencimento >= ?)
+         ORDER BY vencimento ASC, id DESC`,
       )
-      .all(fornecedorCodigo) as Array<{
+      .all(fornecedorCodigo, hojeIso) as Array<{
       id: string;
       documento: string;
       tipo: string;
@@ -601,6 +730,154 @@ export const fetchFaturas = createServerFn({ method: "GET" })
     });
   });
 
+export type ComprasAnoMesDB = {
+  mes: string;
+  pedido: number;
+  entregue: number;
+  perda: number;
+  documentos: number;
+};
+export type ComprasAnoDestinoDB = {
+  lojaId: string;
+  pedido: number;
+  entregue: number;
+  perda: number;
+};
+export type ComprasAnoDB = {
+  ano: number;
+  ateMes: string;
+  pedido: number;
+  entregue: number;
+  perda: number;
+  documentos: number;
+  documentosEmAberto: number;
+  meses: ComprasAnoMesDB[];
+  destinos: ComprasAnoDestinoDB[];
+};
+
+export const fetchComprasAno = createServerFn({ method: "GET" })
+  .validator((data: { fornecedorCodigo: string; ano: number }) => ({
+    fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
+    ano: Number(data.ano),
+  }))
+  .handler(async ({ data }) => {
+    const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
+    const ateMes = mesFechadoIso();
+    const ano = Number(ateMes.slice(0, 4)) || new Date().getFullYear();
+    const vazio = (): ComprasAnoDB => ({
+      ano,
+      ateMes,
+      pedido: 0,
+      entregue: 0,
+      perda: 0,
+      documentos: 0,
+      documentosEmAberto: 0,
+      meses: [],
+      destinos: [],
+    });
+    if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens")) return vazio();
+    const rows = db
+      .prepare(
+        `SELECT substr(p.emissao, 1, 7) AS mes, p.lojaId AS lojaId,
+                COUNT(DISTINCT p.numero || '-' || p.lojaId) AS documentos,
+                COUNT(DISTINCT CASE
+                  WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
+                  THEN p.numero || '-' || p.lojaId
+                END) AS documentosEmAberto,
+                SUM(COALESCE(i.quantidadePedida, 0) * COALESCE(i.precoUnitario, 0)) AS pedido,
+                SUM(
+                  CASE
+                    WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
+                    THEN COALESCE(i.quantidadeFaturada, 0)
+                    ELSE COALESCE(i.quantidadePedida, 0)
+                  END * COALESCE(i.precoUnitario, 0)
+                ) AS entregue,
+                SUM(
+                  CASE
+                    WHEN COALESCE(i.quantidadePedida, 0) > COALESCE(i.quantidadeFaturada, 0)
+                    THEN (COALESCE(i.quantidadePedida, 0) - COALESCE(i.quantidadeFaturada, 0))
+                    ELSE 0
+                  END * COALESCE(i.precoUnitario, 0)
+                ) AS perda
+         FROM pedidos p
+         INNER JOIN pedido_itens i
+           ON i.numero = p.numero
+          AND i.lojaId = p.lojaId
+          AND i.fornecedorCodigo = p.fornecedorCodigo
+         WHERE p.fornecedorCodigo = ?
+           AND p.destino = 'Fornecedor'
+           AND p.status <> 'Cancelado'
+           AND p.lojaId NOT IN (${sqlLojasForaPortal})
+           AND substr(p.emissao, 1, 7) >= ?
+           AND substr(p.emissao, 1, 7) <= ?
+           AND COALESCE(i.quantidadePedida, 0) > 0
+         GROUP BY substr(p.emissao, 1, 7), p.lojaId`,
+      )
+      .all(codigo, `${ano}-01`, ateMes) as Array<{
+      mes: string;
+      lojaId: string;
+      documentos: number;
+      documentosEmAberto: number;
+      pedido: number;
+      entregue: number;
+      perda: number;
+    }>;
+    const porMes = new Map<
+      string,
+      { pedido: number; entregue: number; perda: number; documentos: number }
+    >();
+    const porLoja = new Map<string, { pedido: number; entregue: number; perda: number }>();
+    let pedido = 0;
+    let entregue = 0;
+    let perda = 0;
+    let documentos = 0;
+    let documentosEmAberto = 0;
+    for (const row of rows) {
+      const vPedido = Number(row.pedido || 0);
+      const vEntregue = Number(row.entregue || 0);
+      const vPerda = Number(row.perda || 0);
+      pedido += vPedido;
+      entregue += vEntregue;
+      perda += vPerda;
+      documentos += Number(row.documentos || 0);
+      documentosEmAberto += Number(row.documentosEmAberto || 0);
+      const mes = String(row.mes || "");
+      const atualMes = porMes.get(mes) ?? { pedido: 0, entregue: 0, perda: 0, documentos: 0 };
+      atualMes.pedido += vPedido;
+      atualMes.entregue += vEntregue;
+      atualMes.perda += vPerda;
+      atualMes.documentos += Number(row.documentos || 0);
+      porMes.set(mes, atualMes);
+      const lojaId = String(row.lojaId || "");
+      const atualLoja = porLoja.get(lojaId) ?? { pedido: 0, entregue: 0, perda: 0 };
+      atualLoja.pedido += vPedido;
+      atualLoja.entregue += vEntregue;
+      atualLoja.perda += vPerda;
+      porLoja.set(lojaId, atualLoja);
+    }
+    return {
+      ano,
+      ateMes,
+      pedido,
+      entregue,
+      perda,
+      documentos,
+      documentosEmAberto,
+      meses: [...porMes.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([mes, v]) => ({
+          mes,
+          pedido: v.pedido,
+          entregue: v.entregue,
+          perda: v.perda,
+          documentos: v.documentos,
+        })),
+      destinos: [...porLoja.entries()]
+        .map(([lojaId, v]) => ({ lojaId, ...v }))
+        .sort((a, b) => b.perda - a.perda),
+    };
+  });
+
 export const fetchPedidos = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
@@ -679,7 +956,7 @@ export const fetchVendas = createServerFn({ method: "GET" })
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const corte = db
       .prepare(
-        "SELECT MIN(d) AS inicio FROM (SELECT DISTINCT data AS d FROM vendas ORDER BY d DESC LIMIT 30)",
+        `SELECT MIN(d) AS inicio FROM (SELECT DISTINCT data AS d FROM vendas ORDER BY d DESC LIMIT ${Number(JANELA_SKU_DIA_DIAS)})`,
       )
       .get() as { inicio: string | null };
     const inicio = corte?.inicio;
@@ -691,9 +968,40 @@ export const fetchVendas = createServerFn({ method: "GET" })
         AND v.lojaId NOT IN (${sqlLojasForaPortal})
         AND (? IS NULL OR v.data >= ?)
       ORDER BY v.data DESC
-      LIMIT 35000
     `);
     return stmt.all(fornecedorCodigo, inicio, inicio) as VendaDB[];
+  });
+
+export type TransferenciaCdamDB = {
+  sku: string;
+  lojaId: string;
+  data: string;
+  quantidade: number;
+};
+
+export const fetchTransferenciasCdam = createServerFn({ method: "GET" })
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
+    try {
+      if (!tabelaExiste("transferencias_cdam")) return [] as TransferenciaCdamDB[];
+      const inicio = new Date();
+      inicio.setUTCDate(inicio.getUTCDate() - Number(JANELA_SKU_DIA_DIAS));
+      const inicioIso = inicio.toISOString().slice(0, 10);
+      return db
+        .prepare(
+          `SELECT t.sku, t.lojaId, t.data, t.quantidade
+           FROM transferencias_cdam t
+           JOIN produtos p ON p.sku = t.sku
+           WHERE ${sqlSkuVisivel("p")}
+             AND t.lojaId NOT IN (${sqlLojasForaPortal})
+             AND t.data >= ?`,
+        )
+        .all(fornecedorCodigo, inicioIso) as TransferenciaCdamDB[];
+    } catch (err) {
+      console.error("fetchTransferenciasCdam", err);
+      return [] as TransferenciaCdamDB[];
+    }
   });
 
 export const fetchShareFornecedor = createServerFn({ method: "GET" })
@@ -1122,6 +1430,96 @@ export const fetchConciliacaoNfePedido = createServerFn({ method: "GET" })
       .all(fornecedorCodigo) as ConciliacaoItemDB[];
   });
 
+export type NfeXmlItemDB = {
+  id: string;
+  sku: string;
+  descricao: string;
+  quantidade: number;
+  preco: number;
+  pedido: string;
+};
+
+export const fetchItensNfe = createServerFn({ method: "GET" })
+  .validator((data: { chaveNfe?: string; numeroNota?: string }) => ({
+    chaveNfe: String(data.chaveNfe ?? "").trim(),
+    numeroNota: String(data.numeroNota ?? "").trim(),
+  }))
+  .handler(async ({ data }) => {
+    const chave = data.chaveNfe;
+    const nota = data.numeroNota;
+    if (!chave && !nota) return [] as NfeXmlItemDB[];
+
+    const mapRow = (row: {
+      id: string;
+      sku?: string | null;
+      descricao?: string | null;
+      descricaoXml?: string | null;
+      quantidade?: number | null;
+      quantidadeXml?: number | null;
+      preco?: number | null;
+      precoXml?: number | null;
+      pedido?: string | null;
+    }): NfeXmlItemDB => ({
+      id: String(row.id),
+      sku: String(row.sku ?? "").trim(),
+      descricao: String(row.descricao ?? row.descricaoXml ?? "").trim(),
+      quantidade: Number(row.quantidade ?? row.quantidadeXml ?? 0),
+      preco: Number(row.preco ?? row.precoXml ?? 0),
+      pedido: String(row.pedido ?? "").trim(),
+    });
+
+    if (tabelaExiste("nfe_xml_itens")) {
+      const rows = (
+        chave
+          ? db
+              .prepare(
+                `SELECT id, sku, descricao, quantidade, preco, pedido
+                 FROM nfe_xml_itens WHERE chaveNfe = ? ORDER BY nitem, id`,
+              )
+              .all(chave)
+          : db
+              .prepare(
+                `SELECT id, sku, descricao, quantidade, preco, pedido
+                 FROM nfe_xml_itens WHERE numeroNota = ? ORDER BY nitem, id`,
+              )
+              .all(nota)
+      ) as Array<{
+        id: string;
+        sku: string;
+        descricao: string;
+        quantidade: number;
+        preco: number;
+        pedido: string;
+      }>;
+      if (rows.length) return rows.map(mapRow);
+    }
+
+    if (!tabelaExiste("nfe_pedido_conciliacao")) return [] as NfeXmlItemDB[];
+    const concil = (
+      chave
+        ? db
+            .prepare(
+              `SELECT id, sku, descricaoXml, quantidadeXml, precoXml, pedido
+               FROM nfe_pedido_conciliacao WHERE chaveNfe = ? ORDER BY id`,
+            )
+            .all(chave)
+        : db
+            .prepare(
+              `SELECT id, sku, descricaoXml, quantidadeXml, precoXml, pedido
+               FROM nfe_pedido_conciliacao WHERE numeroNota = ? ORDER BY id`,
+            )
+            .all(nota)
+    ) as Array<{
+      id: string;
+      sku: string;
+      descricaoXml: string;
+      quantidadeXml: number;
+      precoXml: number;
+      pedido: string;
+    }>;
+    return concil.map(mapRow);
+  });
+
 // Novos Endpoints para o Painel Administrativo de Controle de Acesso
 export const searchFornecedores = createServerFn({ method: "GET" })
   .validator(
@@ -1130,11 +1528,14 @@ export const searchFornecedores = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     exigirInterno();
     const { search, limit, offset, onlyActive } = data;
-    const cleanSearch = `%${normalizarCodigoFornecedor(search) || search.trim()}%`;
+    const digitado = normalizarCodigoFornecedor(search) || search.trim();
+    const resolvido = resolverCodigoFornecedorDados(digitado);
+    const cleanSearch = `%${resolvido || digitado}%`;
 
+    ensureFornecedoresColumns();
     ensureFillrateMetaColumn();
     let query =
-      "SELECT codigo, nome, cnpj, acessoLiberado, metaFillRatePct FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?) AND acessoLiberado = 1";
+      "SELECT codigo, nome, cnpj, acessoLiberado, metaFillRatePct, isentoCobranca, acessoDataInicio, acessoDataFim FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?) AND acessoLiberado = 1";
     const params: Array<string | number> = [cleanSearch, cleanSearch, cleanSearch];
 
     query += " ORDER BY codigo LIMIT ? OFFSET ?";
@@ -1145,14 +1546,14 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 
     // Obter contagem total
     let countQuery =
-      "SELECT COUNT(*) FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?) AND acessoLiberado = 1";
+      "SELECT COUNT(*) AS total FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?) AND acessoLiberado = 1";
     const countParams: string[] = [cleanSearch, cleanSearch, cleanSearch];
     const countStmt = db.prepare(countQuery);
-    const total = countStmt.get(...countParams) as { "COUNT(*)": number } | undefined;
+    const total = countStmt.get(...countParams) as { total: number } | undefined;
 
     return {
       rows: rows as FornecedorDB[],
-      total: total ? (total["COUNT(*)"] as number) : 0,
+      total: Number(total?.total ?? 0),
     };
   });
 
@@ -1161,8 +1562,22 @@ export const updateSupplierAccess = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     exigirInterno();
     const { codigo, acessoLiberado } = data;
-    const stmt = db.prepare("UPDATE fornecedores SET acessoLiberado = ? WHERE codigo = ?");
-    stmt.run(acessoLiberado, normalizarCodigoFornecedor(codigo));
+    const codigoNorm = normalizarCodigoFornecedor(codigo);
+    
+    if (acessoLiberado === 0) {
+      // 1. Apagar todos os dados operacionais e cadastros do fornecedor
+      db.prepare("DELETE FROM estoque WHERE sku IN (SELECT sku FROM produtos WHERE fornecedorCodigo = ?)").run(codigoNorm);
+      db.prepare("DELETE FROM vendas WHERE sku IN (SELECT sku FROM produtos WHERE fornecedorCodigo = ?)").run(codigoNorm);
+      db.prepare("DELETE FROM produtos WHERE fornecedorCodigo = ?").run(codigoNorm);
+      db.prepare("DELETE FROM pedidos WHERE fornecedorCodigo = ?").run(codigoNorm);
+      db.prepare("DELETE FROM pedido_itens WHERE fornecedorCodigo = ?").run(codigoNorm);
+      db.prepare("DELETE FROM usuarios_fornecedor WHERE fornecedorCodigo = ?").run(codigoNorm);
+      db.prepare("DELETE FROM sessoes_portal WHERE tipo = 'fornecedor' AND codigo = ?").run(codigoNorm);
+      db.prepare("DELETE FROM acordos_acesso_portal WHERE fornecedorCodigo = ?").run(codigoNorm);
+      db.prepare("DELETE FROM fornecedores WHERE codigo = ?").run(codigoNorm);
+    } else {
+      db.prepare("UPDATE fornecedores SET acessoLiberado = ? WHERE codigo = ?").run(acessoLiberado, codigoNorm);
+    }
     return { success: true };
   });
 
@@ -1170,7 +1585,7 @@ export const includeSupplier = createServerFn({ method: "POST" })
   .validator((data: { codigo: string }) => data)
   .handler(async ({ data }) => {
     exigirInterno();
-    const codigo = normalizarCodigoFornecedor(data.codigo);
+    const codigo = resolverCodigoFornecedorDados(data.codigo);
     if (!codigo) {
       throw new Error("Informe o código RMS do fornecedor.");
     }
@@ -1186,6 +1601,362 @@ export const includeSupplier = createServerFn({ method: "POST" })
       "INSERT INTO fornecedores (codigo, nome, acessoLiberado, metaFillRatePct) VALUES (?, ?, 1, ?)",
     ).run(codigo, `Fornecedor ${codigo}`, FILLRATE_META_PADRAO);
     return { success: true, created: true, codigo };
+  });
+
+export { DESCONTO_ACESSO_PORTAL_PCT };
+
+function ensureAcordosAcessoPortal() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS acordos_acesso_portal (
+      id TEXT PRIMARY KEY,
+      fornecedorCodigo TEXT NOT NULL,
+      mesReferencia TEXT NOT NULL,
+      valorCompra REAL NOT NULL,
+      valorUmPct REAL NOT NULL,
+      numeroAcordo TEXT NOT NULL,
+      encontrado INTEGER NOT NULL,
+      cobrancaId TEXT,
+      cobrancaDescricao TEXT,
+      cobrancaValor REAL,
+      usuarioInterno TEXT NOT NULL,
+      criadoEm TEXT NOT NULL
+    );
+  `);
+}
+
+function normalizarNumeroAcordo(raw: string) {
+  return String(raw ?? "").trim().replace(/\s+/g, "");
+}
+
+export type CompraMesAnteriorDB = {
+  mes: string;
+  compra: number;
+  umPct: number;
+  documentos: number;
+};
+
+export const fetchCompraMesAnterior = createServerFn({ method: "GET" })
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    const codigo = codigoFornecedorEfetivo(codigoPedido);
+    const mes = mesFechadoIso();
+    const vazio = (): CompraMesAnteriorDB => ({
+      mes,
+      compra: 0,
+      umPct: 0,
+      documentos: 0,
+    });
+    if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens")) return vazio();
+    const row = db
+      .prepare(
+        `SELECT COUNT(DISTINCT p.numero || '-' || p.lojaId) AS documentos,
+                SUM(
+                  CASE
+                    WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
+                    THEN COALESCE(i.quantidadeFaturada, 0)
+                    ELSE COALESCE(i.quantidadePedida, 0)
+                  END * COALESCE(i.precoUnitario, 0)
+                ) AS compra
+         FROM pedidos p
+         INNER JOIN pedido_itens i
+           ON i.numero = p.numero
+          AND i.lojaId = p.lojaId
+          AND i.fornecedorCodigo = p.fornecedorCodigo
+         WHERE p.fornecedorCodigo = ?
+           AND p.destino = 'Fornecedor'
+           AND p.status <> 'Cancelado'
+           AND p.lojaId NOT IN (${sqlLojasForaPortal})
+           AND substr(p.emissao, 1, 7) = ?
+           AND COALESCE(i.quantidadePedida, 0) > 0
+           AND COALESCE(i.quantidadeFaturada, 0) > 0`,
+      )
+      .get(codigo, mes) as { documentos: number; compra: number } | undefined;
+    const compra = Number(row?.compra || 0);
+    return {
+      mes,
+      compra,
+      umPct: valorUmPctCompra(compra),
+      documentos: Number(row?.documentos || 0),
+    };
+  });
+
+export type RelatorioAcordoAcessoLinhaDB = {
+  codigo: string;
+  nome: string;
+  segmento: string;
+  compra: number;
+  umPct: number;
+  documentos: number;
+};
+
+export type RelatorioAcordoAcessoDB = {
+  mes: string;
+  linhas: RelatorioAcordoAcessoLinhaDB[];
+};
+
+export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).handler(async () => {
+  exigirInterno();
+  const mes = mesFechadoIso();
+  const vazio = (): RelatorioAcordoAcessoDB => ({ mes, linhas: [] });
+  if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens") || !tabelaExiste("fornecedores")) {
+    return vazio();
+  }
+  const temProdutos = tabelaExiste("produtos");
+  const joinProduto = temProdutos ? "LEFT JOIN produtos pr ON pr.sku = i.sku" : "";
+  const joinForn =
+    "INNER JOIN fornecedores f ON f.codigo = p.fornecedorCodigo AND f.acessoLiberado = 1";
+  const campoDeptoCod = temProdutos ? "COALESCE(pr.departamentoCodigo, '')" : "''";
+  const campoDeptoNome = temProdutos ? "COALESCE(pr.departamento, '')" : "''";
+  const campoNomeForn = "MAX(NULLIF(TRIM(f.nome), ''))";
+  const campoNomeProd = temProdutos ? "MAX(NULLIF(TRIM(pr.fornecedorComercialNome), ''))" : "NULL";
+  const campoNome = `COALESCE(${campoNomeForn}, ${campoNomeProd}, '')`;
+  const rows = db
+    .prepare(
+      `SELECT p.fornecedorCodigo AS codigo,
+              ${campoNome} AS nome,
+              ${campoDeptoCod} AS departamentoCodigo,
+              ${campoDeptoNome} AS departamento,
+              COUNT(DISTINCT p.numero || '-' || p.lojaId) AS documentos,
+              SUM(
+                CASE
+                  WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
+                  THEN COALESCE(i.quantidadeFaturada, 0)
+                  ELSE COALESCE(i.quantidadePedida, 0)
+                END * COALESCE(i.precoUnitario, 0)
+              ) AS compra
+       FROM pedidos p
+       INNER JOIN pedido_itens i
+         ON i.numero = p.numero
+        AND i.lojaId = p.lojaId
+        AND i.fornecedorCodigo = p.fornecedorCodigo
+       ${joinProduto}
+       ${joinForn}
+       WHERE p.destino = 'Fornecedor'
+         AND p.status <> 'Cancelado'
+         AND p.lojaId NOT IN (${sqlLojasForaPortal})
+         AND substr(p.emissao, 1, 7) = ?
+         AND COALESCE(i.quantidadePedida, 0) > 0
+         AND COALESCE(i.quantidadeFaturada, 0) > 0
+       GROUP BY p.fornecedorCodigo, ${campoDeptoCod}, ${campoDeptoNome}
+       HAVING SUM(
+         CASE
+           WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
+           THEN COALESCE(i.quantidadeFaturada, 0)
+           ELSE COALESCE(i.quantidadePedida, 0)
+         END * COALESCE(i.precoUnitario, 0)
+       ) > 0`,
+    )
+    .all(mes) as Array<{
+    codigo: string;
+    nome: string;
+    departamentoCodigo: string;
+    departamento: string;
+    documentos: number;
+    compra: number;
+  }>;
+
+  const agregadas = new Map<string, RelatorioAcordoAcessoLinhaDB>();
+  for (const row of rows) {
+    const codigo = String(row.codigo || "");
+    if (!codigo) continue;
+    const segmento = segmentoIntelider(row.departamentoCodigo, row.departamento);
+    const chave = `${codigo}\t${segmento}`;
+    const compra = Number(row.compra || 0);
+    const atual = agregadas.get(chave);
+    if (atual) {
+      atual.compra += compra;
+      atual.documentos += Number(row.documentos || 0);
+      atual.umPct = valorUmPctCompra(atual.compra);
+      const nome = String(row.nome || "").trim();
+      if (nome && (!atual.nome || atual.nome.startsWith("Fornecedor "))) atual.nome = nome;
+    } else {
+      agregadas.set(chave, {
+        codigo,
+        nome: String(row.nome || "").trim() || `Fornecedor ${codigo}`,
+        segmento,
+        compra,
+        umPct: valorUmPctCompra(compra),
+        documentos: Number(row.documentos || 0),
+      });
+    }
+  }
+
+  const linhas = [...agregadas.values()].sort(
+    (a, b) => a.segmento.localeCompare(b.segmento, "pt-BR") || b.compra - a.compra,
+  );
+  return { mes, linhas };
+});
+
+export type AcordoCobrancaDB = {
+  encontrado: boolean;
+  numeroAcordo: string;
+  id?: string;
+  documento?: string;
+  descricao?: string;
+  valor?: number;
+  status?: string;
+  competencia?: string;
+};
+
+export const verificarAcordoCobranca = createServerFn({ method: "POST" })
+  .validator((data: { fornecedorCodigo: string; numeroAcordo: string }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
+    const numeroAcordo = normalizarNumeroAcordo(data.numeroAcordo);
+    const vazio = (): AcordoCobrancaDB => ({ encontrado: false, numeroAcordo });
+    if (!numeroAcordo) return vazio();
+    if (!tabelaExiste("contas_receber")) return vazio();
+    const row = db
+      .prepare(
+        `SELECT id, documento, descricao, valor, status, competencia, contrato
+         FROM contas_receber
+         WHERE fornecedorCodigo = ?
+           AND tipo = 'Acordo comercial'
+           AND (
+             contrato = ?
+             OR ltrim(contrato, '0') = ltrim(?, '0')
+           )
+         ORDER BY emissao DESC
+         LIMIT 1`,
+      )
+      .get(codigo, numeroAcordo, numeroAcordo) as
+      | {
+          id: string;
+          documento: string;
+          descricao: string | null;
+          valor: number;
+          status: string;
+          competencia: string | null;
+          contrato: string | null;
+        }
+      | undefined;
+    if (!row) return vazio();
+    return {
+      encontrado: true,
+      numeroAcordo: row.contrato || numeroAcordo,
+      id: row.id,
+      documento: row.documento,
+      descricao: row.descricao || "",
+      valor: Number(row.valor || 0),
+      status: row.status,
+      competencia: row.competencia || "",
+    };
+  });
+
+export type AcordoAcessoPortalDB = {
+  id: string;
+  fornecedorCodigo: string;
+  mesReferencia: string;
+  valorCompra: number;
+  valorUmPct: number;
+  numeroAcordo: string;
+  encontrado: number;
+  cobrancaId: string | null;
+  cobrancaDescricao: string | null;
+  cobrancaValor: number | null;
+  usuarioInterno: string;
+  criadoEm: string;
+};
+
+export const fetchAcordosAcessoPortal = createServerFn({ method: "GET" })
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    exigirInterno();
+    const codigo = codigoFornecedorEfetivo(codigoPedido);
+    ensureAcordosAcessoPortal();
+    return db
+      .prepare(
+        `SELECT id, fornecedorCodigo, mesReferencia, valorCompra, valorUmPct, numeroAcordo,
+                encontrado, cobrancaId, cobrancaDescricao, cobrancaValor, usuarioInterno, criadoEm
+         FROM acordos_acesso_portal
+         WHERE fornecedorCodigo = ?
+         ORDER BY criadoEm DESC`,
+      )
+      .all(codigo) as AcordoAcessoPortalDB[];
+  });
+
+export const registrarAcordoAcessoPortal = createServerFn({ method: "POST" })
+  .validator((data: { fornecedorCodigo: string; numeroAcordo: string }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    const sessao = lerSessaoPortal();
+    if (!sessao || sessao.tipo !== "interno") {
+      throw new Error("Acesso administrativo exigido.");
+    }
+    const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
+    const numeroAcordo = normalizarNumeroAcordo(data.numeroAcordo);
+    if (!numeroAcordo) throw new Error("Informe o número do acordo.");
+
+    const mes = mesFechadoIso();
+    const compraRow = db
+      .prepare(
+        `SELECT COUNT(DISTINCT p.numero || '-' || p.lojaId) AS documentos,
+                SUM(
+                  CASE
+                    WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
+                    THEN COALESCE(i.quantidadeFaturada, 0)
+                    ELSE COALESCE(i.quantidadePedida, 0)
+                  END * COALESCE(i.precoUnitario, 0)
+                ) AS compra
+         FROM pedidos p
+         INNER JOIN pedido_itens i
+           ON i.numero = p.numero
+          AND i.lojaId = p.lojaId
+          AND i.fornecedorCodigo = p.fornecedorCodigo
+         WHERE p.fornecedorCodigo = ?
+           AND p.destino = 'Fornecedor'
+           AND p.status <> 'Cancelado'
+           AND p.lojaId NOT IN (${sqlLojasForaPortal})
+           AND substr(p.emissao, 1, 7) = ?
+           AND COALESCE(i.quantidadePedida, 0) > 0
+           AND COALESCE(i.quantidadeFaturada, 0) > 0`,
+      )
+      .get(codigo, mes) as { documentos: number; compra: number } | undefined;
+    const valorCompra = Number(compraRow?.compra || 0);
+    const umPct = valorUmPctCompra(valorCompra);
+
+    if (!tabelaExiste("contas_receber")) {
+      throw new Error("Cobrança do Líder indisponível.");
+    }
+    const cobranca = db
+      .prepare(
+        `SELECT id, descricao, valor, contrato
+         FROM contas_receber
+         WHERE fornecedorCodigo = ?
+           AND tipo = 'Acordo comercial'
+           AND (contrato = ? OR ltrim(contrato, '0') = ltrim(?, '0'))
+         ORDER BY emissao DESC
+         LIMIT 1`,
+      )
+      .get(codigo, numeroAcordo, numeroAcordo) as
+      | { id: string; descricao: string | null; valor: number; contrato: string | null }
+      | undefined;
+    if (!cobranca) {
+      throw new Error("Acordo não encontrado no sistema de cobrança do Líder.");
+    }
+
+    ensureAcordosAcessoPortal();
+    const id = `acesso-${codigo}-${mes}-${Date.now()}`;
+    db.prepare(
+      `INSERT INTO acordos_acesso_portal (
+          id, fornecedorCodigo, mesReferencia, valorCompra, valorUmPct, numeroAcordo,
+          encontrado, cobrancaId, cobrancaDescricao, cobrancaValor, usuarioInterno, criadoEm
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+    ).run(
+      id,
+      codigo,
+      mes,
+      valorCompra,
+      umPct,
+      cobranca.contrato || numeroAcordo,
+      cobranca.id,
+      cobranca.descricao || "",
+      Number(cobranca.valor || 0),
+      sessao.codigo,
+      new Date().toISOString(),
+    );
+    return { success: true, id, numeroAcordo: cobranca.contrato || numeroAcordo };
   });
 
 export const FILLRATE_TAXA_PADRAO = 3;
@@ -1344,6 +2115,8 @@ export type VendasAnualItemDB = {
   sku: string;
   descricao: string;
   secao: string;
+  codigoProdutoRms: string | null;
+  digitoProdutoRms: string | null;
   valorBase: number;
   valorBaseYtd: number;
   valorAtual: number;
@@ -1437,10 +2210,8 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
         (c) => c.name === "fornecedorCodigo",
       ),
     );
-    // Planilha: SKU = codigo RMS + dígito. Join em p.sku misturava produto/seção errados.
-    const joinProdutoRms = `LEFT JOIN produtos p
-      ON p.codigoProdutoRms = substr(vm.sku, 1, length(vm.sku) - 1)
-     AND p.digitoProdutoRms = substr(vm.sku, -1)`;
+    // Planilha: SKU = codigo RMS + dígito. Refresh RMS grava o SKU do portal (sem dígito).
+    const joinProdutoRms = joinVendasMensalProduto;
     const nomeSecaoSql = `COALESCE(
       NULLIF(TRIM(
         CASE
@@ -1548,8 +2319,8 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
          ${joinProdObrigatorio}
          WHERE ${filtroForn}
            AND (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
-         GROUP BY secao
-         HAVING valorBase > 0 OR valorAtual > 0
+         GROUP BY 1
+         HAVING SUM(vm.valor) > 0
          ORDER BY valorBase DESC
          LIMIT 40`,
       )
@@ -1580,6 +2351,8 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
         `SELECT
             COALESCE(p.sku, vm.sku) AS sku,
             COALESCE(p.descricao, vm.sku) AS descricao,
+            p.codigoProdutoRms AS codigoProdutoRms,
+            p.digitoProdutoRms AS digitoProdutoRms,
             ${nomeSecaoSql} AS secao,
             SUM(CASE WHEN vm.anoMes LIKE ? THEN vm.valor ELSE 0 END) AS valorBase,
             SUM(CASE WHEN vm.anoMes BETWEEN ? AND ? THEN vm.valor ELSE 0 END) AS valorBaseYtd,
@@ -1590,8 +2363,8 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
          ${joinProdObrigatorio}
          WHERE ${filtroForn}
            AND (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
-         GROUP BY COALESCE(p.sku, vm.sku)
-         HAVING valorBase > 0 OR valorAtual > 0
+         GROUP BY 1, 2, 3, 4, 5
+         HAVING SUM(vm.valor) > 0
          ORDER BY valorBase DESC
          LIMIT 80`,
       )
@@ -1652,12 +2425,324 @@ export type UsuarioInternoDB = {
   role: string;
 };
 
+export { USUARIOS_FORNECEDOR_MAX };
+
+export type UsuarioFornecedorDB = {
+  id: string;
+  nome: string;
+  email: string;
+  ativo: number;
+  criadoEm: string;
+};
+
+function publicUsuarioFornecedor(row: UsuarioFornecedorRow): UsuarioFornecedorDB {
+  return {
+    id: row.id,
+    nome: row.nome,
+    email: row.email,
+    ativo: Number(row.ativo ?? 0),
+    criadoEm: row.criadoEm,
+  };
+}
+
+export const fetchUsuariosFornecedor = createServerFn({ method: "GET" })
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    const codigo = codigoFornecedorEfetivo(codigoPedido);
+    ensureUsuariosFornecedor();
+    const rows = db
+      .prepare(
+        `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm
+         FROM usuarios_fornecedor
+         WHERE fornecedorCodigo = ?
+         ORDER BY criadoEm ASC, email ASC`,
+      )
+      .all(codigo) as UsuarioFornecedorRow[];
+    return rows.map(publicUsuarioFornecedor);
+  });
+
+export const salvarUsuarioFornecedor = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      fornecedorCodigo: string;
+      id?: string;
+      nome: string;
+      email: string;
+      senha?: string;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } = await import("./server/usuarios-fornecedor");
+    const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
+    const nome = String(data.nome ?? "").trim();
+    const email = normalizarEmail(data.email);
+    const senha = String(data.senha ?? "");
+    const idExistente = String(data.id ?? "").trim();
+    if (!nome) throw new Error("Informe o nome do usuário.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error("Informe um e-mail válido.");
+    }
+    ensureUsuariosFornecedor();
+
+    const duplicado = db
+      .prepare(
+        `SELECT id FROM usuarios_fornecedor WHERE fornecedorCodigo = ? AND email = ? AND id <> ?`,
+      )
+      .get(codigo, email, idExistente || "-") as { id: string } | undefined;
+    if (duplicado) throw new Error("Este e-mail já está cadastrado neste fornecedor.");
+
+    if (idExistente) {
+      const atual = db
+        .prepare(
+          `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm
+           FROM usuarios_fornecedor WHERE id = ? AND fornecedorCodigo = ?`,
+        )
+        .get(idExistente, codigo) as UsuarioFornecedorRow | undefined;
+      if (!atual) throw new Error("Usuário não encontrado.");
+      const senhaHash = senha
+        ? (() => {
+            if (senha.length < 8) throw new Error("A senha precisa ter no mínimo 8 caracteres.");
+            return hashSenhaFornecedor(senha);
+          })()
+        : atual.senhaHash;
+      if (senha) {
+        db.prepare(
+          `UPDATE usuarios_fornecedor SET nome = ?, email = ?, senhaHash = ?, precisaTrocarSenha = 0
+           WHERE id = ? AND fornecedorCodigo = ?`,
+        ).run(nome, email, senhaHash, idExistente, codigo);
+      } else {
+        db.prepare(
+          `UPDATE usuarios_fornecedor SET nome = ?, email = ? WHERE id = ? AND fornecedorCodigo = ?`,
+        ).run(nome, email, idExistente, codigo);
+      }
+      return publicUsuarioFornecedor({ ...atual, nome, email, senhaHash });
+    }
+
+    const total = db
+      .prepare(`SELECT COUNT(*) AS total FROM usuarios_fornecedor WHERE fornecedorCodigo = ?`)
+      .get(codigo) as { total: number } | undefined;
+    if (Number(total?.total ?? 0) >= USUARIOS_FORNECEDOR_MAX) {
+      throw new Error(`Limite de ${USUARIOS_FORNECEDOR_MAX} usuários por fornecedor.`);
+    }
+    if (senha.length < 8) throw new Error("A senha precisa ter no mínimo 8 caracteres.");
+    const id = novoIdUsuarioFornecedor();
+    const criadoEm = new Date().toISOString();
+    const senhaHash = hashSenhaFornecedor(senha);
+    db.prepare(
+      `INSERT INTO usuarios_fornecedor (id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm)
+       VALUES (?, ?, ?, ?, ?, 1, ?)`,
+    ).run(id, codigo, nome, email, senhaHash, criadoEm);
+    return publicUsuarioFornecedor({
+      id,
+      fornecedorCodigo: codigo,
+      nome,
+      email,
+      senhaHash,
+      ativo: 1,
+      criadoEm,
+    });
+  });
+
+export const excluirUsuarioFornecedor = createServerFn({ method: "POST" })
+  .validator((data: { fornecedorCodigo: string; id: string }) => data)
+  .handler(async ({ data }) => {
+    const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
+    ensureUsuariosFornecedor();
+    db.prepare(`DELETE FROM usuarios_fornecedor WHERE id = ? AND fornecedorCodigo = ?`).run(
+      data.id,
+      codigo,
+    );
+    return { success: true };
+  });
+
+export const loginUsuarioFornecedor = createServerFn({ method: "POST" })
+  .validator((data: { codigo: string; email: string; senha: string }) => ({
+    codigo: String(data.codigo ?? "").trim(),
+    email: String(data.email ?? "").trim().toLowerCase(),
+    senha: String(data.senha ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { senhaFornecedorConfere } = await import("./server/usuarios-fornecedor");
+    const { email, senha } = data;
+    const forn = buscarFornecedorPorLogin(data.codigo);
+    if (!forn || forn.acessoLiberado !== 1) return null;
+    if (!vigenciaAcessoOk(forn)) return null;
+    ensureUsuariosFornecedor();
+    const row = db
+      .prepare(
+        `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm, precisaTrocarSenha
+         FROM usuarios_fornecedor
+         WHERE fornecedorCodigo = ? AND email = ?`,
+      )
+      .get(forn.codigo, email) as UsuarioFornecedorRow | undefined;
+    if (!row || Number(row.ativo) !== 1) return null;
+    const senhaOk =
+      senhaFornecedorConfere(senha, row.senhaHash) ||
+      (() => {
+        const digits = soDigitos(senha);
+        return Boolean(digits) && digits !== senha && senhaFornecedorConfere(digits, row.senhaHash);
+      })();
+    if (!senhaOk) return null;
+    const usouSenhaInicial = senhaCnpjConfere(senha, forn);
+    if (usouSenhaInicial && !flagPrecisaTrocarSenha(row)) {
+      db.prepare(`UPDATE usuarios_fornecedor SET precisaTrocarSenha = 1 WHERE id = ?`).run(row.id);
+    }
+    gravarSessaoPortal("fornecedor", forn.codigo, email);
+    return {
+      codigo: forn.codigo,
+      nome: row.nome,
+      email: row.email,
+      precisaTrocarSenha: usouSenhaInicial || flagPrecisaTrocarSenha(row),
+    };
+  });
+
+export const primeiroAcessoFornecedor = createServerFn({ method: "POST" })
+  .validator((data: { codigo: string; email: string; senha: string }) => ({
+    codigo: String(data.codigo ?? "").trim(),
+    email: String(data.email ?? "").trim().toLowerCase(),
+    senha: String(data.senha ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } = await import(
+      "./server/usuarios-fornecedor"
+    );
+    const email = normalizarEmail(data.email);
+    if (!emailLoginValido(email)) {
+      throw new Error("Informe um e-mail válido. O e-mail é o login da sua conta.");
+    }
+    const forn = exigirFornecedorLiberado(data.codigo);
+    ensureUsuariosFornecedor();
+    const existente = db
+      .prepare(
+        `SELECT id FROM usuarios_fornecedor WHERE fornecedorCodigo = ? AND email = ?`,
+      )
+      .get(forn.codigo, email) as { id: string } | undefined;
+    if (existente) {
+      throw new Error("EMAIL_JA_CADASTRADO");
+    }
+    if (!senhaCnpjConfere(data.senha, forn)) {
+      const digitouOCodigo =
+        soDigitos(data.senha) === soDigitos(data.codigo) ||
+        soDigitos(data.senha) === soDigitos(forn.codigo);
+      if (digitouOCodigo) {
+        throw new Error(
+          `A senha não é o código ${forn.codigo}. No primeiro acesso use o CNPJ ${forn.cnpj} (14 números, com ou sem pontuação).`,
+        );
+      }
+      throw new Error(
+        `No primeiro acesso a senha é o CNPJ ${forn.cnpj}. Você digitou ${soDigitos(data.senha).length} número(s); o CNPJ tem ${cnpjDoFornecedor(forn).length}.`,
+      );
+    }
+
+    const total = db
+      .prepare(`SELECT COUNT(*) AS total FROM usuarios_fornecedor WHERE fornecedorCodigo = ?`)
+      .get(forn.codigo) as { total: number } | undefined;
+    if (Number(total?.total ?? 0) >= USUARIOS_FORNECEDOR_MAX) {
+      throw new Error(
+        `Limite de ${USUARIOS_FORNECEDOR_MAX} usuários neste fornecedor. Peça a alguém já cadastrado para incluir você.`,
+      );
+    }
+
+    const id = novoIdUsuarioFornecedor();
+    const criadoEm = new Date().toISOString();
+    const senhaHash = hashSenhaFornecedor(cnpjDoFornecedor(forn));
+    const jaTemUsuario = Number(total?.total ?? 0) > 0;
+    const nome = jaTemUsuario ? nomeUsuarioDoEmail(email, forn.nome) : forn.nome;
+    db.prepare(
+      `INSERT INTO usuarios_fornecedor
+        (id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm, precisaTrocarSenha)
+       VALUES (?, ?, ?, ?, ?, 1, ?, 1)`,
+    ).run(id, forn.codigo, nome, email, senhaHash, criadoEm);
+    gravarSessaoPortal("fornecedor", forn.codigo, email);
+    return { codigo: forn.codigo, nome, email, precisaTrocarSenha: true };
+  });
+
+export const fetchMinhaContaFornecedor = createServerFn({ method: "GET" }).handler(async () => {
+  const sessao = lerSessaoPortal();
+  if (!sessao || sessao.tipo !== "fornecedor" || !sessao.usuarioEmail) return null;
+  ensureUsuariosFornecedor();
+  const row = db
+    .prepare(
+      `SELECT id, nome, email, precisaTrocarSenha FROM usuarios_fornecedor
+       WHERE fornecedorCodigo = ? AND email = ?`,
+    )
+    .get(sessao.codigo, sessao.usuarioEmail) as
+    | { id: string; nome: string; email: string; precisaTrocarSenha?: number; precisatrocarsenha?: number }
+    | undefined;
+  if (!row) return null;
+  return {
+    codigo: sessao.codigo,
+    nome: row.nome,
+    email: row.email,
+    precisaTrocarSenha: flagPrecisaTrocarSenha(row),
+  };
+});
+
+export const alterarMinhaSenhaFornecedor = createServerFn({ method: "POST" })
+  .validator((data: { novaSenha: string; senhaAtual?: string }) => ({
+    novaSenha: String(data.novaSenha ?? ""),
+    senhaAtual: String(data.senhaAtual ?? ""),
+  }))
+  .handler(async ({ data }) => {
+    const { senhaFornecedorConfere, hashSenhaFornecedor } = await import(
+      "./server/usuarios-fornecedor"
+    );
+    const sessao = exigirSessaoFornecedor();
+    if (data.novaSenha.length < 8) {
+      throw new Error("A nova senha precisa ter no mínimo 8 caracteres.");
+    }
+    ensureUsuariosFornecedor();
+    const row = db
+      .prepare(
+        `SELECT id, senhaHash, precisaTrocarSenha FROM usuarios_fornecedor
+         WHERE fornecedorCodigo = ? AND email = ?`,
+      )
+      .get(sessao.codigo, sessao.email) as
+      | {
+          id: string;
+          senhaHash: string;
+          precisaTrocarSenha?: number;
+          precisatrocarsenha?: number;
+        }
+      | undefined;
+    if (!row) throw new Error("Usuário não encontrado. Entre de novo.");
+    const precisa = flagPrecisaTrocarSenha(row);
+    if (!precisa) {
+      if (!data.senhaAtual) throw new Error("Informe a senha atual.");
+      const atualOk =
+        senhaFornecedorConfere(data.senhaAtual, row.senhaHash) ||
+        (() => {
+          const digits = soDigitos(data.senhaAtual);
+          return (
+            Boolean(digits) &&
+            digits !== data.senhaAtual &&
+            senhaFornecedorConfere(digits, row.senhaHash)
+          );
+        })();
+      if (!atualOk) throw new Error("A senha atual não confere.");
+    }
+    const forn = db
+      .prepare("SELECT codigo, cnpj, cnpjSenhaInicial FROM fornecedores WHERE codigo = ?")
+      .get(sessao.codigo) as FornecedorDB | undefined;
+    if (forn && senhaCnpjConfere(data.novaSenha, forn)) {
+      throw new Error("Não use o CNPJ como senha definitiva. Escolha uma senha sua.");
+    }
+    const senhaHash = hashSenhaFornecedor(data.novaSenha);
+    db.prepare(
+      `UPDATE usuarios_fornecedor SET senhaHash = ?, precisaTrocarSenha = 0 WHERE id = ?`,
+    ).run(senhaHash, row.id);
+    return { ok: true as const, precisaTrocarSenha: false };
+  });
+
 export const loginUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; senha: string }) => data)
   .handler(async ({ data }) => {
-    const { username, senha } = data;
+    const username = String(data.username ?? "")
+      .trim()
+      .toLowerCase();
+    const senha = String(data.senha ?? "");
     const stmt = db.prepare(
-      "SELECT username, nome, role FROM usuarios_internos WHERE username = ? AND senha = ?",
+      "SELECT username, nome, role FROM usuarios_internos WHERE lower(username) = ? AND senha = ?",
     );
     const user = stmt.get(username, senha) as UsuarioInternoDB | undefined;
     if (user) gravarSessaoPortal("interno", user.username);
@@ -1665,17 +2750,17 @@ export const loginUsuarioInterno = createServerFn({ method: "POST" })
   });
 
 export const iniciarSessaoFornecedor = createServerFn({ method: "POST" })
-  .validator((data: { codigo: string }) => ({ codigo: normalizarCodigoFornecedor(data.codigo) }))
+  .validator((data: { codigo: string }) => ({ codigo: String(data.codigo ?? "").trim() }))
   .handler(async ({ data }) => {
-    const codigo = data.codigo;
-    const row = db
-      .prepare("SELECT codigo, acessoLiberado FROM fornecedores WHERE codigo = ?")
-      .get(codigo) as { codigo: string; acessoLiberado?: number } | undefined;
-    if (!row || row.acessoLiberado !== 1) {
+    const forn = buscarFornecedorPorLogin(data.codigo);
+    if (!forn || forn.acessoLiberado !== 1) {
       throw new Error("Acesso não liberado.");
     }
-    gravarSessaoPortal("fornecedor", codigo);
-    return { ok: true, codigo };
+    if (!vigenciaAcessoOk(forn)) {
+      throw new Error("Acesso fora do período de vigência contratado.");
+    }
+    gravarSessaoPortal("fornecedor", forn.codigo);
+    return { ok: true, codigo: forn.codigo };
   });
 
 export const encerrarSessaoPortal = createServerFn({ method: "POST" }).handler(async () => {
@@ -1690,6 +2775,15 @@ export const restaurarSessaoPortal = createServerFn({ method: "POST" })
     codigo: String(data.codigo ?? "").trim(),
   }))
   .handler(async ({ data }) => {
+    const sessaoAtual = lerSessaoPortal();
+    if (sessaoAtual && sessaoAtual.tipo === data.tipo) {
+      const codigoEfetivo =
+        data.tipo === "interno" ? data.codigo : resolverCodigoFornecedorDados(data.codigo);
+      if (sessaoAtual.codigo === codigoEfetivo) {
+        return { ok: true, tipo: data.tipo, codigo: sessaoAtual.codigo };
+      }
+    }
+
     if (data.tipo === "interno") {
       const user = db
         .prepare("SELECT username FROM usuarios_internos WHERE username = ?")
@@ -1698,7 +2792,7 @@ export const restaurarSessaoPortal = createServerFn({ method: "POST" })
       gravarSessaoPortal("interno", user.username);
       return { ok: true, tipo: "interno" as const, codigo: user.username };
     }
-    const codigo = normalizarCodigoFornecedor(data.codigo);
+    const codigo = resolverCodigoFornecedorDados(data.codigo);
     const row = db
       .prepare("SELECT codigo, acessoLiberado FROM fornecedores WHERE codigo = ?")
       .get(codigo) as { codigo: string; acessoLiberado?: number } | undefined;
@@ -1719,12 +2813,28 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; nome: string; senha: string; role: string }) => data)
   .handler(async ({ data }) => {
     exigirInterno();
-    const { username, nome, senha, role } = data;
-    const stmt = db.prepare(
-      "INSERT INTO usuarios_internos (username, nome, senha, role) VALUES (?, ?, ?, ?)",
-    );
-    stmt.run(username, nome, senha, role);
-    return { success: true };
+    const username = String(data.username ?? "")
+      .trim()
+      .toLowerCase();
+    const nome = String(data.nome ?? "").trim();
+    const senha = String(data.senha ?? "").trim();
+    const role = data.role === "colaborador" ? "colaborador" : "admin";
+    if (!username || !nome || !senha) {
+      throw new Error("Preencha usuário, nome e senha.");
+    }
+    if (!/^[a-z0-9._-]+$/.test(username)) {
+      throw new Error("Use só letras, números, ponto, hífen ou underline no login.");
+    }
+    const existe = db
+      .prepare("SELECT username FROM usuarios_internos WHERE lower(username) = ?")
+      .get(username) as { username: string } | undefined;
+    if (existe) {
+      throw new Error(`O usuário ${username} já está cadastrado.`);
+    }
+    db.prepare(
+      `INSERT INTO usuarios_internos (username, nome, senha, "role") VALUES (?, ?, ?, ?)`,
+    ).run(username, nome, senha, role);
+    return { success: true, username };
   });
 
 export const deleteUsuarioInterno = createServerFn({ method: "POST" })
@@ -1841,4 +2951,34 @@ export const responderPropostaPreco = createServerFn({ method: "POST" })
 
     transaction();
     return { success: true };
+  });
+
+export const updateSupplierAccessConfig = createServerFn({ method: "POST" })
+  .validator((data: { codigo: string; isentoCobranca: number; acessoDataInicio: string | null; acessoDataFim: string | null }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    ensureFornecedoresColumns();
+    const { codigo, isentoCobranca, acessoDataInicio, acessoDataFim } = data;
+    db.prepare(
+      "UPDATE fornecedores SET isentoCobranca = ?, acessoDataInicio = ?, acessoDataFim = ? WHERE codigo = ?"
+    ).run(isentoCobranca, acessoDataInicio, acessoDataFim, codigo);
+    return { success: true };
+  });
+
+export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
+  .validator((data: { codigo: string }) => ({ codigo: normalizarCodigoFornecedor(data.codigo) }))
+  .handler(async ({ data }) => {
+    exigirInterno();
+    const codigo = resolverCodigoFornecedorDados(data.codigo);
+    if (!codigo) throw new Error("Código de fornecedor inválido.");
+
+    try {
+      const cmd = `LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo ${codigo}`;
+      const { stdout, stderr } = await execAsync(cmd);
+      console.log("Atualização RMS imediata:", stdout, stderr);
+      return { success: true, message: "Atualização no RMS realizada com sucesso!" };
+    } catch (err) {
+      console.error("Erro ao sincronizar fornecedor imediatamente:", err);
+      throw new Error("Erro de execução no script de sincronização do RMS.");
+    }
   });

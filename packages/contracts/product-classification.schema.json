@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/product-classification.schema.json",
+  "title": "Portal Fornecedor - classificacao mercadologica de produtos",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generatedAt", "homologationStatus", "supplierId", "page", "rows"],
+  "properties": {
+    "generatedAt": { "$ref": "common.schema.json#/$defs/isoDateTime" },
+    "homologationStatus": { "$ref": "common.schema.json#/$defs/homologationStatus" },
+    "supplierId": { "$ref": "common.schema.json#/$defs/uuid" },
+    "dataFreshness": { "$ref": "common.schema.json#/$defs/dataFreshness" },
+    "page": { "$ref": "common.schema.json#/$defs/pageMeta" },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sku",
+          "description",
+          "departmentCode",
+          "department",
+          "sectionCode",
+          "section",
+          "groupCode",
+          "group",
+          "subgroupCode",
+          "subgroup",
+          "family",
+          "commercialRole",
+          "abcClass",
+          "writesToErp"
+        ],
+        "properties": {
+          "sku": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "departmentCode": { "type": "string", "minLength": 1 },
+          "department": { "type": "string", "minLength": 1 },
+          "sectionCode": { "type": "string", "minLength": 1 },
+          "section": { "type": "string", "minLength": 1 },
+          "groupCode": { "type": "string", "minLength": 1 },
+          "group": { "type": "string", "minLength": 1 },
+          "subgroupCode": { "type": "string", "minLength": 1 },
+          "subgroup": { "type": "string", "minLength": 1 },
+          "family": { "type": "string", "minLength": 1 },
+          "commercialRole": {
+            "type": "string",
+            "enum": ["destino", "rotina", "conveniencia", "sazonal", "nao_classificado"]
+          },
+          "abcClass": { "type": "string", "enum": ["A", "B", "C", "D", "nao_classificado"] },
+          "sellOutAmount": { "$ref": "common.schema.json#/$defs/money" },
+          "sellOutQty": { "type": "number", "minimum": 0 },
+          "avgDailySales90Amount": { "$ref": "common.schema.json#/$defs/money" },
+          "subgroupSalesSharePct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "subgroupCumulativeSharePct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "grossMarginPct": { "type": "number", "minimum": -100, "maximum": 100 },
+          "stockQty": { "type": "number", "minimum": 0 },
+          "stockoutBranchCount": { "type": "integer", "minimum": 0 },
+          "fillRatePct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "writesToErp": { "const": false }
+        }
+      }
+    }
+  }
+}

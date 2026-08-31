@@ -126,7 +126,6 @@
   --card-foreground: oklch(0.245 0.012 50);
 }
 
-
 @layer base {
   * {
     border-color: var(--color-border);
@@ -209,4 +208,3 @@
     transform: none;
   }
 }
-

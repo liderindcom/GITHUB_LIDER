@@ -1,0 +1,1 @@
+export const USUARIOS_FORNECEDOR_MAX = 5;

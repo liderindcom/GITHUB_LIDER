@@ -1,25 +1,19 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, KeyRound, Lock, QrCode, ShieldCheck, Truck, User } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Lock, Mail, ShieldCheck, Truck, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { LiderLogo } from "@/components/lider-logo";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePortal } from "@/context/portal-context";
-import { fornecedor, normalizarCodigoFornecedor } from "@/lib/mock-data";
-import { fetchFornecedor, iniciarSessaoFornecedor, loginUsuarioInterno } from "@/api";
-
-const senhaForte = (senha: string) =>
-  senha.length >= 8 && /[^A-Za-z0-9]/.test(senha) && /[A-Za-z]/.test(senha);
+import { soDigitos } from "@/lib/fornecedor-codigo";
+import {
+  loginUsuarioFornecedor,
+  loginUsuarioInterno,
+  primeiroAcessoFornecedor,
+} from "@/api";
 
 const destaques = [
   { icone: Truck, titulo: "Agendamento de NF-e", texto: "Janelas de descarga em tempo real" },
@@ -29,99 +23,92 @@ const destaques = [
 
 export function LoginScreen() {
   const navigate = useNavigate();
-  const { entrar, concluirPrimeiroAcesso, primeiroAcessoConcluido } = usePortal();
+  const { entrar } = usePortal();
 
   const [mounted, setMounted] = useState(false);
   const [codigo, setCodigo] = useState("");
 
   useEffect(() => {
     setMounted(true);
-    setCodigo(fornecedor.codigo);
   }, []);
   const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [emailUsuario, setEmailUsuario] = useState("");
   const [erro, setErro] = useState<string | null>(null);
-
-  const [onboardingAberto, setOnboardingAberto] = useState(false);
-  const [novaSenha, setNovaSenha] = useState("");
-  const [confirmacao, setConfirmacao] = useState("");
-  const [codigoMfa, setCodigoMfa] = useState("");
-  const [erroOnboarding, setErroOnboarding] = useState<string | null>(null);
 
   async function acessar() {
     setErro(null);
-    
+
     try {
-      // 1. Tentar login como usuario interno primeiro
-      const userInterno = await loginUsuarioInterno({
-        data: { username: codigo, senha }
-      });
-      if (userInterno) {
-        entrar(undefined, userInterno);
-        toast.success("Acesso administrativo liberado", {
-          description: `Bem-vindo, ${userInterno.nome}.`,
+      const email = emailUsuario.trim().toLowerCase();
+
+      if (!email) {
+        const userInterno = await loginUsuarioInterno({
+          data: { username: codigo.trim(), senha },
+        }).catch((err) => {
+          console.error("login interno", err);
+          return undefined;
         });
-        navigate({ to: "/admin-fornecedores" });
+        if (userInterno) {
+          entrar(undefined, userInterno);
+          toast.success("Acesso administrativo liberado", {
+            description: `Bem-vindo, ${userInterno.nome}.`,
+          });
+          navigate({ to: "/admin-fornecedores" });
+          return;
+        }
+        setErro("Informe o e-mail do usuário. É o login da sua conta — não deixe em branco.");
         return;
       }
 
-      // 2. Se nao for usuario interno, prossegue com fornecedor
-      const codForn = normalizarCodigoFornecedor(codigo);
-      const fornEncontrado = await fetchFornecedor({ data: codForn });
-
-      if (!fornEncontrado) {
-        setErro("Código do fornecedor não encontrado.");
+      const ident = soDigitos(codigo) || codigo.trim();
+      const usuario = await loginUsuarioFornecedor({
+        data: { codigo: ident, email, senha },
+      });
+      if (usuario) {
+        const precisa = Boolean(usuario.precisaTrocarSenha);
+        entrar(usuario.codigo, undefined, {
+          nome: usuario.nome,
+          email: usuario.email,
+          precisaTrocarSenha: precisa,
+        });
+        toast.success("Acesso liberado", { description: `Bem-vindo, ${usuario.nome}.` });
+        navigate({ to: precisa ? "/corrigir-senha" : "/dashboard" });
         return;
       }
 
-      // Verificar se o acesso está liberado para este fornecedor
-      if (fornEncontrado.acessoLiberado !== 1) {
-        setErro("Acesso não liberado. Entre em contato com a equipe comercial do Grupo Líder.");
-        return;
+      try {
+        const criado = await primeiroAcessoFornecedor({
+          data: { codigo: ident, email, senha },
+        });
+        entrar(criado.codigo, undefined, {
+          nome: criado.nome,
+          email: criado.email,
+          precisaTrocarSenha: true,
+        });
+        toast.success("Primeiro acesso liberado", {
+          description: `Conta criada para ${criado.email}. Corrija a senha no menu do portal.`,
+        });
+        navigate({ to: "/corrigir-senha" });
+      } catch (primeiroErr) {
+        const msg = primeiroErr instanceof Error ? primeiroErr.message : "";
+        if (msg.includes("EMAIL_JA_CADASTRADO")) {
+          setErro(
+            "E-mail ou senha inválidos. Peça a outro usuário da empresa (menu Usuários) ou ao comercial do Grupo Líder para corrigir a senha.",
+          );
+          return;
+        }
+        throw primeiroErr;
       }
-
-      const senhaPadrao = fornEncontrado.cnpjSenhaInicial;
-
-      if (!primeiroAcessoConcluido && senha === senhaPadrao) {
-        setOnboardingAberto(true);
-        return;
-      }
-      if (senha.length < 8) {
-        setErro("Senha inválida. Use a senha cadastrada no primeiro acesso.");
-        return;
-      }
-      await iniciarSessaoFornecedor({ data: { codigo: codForn } });
-      entrar(codForn);
-      toast.success("Acesso liberado", { description: `Bem-vindo, ${fornEncontrado.nome}.` });
-      navigate({ to: "/dashboard" });
     } catch (err) {
       console.error("Erro no login:", err);
-      setErro("Erro de conexão ao servidor. Tente novamente.");
-    }
-  }
-
-  function concluirOnboarding() {
-    setErroOnboarding(null);
-    if (!senhaForte(novaSenha)) {
-      setErroOnboarding(
-        "A nova senha precisa de no mínimo 8 caracteres, com letras e 1 caractere especial.",
+      const msg = err instanceof Error ? err.message : "";
+      setErro(
+        msg && !/server action|serverFn|conexão/i.test(msg)
+          ? msg
+          : "Não foi possível entrar. Confira código/CNPJ, e-mail e senha, ou recarregue a página.",
       );
-      return;
     }
-    if (novaSenha !== confirmacao) {
-      setErroOnboarding("A confirmação de senha não confere.");
-      return;
-    }
-    if (!/^\d{6}$/.test(codigoMfa)) {
-      setErroOnboarding("Informe o código de verificação de 6 dígitos enviado por e-mail.");
-      return;
-    }
-    const codForn = normalizarCodigoFornecedor(codigo);
-    void iniciarSessaoFornecedor({ data: { codigo: codForn } });
-    concluirPrimeiroAcesso();
-    entrar(codForn);
-    setOnboardingAberto(false);
-    toast.success("Primeiro acesso concluído", { description: "MFA ativado com sucesso." });
-    navigate({ to: "/dashboard" });
   }
 
   return (
@@ -178,7 +165,8 @@ export function LoginScreen() {
           </div>
           <h2 className="font-display text-2xl font-bold">Acesse sua conta</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Primeiro acesso? Use o CNPJ da empresa (somente números) como senha inicial.
+            Código RMS ou CNPJ, e-mail e senha. No primeiro acesso a senha é o CNPJ; o portal
+            pede em seguida para corrigir a senha no menu.
           </p>
 
           <div className="mt-6 space-y-4">
@@ -187,7 +175,7 @@ export function LoginScreen() {
                 htmlFor="codigo"
                 className="text-xs uppercase tracking-wider text-muted-foreground"
               >
-                Código do Fornecedor
+                Código RMS ou CNPJ
               </Label>
               <div className="relative">
                 <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -195,7 +183,28 @@ export function LoginScreen() {
                   id="codigo"
                   value={codigo}
                   onChange={(e) => setCodigo(e.target.value)}
-                  placeholder="4050"
+                  placeholder="20922-8 ou CNPJ"
+                  className="h-11 bg-card/60 pl-9"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label
+                htmlFor="email-usuario"
+                className="text-xs uppercase tracking-wider text-muted-foreground"
+              >
+                E-mail do usuário
+              </Label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="email-usuario"
+                  type="email"
+                  value={emailUsuario}
+                  onChange={(e) => setEmailUsuario(e.target.value)}
+                  placeholder="nome@empresa.com"
+                  autoComplete="username"
                   className="h-11 bg-card/60 pl-9"
                 />
               </div>
@@ -212,14 +221,28 @@ export function LoginScreen() {
                 <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="senha"
-                  type="password"
+                  type={mostrarSenha ? "text" : "password"}
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && acessar()}
-                  placeholder="••••••••"
-                  className="h-11 bg-card/60 pl-9"
+                  placeholder="Senha ou CNPJ no primeiro acesso"
+                  autoComplete="current-password"
+                  className="h-11 bg-card/60 pl-9 pr-11"
                 />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={() => setMostrarSenha((v) => !v)}
+                  aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {mostrarSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
               </div>
+              {senha ? (
+                <p className="text-[11px] text-muted-foreground">
+                  {soDigitos(senha).length} número(s) · {mostrarSenha ? "visível" : "oculta"}
+                </p>
+              ) : null}
             </div>
 
             {erro && (
@@ -236,89 +259,15 @@ export function LoginScreen() {
               <ArrowRight className="ml-1 size-4 transition-transform group-hover:translate-x-1" />
             </Button>
 
-            {mounted && (
+            {mounted ? (
               <p className="text-center text-xs text-muted-foreground">
-                Demonstração: código{" "}
-                <span className="font-semibold text-foreground">{fornecedor.codigo}</span> e senha{" "}
-                <span className="font-semibold text-foreground">{fornecedor.cnpjSenhaInicial}</span>
+                Primeiro acesso: e-mail + senha = CNPJ, depois o menu Corrigir senha. Equipe
+                Líder: usuário interno no primeiro campo, e-mail em branco.
               </p>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
-
-      <Dialog open={onboardingAberto} onOpenChange={() => undefined}>
-        <DialogContent className="max-w-lg border-border bg-elevated [&>button]:hidden">
-          <DialogHeader>
-            <DialogTitle className="font-display">Primeiro acesso obrigatório</DialogTitle>
-            <DialogDescription>
-              Cadastre uma nova senha e ative a autenticação de dois fatores para continuar.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="nova-senha">Nova senha</Label>
-              <Input
-                id="nova-senha"
-                type="password"
-                value={novaSenha}
-                onChange={(e) => setNovaSenha(e.target.value)}
-                placeholder="Mínimo 8 caracteres e 1 especial"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirma-senha">Confirmar nova senha</Label>
-              <Input
-                id="confirma-senha"
-                type="password"
-                value={confirmacao}
-                onChange={(e) => setConfirmacao(e.target.value)}
-              />
-            </div>
-
-            <div className="rounded-2xl border border-border bg-card/60 p-4">
-              <div className="flex items-start gap-4">
-                <div className="grid size-24 shrink-0 place-items-center rounded-xl border border-border bg-background">
-                  <QrCode className="size-16 text-primary" />
-                </div>
-                <div className="space-y-1 text-sm">
-                  <p className="font-display font-semibold">Onboarding de MFA</p>
-                  <p className="text-muted-foreground">
-                    Escaneie o QR Code no seu app autenticador e informe o código de 6 dígitos
-                    enviado para o e-mail cadastrado do fornecedor.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                <Label htmlFor="mfa">Código de verificação</Label>
-                <Input
-                  id="mfa"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={codigoMfa}
-                  onChange={(e) => setCodigoMfa(e.target.value.replace(/\D/g, ""))}
-                  placeholder="000000"
-                  className="tracking-[0.4em]"
-                />
-              </div>
-            </div>
-
-            {erroOnboarding && (
-              <p className="rounded-xl border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
-                {erroOnboarding}
-              </p>
-            )}
-
-            <Button
-              className="h-11 w-full rounded-xl font-semibold shadow-ember"
-              onClick={concluirOnboarding}
-            >
-              Concluir cadastro e ativar MFA
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
