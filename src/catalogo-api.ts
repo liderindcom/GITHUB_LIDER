@@ -6,6 +6,7 @@ import {
   codigoFornecedorEfetivo,
   exigirInterno,
   exigirSessaoFornecedor,
+  lerSessaoPortal,
 } from "@/server/sessao-portal";
 import { db } from "@/server/db";
 
@@ -104,17 +105,24 @@ function ensureCatalogoComercial() {
   }
 }
 
-export const fetchCatalogoComercial = createServerFn({ method: "GET" }).handler(async () => {
-  ensureCatalogoComercial();
-  const sessao = exigirSessaoFornecedor();
-  return db
-    .prepare(
-      `SELECT *, dadosfichaliderjson AS "dadosFichaLiderJson" FROM catalogo_comercial_fornecedor
+export const fetchCatalogoComercial = createServerFn({ method: "GET" })
+  .validator((data: { fornecedorCodigo?: string }) => data)
+  .handler(async ({ data }) => {
+    ensureCatalogoComercial();
+    const sessao = lerSessaoPortal();
+    if (!sessao) throw new Error("Sessão do portal exigida.");
+    const fornecedorCodigo =
+      sessao.tipo === "fornecedor"
+        ? codigoFornecedorEfetivo(sessao.codigo)
+        : codigoFornecedorEfetivo(data.fornecedorCodigo || sessao.codigo);
+    return db
+      .prepare(
+        `SELECT *, dadosfichaliderjson AS "dadosFichaLiderJson" FROM catalogo_comercial_fornecedor
      WHERE fornecedorCodigo = ? AND status <> 'ARQUIVADO'
      ORDER BY atualizadoEm DESC`,
-    )
-    .all(codigoFornecedorEfetivo(sessao.codigo)) as CatalogoComercialDB[];
-});
+      )
+      .all(fornecedorCodigo) as CatalogoComercialDB[];
+  });
 
 type CatalogoComercialInput = Omit<
   CatalogoComercialDB,

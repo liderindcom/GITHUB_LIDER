@@ -5,6 +5,7 @@ import {
   Download,
   FileSpreadsheet,
   ImagePlus,
+  ImageOff,
   PackagePlus,
   Save,
   Send,
@@ -84,7 +85,7 @@ function CatalogoComercialPage() {
   const [importando, setImportando] = useState(false);
 
   useEffect(() => {
-    void fetchCatalogoComercial()
+    void fetchCatalogoComercial({ data: { fornecedorCodigo: fornecedor.codigo } })
       .then((dados) => {
         setItens(dados);
         setCarregando(false);
@@ -117,6 +118,7 @@ function CatalogoComercialPage() {
       {
         "Cod Interno": "REF-001",
         "Descrição do Produto": "Produto exemplo",
+        "Imagem URL": "https://...",
         "Embl. Qtde na Cx": 12,
         "Custo do Fornecedor": 29.9,
         "IPI %": 0,
@@ -163,7 +165,7 @@ function CatalogoComercialPage() {
     setImportando(true);
     try {
       const resultado = await importarCatalogoComercial({ data: { itens: previewImportacao } });
-      setItens(await fetchCatalogoComercial());
+      setItens(await fetchCatalogoComercial({ data: { fornecedorCodigo: fornecedor.codigo } }));
       setPreviewImportacao([]);
       setArquivoImportacao("");
       toast.success(String(resultado.importados) + " item(ns) importado(s) como rascunho.");
@@ -272,35 +274,55 @@ function CatalogoComercialPage() {
             )}
             {previewImportacao.length > 0 && (
               <div className="space-y-3">
-                <div className="max-h-56 overflow-auto rounded-lg border">
-                  <table className="w-full text-left text-xs">
-                    <thead className="sticky top-0 bg-muted">
-                      <tr>
-                        <th className="p-2">Código</th>
-                        <th className="p-2">Descrição</th>
-                        <th className="p-2">EAN</th>
-                        <th className="p-2 text-right">Custo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewImportacao.slice(0, 20).map((item, indice) => {
-                        const ficha = item.dadosFichaLiderJson
-                          ? (JSON.parse(item.dadosFichaLiderJson) as {
-                              ean13?: string;
-                              custoFornecedor?: number;
-                            })
-                          : {};
-                        return (
-                          <tr key={item.codigoFornecedor + "-" + indice} className="border-t">
-                            <td className="p-2 font-mono">{item.codigoFornecedor || "—"}</td>
-                            <td className="p-2 font-medium">{item.descricao}</td>
-                            <td className="p-2">{ficha.ean13 || "—"}</td>
-                            <td className="p-2 text-right">{ficha.custoFornecedor ?? "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {previewImportacao.slice(0, 20).map((item, indice) => {
+                    const ficha = item.dadosFichaLiderJson
+                      ? (JSON.parse(item.dadosFichaLiderJson) as {
+                          ean13?: string;
+                          custoFornecedor?: number;
+                        })
+                      : {};
+                    return (
+                      <article
+                        key={item.codigoFornecedor + "-" + indice}
+                        className="overflow-hidden rounded-xl border bg-card"
+                      >
+                        <div className="flex h-36 items-center justify-center bg-muted/40">
+                          {item.imagemUrl ? (
+                            <img
+                              src={item.imagemUrl}
+                              alt={item.descricao}
+                              className="h-full w-full object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+                              <ImageOff className="size-8 opacity-50" />
+                              Sem imagem na planilha
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 p-3 text-xs">
+                          <p className="font-semibold">{item.descricao}</p>
+                          <p className="font-mono text-muted-foreground">
+                            {item.codigoFornecedor || "Sem código"}
+                          </p>
+                          <div className="flex justify-between gap-2 text-muted-foreground">
+                            <span>EAN: {ficha.ean13 || "—"}</span>
+                            <span>Custo: {ficha.custoFornecedor ?? "—"}</span>
+                          </div>
+                          {item.imagemUrl && (
+                            <p
+                              className="truncate text-[10px] text-muted-foreground"
+                              title={item.imagemUrl}
+                            >
+                              {item.imagemUrl}
+                            </p>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
                 {previewImportacao.length > 20 && (
                   <p className="text-xs text-muted-foreground">
@@ -543,6 +565,7 @@ function Campo({
 }
 
 const ALIASES_FICHA_LIDER: Record<string, string[]> = {
+  imagemUrl: ["imagem", "imagem url", "url imagem", "foto", "foto url", "imagem principal"],
   codigoInterno: ["cod interno", "referencia", "referência", "codigo produto", "código produto"],
   descricao: ["descricao do produto", "descrição do produto", "produto", "descricao", "descrição"],
   embalagemQuantidade: [
@@ -669,7 +692,7 @@ async function lerFichaLider(arquivo: File) {
       categoria: null,
       subcategoria: null,
       skuReferencia: codigo || null,
-      imagemUrl: null,
+      imagemUrl: valorTexto(ficha["imagemUrl"]) || null,
       fichaTecnica: "Ficha técnica Líder importada; revisão comercial pendente.",
       variacoesJson: null,
       dadosFichaLiderJson: JSON.stringify(ficha),
