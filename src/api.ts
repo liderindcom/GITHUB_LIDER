@@ -2331,41 +2331,23 @@ function crescimentoPct(atual: number, base: number): number | null {
   return (atual / base - 1) * 100;
 }
 
-function escopoSegmentoVendas(codigoFornecedor: string): {
-  segmento: string;
-  departamentos: string[];
-} {
+function escopoSegmentoVendas(codigoFornecedor: string): { segmento: string; departamentos: string[] } {
   const produtosFornecedor = db
     .prepare(
       `SELECT DISTINCT p.departamentoCodigo, p.departamento
        FROM produtos p
        WHERE ${sqlSkuVisivel("p")}`,
     )
-    .all(codigoFornecedor) as Array<{
-    departamentoCodigo?: string | null;
-    departamento?: string | null;
-  }>;
+    .all(codigoFornecedor) as Array<{ departamentoCodigo?: string | null; departamento?: string | null }>;
 
   const segmentos = new Set(
     produtosFornecedor.map((p) => segmentoIntelider(p.departamentoCodigo, p.departamento)),
   );
-  const segmento =
-    segmentos.size === 1
-      ? (Array.from(segmentos)[0] ?? "OUTROS")
-      : segmentos.size > 1
-        ? "MIX DE SEGMENTOS"
-        : "OUTROS";
-  const departamentos = (
-    db.prepare("SELECT DISTINCT departamentoCodigo, departamento FROM produtos").all() as Array<{
-      departamentoCodigo?: string | null;
-      departamento?: string | null;
-    }>
-  )
-    .filter(
-      (p) =>
-        segmentos.size === 0 ||
-        segmentos.has(segmentoIntelider(p.departamentoCodigo, p.departamento)),
-    )
+  const segmento = segmentos.size === 1 ? Array.from(segmentos)[0] ?? "OUTROS" : segmentos.size > 1 ? "MIX DE SEGMENTOS" : "OUTROS";
+  const departamentos = (db
+    .prepare("SELECT DISTINCT departamentoCodigo, departamento FROM produtos")
+    .all() as Array<{ departamentoCodigo?: string | null; departamento?: string | null }>)
+    .filter((p) => segmentos.size === 0 || segmentos.has(segmentoIntelider(p.departamentoCodigo, p.departamento)))
     .map((p) => String(p.departamentoCodigo ?? "").trim())
     .filter(Boolean);
 
@@ -2402,22 +2384,6 @@ export type OfertasInteliderDB = {
   fonte: "intelider";
   atualizadoEm: string | null;
 };
-
-export type OfertaCompartilhadaDB = OfertaInteliderDB & {
-  aceiteStatus: "pendente" | "aceita";
-};
-
-function ensureAceitesOfertasRebaixa() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS ofertas_rebaixa_aceites (
-      id TEXT PRIMARY KEY, ofertaId TEXT NOT NULL, fornecedorCodigo TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'aceita', aceitoEm TEXT NOT NULL,
-      UNIQUE (ofertaId, fornecedorCodigo)
-    );
-    CREATE INDEX IF NOT EXISTS idx_ofertas_rebaixa_aceites_fornecedor
-      ON ofertas_rebaixa_aceites (fornecedorCodigo, status);
-  `);
-}
 
 function ensureOfertasIntelider() {
   db.exec(`
@@ -2511,186 +2477,54 @@ function ensureSolicitacoesRebaixa() {
 export const fetchRebaixaSegmentosEmail = createServerFn({ method: "GET" }).handler(async () => {
   exigirInterno();
   ensureSolicitacoesRebaixa();
-  return db
-    .prepare("SELECT segmento, email, atualizadoEm FROM rebaixa_segmento_emails ORDER BY segmento")
-    .all() as RebaixaSegmentoEmailDB[];
+  return db.prepare("SELECT segmento, email, atualizadoEm FROM rebaixa_segmento_emails ORDER BY segmento").all() as RebaixaSegmentoEmailDB[];
 });
 
 export const saveRebaixaSegmentoEmail = createServerFn({ method: "POST" })
   .validator((data: { segmento: string; email: string }) => data)
   .handler(async ({ data }) => {
     exigirInterno();
-    const segmento = String(data.segmento ?? "")
-      .trim()
-      .toUpperCase();
-    const email = String(data.email ?? "")
-      .trim()
-      .toLowerCase();
-    if (!segmento || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))
-      throw new Error("Informe segmento e e-mail válidos.");
+    const segmento = String(data.segmento ?? "").trim().toUpperCase();
+    const email = String(data.email ?? "").trim().toLowerCase();
+    if (!segmento || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Informe segmento e e-mail válidos.");
     ensureSolicitacoesRebaixa();
-    db.prepare(
-      `INSERT INTO rebaixa_segmento_emails (segmento, email, atualizadoEm) VALUES (?, ?, datetime('now')) ON CONFLICT(segmento) DO UPDATE SET email=excluded.email, atualizadoEm=excluded.atualizadoEm`,
-    ).run(segmento, email);
+    db.prepare(`INSERT INTO rebaixa_segmento_emails (segmento, email, atualizadoEm) VALUES (?, ?, datetime('now')) ON CONFLICT(segmento) DO UPDATE SET email=excluded.email, atualizadoEm=excluded.atualizadoEm`).run(segmento, email);
     return { success: true };
   });
 
-export const fetchMinhasSolicitacoesRebaixa = createServerFn({ method: "GET" }).handler(
-  async () => {
-    const sessao = exigirSessaoFornecedor();
-    ensureSolicitacoesRebaixa();
-    return db
-      .prepare(
-        "SELECT * FROM rebaixa_solicitacoes WHERE fornecedorCodigo = ? ORDER BY criadoEm DESC",
-      )
-      .all(sessao.codigo) as RebaixaSolicitacaoDB[];
-  },
-);
+export const fetchMinhasSolicitacoesRebaixa = createServerFn({ method: "GET" }).handler(async () => {
+  const sessao = exigirSessaoFornecedor();
+  ensureSolicitacoesRebaixa();
+  return db.prepare("SELECT * FROM rebaixa_solicitacoes WHERE fornecedorCodigo = ? ORDER BY criadoEm DESC").all(sessao.codigo) as RebaixaSolicitacaoDB[];
+});
 
 export const submitSolicitacaoRebaixa = createServerFn({ method: "POST" })
-  .validator(
-    (data: {
-      titulo: string;
-      dataInicio: string;
-      dataFim: string;
-      segmentos: string[];
-      lojas: string[];
-      itens: unknown[];
-    }) => data,
-  )
+  .validator((data: { titulo: string; dataInicio: string; dataFim: string; segmentos: string[]; lojas: string[]; itens: unknown[] }) => data)
   .handler(async ({ data }) => {
     const sessao = exigirSessaoFornecedor();
     const titulo = String(data.titulo ?? "").trim();
     const dataInicio = String(data.dataInicio ?? "");
     const dataFim = String(data.dataFim ?? "");
-    if (
-      !titulo ||
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(dataInicio) ||
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(dataFim) ||
-      dataFim < dataInicio
-    )
-      throw new Error("Informe título e período válidos.");
-    const segmentos = [
-      ...new Set(data.segmentos.map((v) => String(v).trim().toUpperCase()).filter(Boolean)),
-    ];
+    if (!titulo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dataInicio) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dataFim) || dataFim < dataInicio) throw new Error("Informe título e período válidos.");
+    const segmentos = [...new Set(data.segmentos.map((v) => String(v).trim().toUpperCase()).filter(Boolean))];
     const lojas = [...new Set(data.lojas.map((v) => String(v).trim()).filter(Boolean))];
-    if (!segmentos.length || !lojas.length || !data.itens.length)
-      throw new Error("Informe segmento, lojas e ao menos um produto.");
+    if (!segmentos.length || !lojas.length || !data.itens.length) throw new Error("Informe segmento, lojas e ao menos um produto.");
     ensureSolicitacoesRebaixa();
     if (tabelaExiste("contas_receber")) {
       const limite = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
-      const bloqueio = db
-        .prepare(
-          "SELECT 1 FROM contas_receber WHERE fornecedorCodigo = ? AND status <> 'Descontado' AND vencimento IS NOT NULL AND vencimento <> '' AND vencimento < ? LIMIT 1",
-        )
-        .get(sessao.codigo, limite);
-      if (bloqueio)
-        throw new Error("Solicitação bloqueada: existe débito vencido há mais de 60 dias.");
+      const bloqueio = db.prepare("SELECT 1 FROM contas_receber WHERE fornecedorCodigo = ? AND status <> 'Descontado' AND vencimento IS NOT NULL AND vencimento <> '' AND vencimento < ? LIMIT 1").get(sessao.codigo, limite);
+      if (bloqueio) throw new Error("Solicitação bloqueada: existe débito vencido há mais de 60 dias.");
     }
-    const destinos = db
-      .prepare(
-        `SELECT segmento, email FROM rebaixa_segmento_emails WHERE segmento IN (${segmentos.map(() => "?").join(",")})`,
-      )
-      .all(...segmentos) as Array<{ segmento: string; email: string }>;
-    if (destinos.length !== segmentos.length)
-      throw new Error("Existe segmento sem e-mail configurado.");
+    const destinos = db.prepare(`SELECT segmento, email FROM rebaixa_segmento_emails WHERE segmento IN (${segmentos.map(() => "?").join(",")})`).all(...segmentos) as Array<{ segmento: string; email: string }>;
+    if (destinos.length !== segmentos.length) throw new Error("Existe segmento sem e-mail configurado.");
     const id = `rebaixa-${sessao.codigo}-${Date.now()}`;
     const criadoEm = new Date().toISOString();
     const destinatarios = destinos.map((row) => row.email).join(", ");
-    const fornecedor = db
-      .prepare("SELECT nome FROM fornecedores WHERE codigo = ?")
-      .get(sessao.codigo) as { nome?: string } | undefined;
-    const transporter = nodemailer.createTransport({
-      host: process.env["SMTP_HOST"] || "localhost",
-      port: parseInt(process.env["SMTP_PORT"] || "587", 10),
-      secure: process.env["SMTP_SECURE"] === "true",
-      auth:
-        process.env["SMTP_USER"] && process.env["SMTP_PASS"]
-          ? { user: process.env["SMTP_USER"], pass: process.env["SMTP_PASS"] }
-          : undefined,
-      tls: { rejectUnauthorized: false },
-    });
-    await transporter.sendMail({
-      from: process.env["SMTP_FROM"] || "portal@lidernet.com.br",
-      to: destinatarios,
-      subject: `[Rebaixa em análise] ${titulo} - ${fornecedor?.nome || sessao.codigo}`,
-      text: `Solicitação de rebaixa em análise. Fornecedor: ${fornecedor?.nome || sessao.codigo}. Período: ${dataInicio} a ${dataFim}. Segmentos: ${segmentos.join(", ")}. Produtos: ${data.itens.length}.`,
-    });
-    db.prepare(
-      `INSERT INTO rebaixa_solicitacoes (id, fornecedorCodigo, titulo, dataInicio, dataFim, segmentos, lojas, itens, status, criadoEm, enviadoEm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'em análise', ?, datetime('now'))`,
-    ).run(
-      id,
-      sessao.codigo,
-      titulo,
-      dataInicio,
-      dataFim,
-      JSON.stringify(segmentos),
-      JSON.stringify(lojas),
-      JSON.stringify(data.itens),
-      criadoEm,
-    );
+    const fornecedor = db.prepare("SELECT nome FROM fornecedores WHERE codigo = ?").get(sessao.codigo) as { nome?: string } | undefined;
+    const transporter = nodemailer.createTransport({ host: process.env["SMTP_HOST"] || "localhost", port: parseInt(process.env["SMTP_PORT"] || "587", 10), secure: process.env["SMTP_SECURE"] === "true", auth: process.env["SMTP_USER"] && process.env["SMTP_PASS"] ? { user: process.env["SMTP_USER"], pass: process.env["SMTP_PASS"] } : undefined, tls: { rejectUnauthorized: false } });
+    await transporter.sendMail({ from: process.env["SMTP_FROM"] || "portal@lidernet.com.br", to: destinatarios, subject: `[Rebaixa em análise] ${titulo} - ${fornecedor?.nome || sessao.codigo}`, text: `Solicitação de rebaixa em análise. Fornecedor: ${fornecedor?.nome || sessao.codigo}. Período: ${dataInicio} a ${dataFim}. Segmentos: ${segmentos.join(", ")}. Produtos: ${data.itens.length}.` });
+    db.prepare(`INSERT INTO rebaixa_solicitacoes (id, fornecedorCodigo, titulo, dataInicio, dataFim, segmentos, lojas, itens, status, criadoEm, enviadoEm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'em análise', ?, datetime('now'))`).run(id, sessao.codigo, titulo, dataInicio, dataFim, JSON.stringify(segmentos), JSON.stringify(lojas), JSON.stringify(data.itens), criadoEm);
     return { success: true, id, status: "em análise" as const };
-  });
-
-export const fetchOfertasParaImportacao = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
-  .handler(async ({ data }) => {
-    const sessao = exigirSessaoFornecedor();
-    ensureOfertasIntelider();
-    ensureAceitesOfertasRebaixa();
-    const fornecedorCodigo = codigoFornecedorEfetivo(
-      normalizarCodigoFornecedor(sessao.codigo || data),
-    );
-    return db
-      .prepare(
-        `SELECT o.id, o.tipo, o.fornecedorCodigo, o.sku, o.descricao, o.lojaId, o.lojaNome,
-              o.precoNormal, o.precoOferta, o.descontoPercentual, o.dataInicio, o.dataFim,
-              o.dataVencimento, o.quantidadeInicial, o.quantidadeVendida, o.estoqueAtual,
-              o.status, o.responsabilidade, o.reembolsoEstimado, o.origemTabela, o.atualizadoEm,
-              'pendente' AS aceiteStatus
-       FROM ofertas_intelider o
-       LEFT JOIN ofertas_rebaixa_aceites a
-         ON a.ofertaId = o.id AND a.fornecedorCodigo = o.fornecedorCodigo AND a.status = 'aceita'
-       WHERE o.fornecedorCodigo = ? AND o.tipo = 'rebaixa' AND a.id IS NULL
-       ORDER BY COALESCE(o.dataFim, '9999-12-31'), o.descricao, o.lojaNome`,
-      )
-      .all(fornecedorCodigo) as OfertaCompartilhadaDB[];
-  });
-
-export const aceitarOfertasRebaixa = createServerFn({ method: "POST" })
-  .validator((data: { ofertaIds: string[] }) => data)
-  .handler(async ({ data }) => {
-    const sessao = exigirSessaoFornecedor();
-    const ofertaIds = [
-      ...new Set((data.ofertaIds || []).map((id) => String(id).trim()).filter(Boolean)),
-    ];
-    if (!ofertaIds.length) throw new Error("Selecione ao menos uma oferta para aceitar.");
-    if (ofertaIds.length > 500) throw new Error("O aceite está limitado a 500 ofertas por vez.");
-    ensureOfertasIntelider();
-    ensureAceitesOfertasRebaixa();
-    const fornecedorCodigo = codigoFornecedorEfetivo(normalizarCodigoFornecedor(sessao.codigo));
-    const placeholders = ofertaIds.map(() => "?").join(",");
-    const disponiveis = db
-      .prepare(
-        `SELECT id FROM ofertas_intelider
-       WHERE fornecedorCodigo = ? AND tipo = 'rebaixa' AND id IN (${placeholders})`,
-      )
-      .all(fornecedorCodigo, ...ofertaIds) as Array<{ id: string }>;
-    if (disponiveis.length !== ofertaIds.length)
-      throw new Error("Uma ou mais ofertas não pertencem ao fornecedor autenticado.");
-    const agora = new Date().toISOString();
-    const inserir = db.prepare(
-      `INSERT INTO ofertas_rebaixa_aceites (id, ofertaId, fornecedorCodigo, status, aceitoEm)
-       VALUES (?, ?, ?, 'aceita', ?)
-       ON CONFLICT(ofertaId, fornecedorCodigo) DO UPDATE SET status = 'aceita', aceitoEm = excluded.aceitoEm`,
-    );
-    const aceitar = db.transaction((ids: string[]) =>
-      ids.forEach((id) =>
-        inserir.run(`aceite-${fornecedorCodigo}-${id}`, id, fornecedorCodigo, agora),
-      ),
-    );
-    aceitar(ofertaIds);
-    return { aceitas: ofertaIds.length, aceitoEm: agora };
   });
 
 export const fetchVendasAnual = createServerFn({ method: "GET" })
@@ -3882,3 +3716,4 @@ export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
       throw new Error("Erro de execução no script de sincronização do RMS.");
     }
   });
+
