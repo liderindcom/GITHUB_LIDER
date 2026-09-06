@@ -10,3 +10,12 @@ db/portal.db-*
 db/portal.db.bak*
 db/catalog_refresh.db
 db/pg-column-case.json
+# Artefatos locais recriáveis e caches de desenvolvimento
+.output/
+.tanstack/
+.wrangler/
+**/__pycache__/
+
+# Arquivos locais sensíveis/de teste — nunca versionar
+secrets/
+src/CERBERO_TEST.txt
