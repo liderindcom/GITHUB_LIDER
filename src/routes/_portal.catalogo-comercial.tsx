@@ -325,10 +325,11 @@ function CatalogoComercialPage() {
           <Card className="border-primary/20 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <PackagePlus className="size-5 text-primary" /> Novo produto ou coleção
+                <PackagePlus className="size-5 text-primary" /> Cadastro de Produto Novo
               </CardTitle>
               <CardDescription>
-                Quanto mais completo o catálogo, melhor o comprador poderá avaliar a oportunidade.
+                Preencha os dados do produto novo ou use a importação da ficha técnica do Líder para
+                cadastrar vários itens como rascunho.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">

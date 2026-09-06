@@ -99,7 +99,7 @@ function ensureCatalogoComercial() {
   const colunas = db.prepare("PRAGMA table_info(catalogo_comercial_fornecedor)").all() as Array<{
     name: string;
   }>;
-  if (!colunas.some((coluna) => coluna.name === "dadosFichaLiderJson")) {
+  if (!colunas.some((coluna) => coluna.name.toLowerCase() === "dadosfichaliderjson")) {
     db.exec("ALTER TABLE catalogo_comercial_fornecedor ADD COLUMN dadosFichaLiderJson TEXT");
   }
 }
@@ -109,7 +109,7 @@ export const fetchCatalogoComercial = createServerFn({ method: "GET" }).handler(
   const sessao = exigirSessaoFornecedor();
   return db
     .prepare(
-      `SELECT * FROM catalogo_comercial_fornecedor
+      `SELECT *, dadosfichaliderjson AS "dadosFichaLiderJson" FROM catalogo_comercial_fornecedor
      WHERE fornecedorCodigo = ? AND status <> 'ARQUIVADO'
      ORDER BY atualizadoEm DESC`,
     )
