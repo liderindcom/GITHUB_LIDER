@@ -3,10 +3,22 @@ import { normalizarCodigoFornecedor, soDigitos } from "@/lib/fornecedor-codigo";
 import { sqlLojasForaPortal } from "@/lib/lojas-excluidas-portal";
 import { cortePedidosIso, mesFechadoIso } from "@/lib/pedidos-janela";
 import { JANELA_SKU_DIA_DIAS, shareJanelaCurta, shareUsaMensal } from "@/lib/vendas-graos";
-import { classificarCurvaAbcd } from "@/lib/classe-abcd";
+import { classificarCurvaAbcd, classificarCurvaTopStar } from "@/lib/classe-abcd";
 import { USUARIOS_FORNECEDOR_MAX } from "@/lib/usuarios-fornecedor";
 import { db } from "./server/db";
-import { DESCONTO_ACESSO_PORTAL_PCT, segmentoIntelider, valorUmPctCompra } from "@/lib/acordo-acesso";
+import nodemailer from "nodemailer";
+import { faturasDoFornecedor } from "@/lib/mock-data";
+import {
+  DESCONTO_ACESSO_PORTAL_PCT,
+  segmentoIntelider,
+  valorUmPctCompra,
+} from "@/lib/acordo-acesso";
+import {
+  FILTRO_VAZIO,
+  filtroMercadologicoAtivo,
+  produtoPassaFiltro,
+  type FiltroMercadologico,
+} from "@/lib/filtro-mercadologico";
 import {
   codigoFornecedorEfetivo,
   gravarSessaoPortal,
@@ -44,13 +56,9 @@ export type UsuarioFornecedorRow = {
   precisaTrocarSenha?: number;
 };
 
-function flagPrecisaTrocarSenha(row: {
-  precisaTrocarSenha?: number;
-  precisatrocarsenha?: number;
-}) {
+function flagPrecisaTrocarSenha(row: { precisaTrocarSenha?: number; precisatrocarsenha?: number }) {
   return Number(row.precisaTrocarSenha ?? row.precisatrocarsenha ?? 0) === 1;
 }
-
 
 export type FornecedorDB = {
   codigo: string;
@@ -72,6 +80,9 @@ export type FornecedorDB = {
   isentoCobranca?: number;
   acessoDataInicio?: string | null;
   acessoDataFim?: string | null;
+  acessoStatus?: "SEM_ACORDO" | "DEGUSTACAO" | "ATIVO_COM_ACORDO" | "EXPIRADO" | null;
+  acordoNumero?: string | null;
+  degustacaoUsada?: number | null;
 };
 
 export type ProdutoDB = {
@@ -193,6 +204,7 @@ export type PedidoDB = {
   entradaCdam?: string;
   lojaId: string;
   status: PedidoStatusDB;
+  totLiq?: number;
   itens: PedidoItemDB[];
 };
 
@@ -209,6 +221,7 @@ type PedidoRow = {
   agendaEntrada: string | null;
   agendaParidade: string | null;
   agendaRegra: string | null;
+  totLiq: number | null;
 };
 
 type PedidoItemRow = {
@@ -221,11 +234,7 @@ type PedidoItemRow = {
 };
 
 const tabelaExiste = (nome: string) =>
-  Boolean(
-    db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
-      .get(nome),
-  );
+  Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(nome));
 
 /** Sortimento: fiscal ∪ grupo ∪ gabarito. Pedido/NF/financeiro continuam fiscais. */
 const sqlSkuVisivel = (alias = "p") =>
@@ -326,8 +335,9 @@ function vigenciaAcessoOk(row: {
   isentoCobranca?: number | null;
   acessoDataInicio?: string | null;
   acessoDataFim?: string | null;
+  acessoStatus?: string | null;
 }) {
-  if (Number(row.isentoCobranca) === 1) return true;
+  if (Number(row.isentoCobranca) === 1 || row.acessoStatus === "ATIVO_COM_ACORDO") return true;
   const inicio = String(row.acessoDataInicio ?? "").slice(0, 10);
   const fim = String(row.acessoDataFim ?? "").slice(0, 10);
   if (!inicio || !fim) return true;
@@ -340,8 +350,7 @@ function buscarFornecedorPorLogin(ident: string): FornecedorDB | undefined {
   ensureFornecedoresColumns();
   const codigo = resolverCodigoFornecedorDados(normalizarCodigoFornecedor(ident));
   const porCodigo = db.prepare("SELECT * FROM fornecedores WHERE codigo = ?").get(codigo) as
-    | FornecedorDB
-    | undefined;
+    FornecedorDB | undefined;
   if (porCodigo) return porCodigo;
   const cnpj = soDigitos(ident);
   if (cnpj.length < 11) return undefined;
@@ -382,7 +391,9 @@ function emailLoginValido(email: string): boolean {
 }
 
 function nomeUsuarioDoEmail(email: string, fallback: string): string {
-  const local = String(email.split("@")[0] || "").replace(/[._-]+/g, " ").trim();
+  const local = String(email.split("@")[0] || "")
+    .replace(/[._-]+/g, " ")
+    .trim();
   if (!local) return fallback.slice(0, 80);
   const titulo = local.replace(/\b\w/g, (c) => c.toUpperCase());
   return titulo.slice(0, 80);
@@ -395,13 +406,16 @@ export const fetchFornecedor = createServerFn({ method: "GET" })
   });
 
 let cachedLiderAbcMap: Map<string, string> | null = null;
+let cachedLiderTopStarMap: Map<string, string> | null = null;
 
 function getLiderWideAbcClasses() {
   if (cachedLiderAbcMap) return cachedLiderAbcMap;
 
   const map = new Map<string, string>();
   try {
-    const fimRow = db.prepare("SELECT MAX(data) AS fim FROM vendas").get() as { fim: string | null };
+    const fimRow = db.prepare("SELECT MAX(data) AS fim FROM vendas").get() as {
+      fim: string | null;
+    };
     const fim = fimRow?.fim ?? null;
     let inicio: string | null = null;
     if (fim) {
@@ -437,17 +451,21 @@ function getLiderWideAbcClasses() {
       volume: number;
     }>;
 
-    const classificados = classificarCurvaAbcd(
-      rows.map((r) => ({
-        sku: r.sku,
-        grupo: `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}.${r.subgrupoCodigo}`,
-        valor: r.valor || 0,
-        volume: r.volume || 0,
-      })),
-    );
+    const itens = rows.map((r) => ({
+      sku: r.sku,
+      grupo: `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}.${r.subgrupoCodigo}`,
+      grupoQuantidade: `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}`,
+      valor: r.valor || 0,
+      volume: r.volume || 0,
+    }));
+    const classificados = classificarCurvaAbcd(itens);
+    const topStars = classificarCurvaTopStar(itens);
     for (const [sku, resultado] of classificados) {
       map.set(sku, resultado.classeComposta);
     }
+    cachedLiderTopStarMap = new Map(
+      Array.from(topStars, ([sku, resultado]) => [sku, resultado.classeComposta]),
+    );
   } catch (err) {
     console.error("Erro ao calcular Lider-wide ABC classes:", err);
   }
@@ -491,15 +509,12 @@ export const fetchProdutos = createServerFn({ method: "GET" })
     const stmt = db.prepare(`SELECT * FROM produtos p WHERE ${sqlSkuVisivel("p")}`);
     const products = stmt.all(fornecedorCodigo);
     const abcMap = getLiderWideAbcClasses();
+    const topStarMap = cachedLiderTopStarMap ?? new Map<string, string>();
     const nomesComprador = mapaNomesComprador();
-    return products.map((p) => {
+    return products.map((p: any) => {
       const storedCls = String((p as any).abc || "").trim();
       const dynamicCls = abcMap.get(p.sku);
-      const fatClass = (
-        (dynamicCls && dynamicCls[0]) ||
-        storedCls[0] ||
-        "D"
-      ).toUpperCase();
+      const fatClass = ((dynamicCls && dynamicCls[0]) || storedCls[0] || "D").toUpperCase();
       const volClass = (
         (dynamicCls && dynamicCls.length > 1 && dynamicCls[1]) ||
         storedCls[1] ||
@@ -508,13 +523,15 @@ export const fetchProdutos = createServerFn({ method: "GET" })
       const cls = fatClass + volClass;
       const codigo = String((p as any).compradorCodigo ?? "").trim();
       const nomeDireto = String((p as any).compradorNome ?? "").trim();
-      const nome = nomeDireto && nomeDireto !== `Comprador ${codigo}`
-        ? nomeDireto
-        : (codigo && nomesComprador.get(codigo)) || nomeDireto;
+      const nome =
+        nomeDireto && nomeDireto !== `Comprador ${codigo}`
+          ? nomeDireto
+          : (codigo && nomesComprador.get(codigo)) || nomeDireto;
       return {
         ...p,
         compradorNome: nome || (p as any).compradorNome,
         classeComposta: cls,
+        classeTopStar: topStarMap.get(p.sku) || storedCls || cls,
       };
     }) as any[];
   });
@@ -626,10 +643,9 @@ export const fetchContasReceber = createServerFn({ method: "GET" })
          FROM contas_receber
          WHERE fornecedorCodigo = ?
            AND status <> 'Descontado'
-           AND (vencimento IS NULL OR vencimento = '' OR vencimento >= ?)
          ORDER BY vencimento ASC, id DESC`,
       )
-      .all(fornecedorCodigo, hojeIso) as Array<{
+      .all(fornecedorCodigo) as Array<{
       id: string;
       documento: string;
       tipo: string;
@@ -718,8 +734,7 @@ export const fetchFaturas = createServerFn({ method: "GET" })
         direcao: "fornecedor_para_lider",
         destinatario: "Grupo Líder",
         agendaRms: Number(row.agendaRms ?? 0),
-        natureza:
-          destTipo === "D" ? "recebimento_fornecedor_cdam" : "recebimento_fornecedor_loja",
+        natureza: destTipo === "D" ? "recebimento_fornecedor_cdam" : "recebimento_fornecedor_loja",
       };
       if (row.serie) fatura.serie = row.serie;
       if (row.chaveNfe) fatura.chaveNfe = row.chaveNfe;
@@ -755,10 +770,62 @@ export type ComprasAnoDB = {
   destinos: ComprasAnoDestinoDB[];
 };
 
-export const fetchComprasAno = createServerFn({ method: "GET" })
-  .validator((data: { fornecedorCodigo: string; ano: number }) => ({
+function chavesSkuDoProduto(p: {
+  sku?: string | null;
+  codigoProdutoRms?: string | null;
+  digitoProdutoRms?: string | null;
+}) {
+  const chaves = new Set<string>();
+  const sku = String(p.sku ?? "").trim();
+  if (sku) chaves.add(sku);
+  const rms = String(p.codigoProdutoRms ?? "").trim();
+  const dv = String(p.digitoProdutoRms ?? "").trim();
+  if (rms && dv) {
+    chaves.add(`${rms}${dv}`);
+    chaves.add(`${rms}-${dv}`);
+  }
+  return chaves;
+}
+
+function skusPedidoDoFiltroMix(codigo: string, filtro: FiltroMercadologico): string[] | null {
+  if (!filtroMercadologicoAtivo(filtro)) return null;
+  if (!tabelaExiste("produtos")) return [];
+  const rows = db
+    .prepare(
+      `SELECT sku, codigoProdutoRms, digitoProdutoRms,
+              departamentoCodigo, departamento, secaoCodigo, secao,
+              grupoCodigo, grupo, subgrupoCodigo, subgrupo,
+              compradorCodigo, compradorNome
+       FROM produtos WHERE fornecedorCodigo = ?`,
+    )
+    .all(codigo) as Array<{
+    sku: string;
+    codigoProdutoRms?: string | null;
+    digitoProdutoRms?: string | null;
+    departamentoCodigo?: string | null;
+    departamento?: string | null;
+    secaoCodigo?: string | null;
+    secao?: string | null;
+    grupoCodigo?: string | null;
+    grupo?: string | null;
+    subgrupoCodigo?: string | null;
+    subgrupo?: string | null;
+    compradorCodigo?: string | null;
+    compradorNome?: string | null;
+  }>;
+  const chaves = new Set<string>();
+  for (const row of rows) {
+    if (!produtoPassaFiltro(row, filtro)) continue;
+    for (const chave of chavesSkuDoProduto(row)) chaves.add(chave);
+  }
+  return [...chaves];
+}
+
+export const fetchComprasAno = createServerFn({ method: "POST" })
+  .validator((data: { fornecedorCodigo: string; ano: number; filtro?: FiltroMercadologico }) => ({
     fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
     ano: Number(data.ano),
+    filtro: data.filtro ?? FILTRO_VAZIO,
   }))
   .handler(async ({ data }) => {
     const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
@@ -776,6 +843,9 @@ export const fetchComprasAno = createServerFn({ method: "GET" })
       destinos: [],
     });
     if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens")) return vazio();
+    const skusMix = skusPedidoDoFiltroMix(codigo, data.filtro);
+    if (skusMix && skusMix.length === 0) return vazio();
+    const sqlSkuMix = skusMix?.length ? `AND i.sku IN (${skusMix.map(() => "?").join(",")})` : "";
     const rows = db
       .prepare(
         `SELECT substr(p.emissao, 1, 7) AS mes, p.lojaId AS lojaId,
@@ -784,20 +854,44 @@ export const fetchComprasAno = createServerFn({ method: "GET" })
                   WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
                   THEN p.numero || '-' || p.lojaId
                 END) AS documentosEmAberto,
-                SUM(COALESCE(i.quantidadePedida, 0) * COALESCE(i.precoUnitario, 0)) AS pedido,
+                SUM(COALESCE(i.quantidadePedida, 0) * COALESCE(i.precoUnitario, 0) * COALESCE(
+                  (
+                    SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+                    FROM pedido_itens pi
+                    WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+                    HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+                  ),
+                  1.0
+                )) AS pedido,
                 SUM(
                   CASE
                     WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
                     THEN COALESCE(i.quantidadeFaturada, 0)
                     ELSE COALESCE(i.quantidadePedida, 0)
-                  END * COALESCE(i.precoUnitario, 0)
+                  END * COALESCE(i.precoUnitario, 0) * COALESCE(
+                    (
+                      SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+                      FROM pedido_itens pi
+                      WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+                      HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+                    ),
+                    1.0
+                  )
                 ) AS entregue,
                 SUM(
                   CASE
                     WHEN COALESCE(i.quantidadePedida, 0) > COALESCE(i.quantidadeFaturada, 0)
                     THEN (COALESCE(i.quantidadePedida, 0) - COALESCE(i.quantidadeFaturada, 0))
                     ELSE 0
-                  END * COALESCE(i.precoUnitario, 0)
+                  END * COALESCE(i.precoUnitario, 0) * COALESCE(
+                    (
+                      SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+                      FROM pedido_itens pi
+                      WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+                      HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+                    ),
+                    1.0
+                  )
                 ) AS perda
          FROM pedidos p
          INNER JOIN pedido_itens i
@@ -811,9 +905,10 @@ export const fetchComprasAno = createServerFn({ method: "GET" })
            AND substr(p.emissao, 1, 7) >= ?
            AND substr(p.emissao, 1, 7) <= ?
            AND COALESCE(i.quantidadePedida, 0) > 0
+           ${sqlSkuMix}
          GROUP BY substr(p.emissao, 1, 7), p.lojaId`,
       )
-      .all(codigo, `${ano}-01`, ateMes) as Array<{
+      .all(codigo, `${ano}-01`, ateMes, ...(skusMix ?? [])) as Array<{
       mes: string;
       lojaId: string;
       documentos: number;
@@ -890,7 +985,7 @@ export const fetchPedidos = createServerFn({ method: "GET" })
       .prepare(
         `SELECT numero, lojaId, destino, origemOperacional, destinoOperacional,
                 emissao, entregaPrevista, entradaCdam, status,
-                agendaEntrada, agendaParidade, agendaRegra
+                agendaEntrada, agendaParidade, agendaRegra, totLiq
          FROM pedidos
          WHERE fornecedorCodigo = ?
            AND destino = 'Fornecedor'
@@ -946,6 +1041,7 @@ export const fetchPedidos = createServerFn({ method: "GET" })
         itens: porPedido.get(`${capa.numero}\t${capa.lojaId}`) ?? [],
       };
       if (capa.entradaCdam) pedido.entradaCdam = capa.entradaCdam;
+      if (capa.totLiq !== null) pedido.totLiq = Number(capa.totLiq);
       return pedido;
     });
   });
@@ -1022,14 +1118,17 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
       fim = ate?.ate ? ultimoDiaMes(ate.ate) : null;
     }
     if (!fim) {
-      const fimRow = db.prepare("SELECT MAX(data) AS fim FROM vendas").get() as { fim: string | null };
+      const fimRow = db.prepare("SELECT MAX(data) AS fim FROM vendas").get() as {
+        fim: string | null;
+      };
       fim = fimRow?.fim ?? null;
     }
     const inicio = inicioShare(janela, fim);
     const coberturaSubgrupo = temSubgrupo
-      ? (db
-          .prepare("SELECT MIN(data) AS dmin, MAX(data) AS dmax FROM vendas_subgrupo")
-          .get() as { dmin: string | null; dmax: string | null })
+      ? (db.prepare("SELECT MIN(data) AS dmin, MAX(data) AS dmax FROM vendas_subgrupo").get() as {
+          dmin: string | null;
+          dmax: string | null;
+        })
       : { dmin: null, dmax: null };
     const subgrupoCobre =
       Boolean(temSubgrupo && coberturaSubgrupo.dmin && coberturaSubgrupo.dmax) &&
@@ -1117,9 +1216,9 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
             fimMes,
           ) as ShareCategoriaRow[])
       : temTotalCategoria
-      ? (db
-          .prepare(
-            `
+        ? (db
+            .prepare(
+              `
         WITH forn AS (
           SELECT
             CAST(CAST(p.departamentoCodigo AS INTEGER) AS TEXT) AS depto,
@@ -1174,11 +1273,11 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
          AND l.subCod = f.subCod
         ORDER BY f.fornecedorValor DESC
       `,
-          )
-          .all(fornecedorCodigo, inicio, inicio, inicio, inicio, fim, fim) as ShareCategoriaRow[])
-      : (db
-          .prepare(
-            `
+            )
+            .all(fornecedorCodigo, inicio, inicio, inicio, inicio, fim, fim) as ShareCategoriaRow[])
+        : (db
+            .prepare(
+              `
         WITH vendas_periodo AS (
           SELECT sku, quantidade, valorUnitario
           FROM vendas
@@ -1203,15 +1302,15 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
         HAVING SUM(CASE WHEN ${sqlSkuVisivel("p")} THEN vp.quantidade * vp.valorUnitario ELSE 0 END) > 0
         ORDER BY fornecedorValor DESC
       `,
-          )
-          .all(
-            inicio,
-            inicio,
-            fornecedorCodigo,
-            fornecedorCodigo,
-            fornecedorCodigo,
-            fornecedorCodigo,
-          ) as ShareCategoriaRow[]);
+            )
+            .all(
+              inicio,
+              inicio,
+              fornecedorCodigo,
+              fornecedorCodigo,
+              fornecedorCodigo,
+              fornecedorCodigo,
+            ) as ShareCategoriaRow[]);
 
     const categorias: ShareCategoriaDB[] = categoriaRows.map((item) => {
       const fornecedorValor = Number(item.fornecedorValor ?? 0);
@@ -1535,7 +1634,7 @@ export const searchFornecedores = createServerFn({ method: "GET" })
     ensureFornecedoresColumns();
     ensureFillrateMetaColumn();
     let query =
-      "SELECT codigo, nome, cnpj, acessoLiberado, metaFillRatePct, isentoCobranca, acessoDataInicio, acessoDataFim FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?) AND acessoLiberado = 1";
+      "SELECT codigo, nome, cnpj, acessoLiberado, metaFillRatePct, isentoCobranca, acessoDataInicio, acessoDataFim, acessoStatus, acordoNumero, degustacaoUsada FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
     const params: Array<string | number> = [cleanSearch, cleanSearch, cleanSearch];
 
     query += " ORDER BY codigo LIMIT ? OFFSET ?";
@@ -1546,7 +1645,7 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 
     // Obter contagem total
     let countQuery =
-      "SELECT COUNT(*) AS total FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?) AND acessoLiberado = 1";
+      "SELECT COUNT(*) AS total FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
     const countParams: string[] = [cleanSearch, cleanSearch, cleanSearch];
     const countStmt = db.prepare(countQuery);
     const total = countStmt.get(...countParams) as { total: number } | undefined;
@@ -1563,46 +1662,87 @@ export const updateSupplierAccess = createServerFn({ method: "POST" })
     exigirInterno();
     const { codigo, acessoLiberado } = data;
     const codigoNorm = normalizarCodigoFornecedor(codigo);
-    
+
     if (acessoLiberado === 0) {
-      // 1. Apagar todos os dados operacionais e cadastros do fornecedor
-      db.prepare("DELETE FROM estoque WHERE sku IN (SELECT sku FROM produtos WHERE fornecedorCodigo = ?)").run(codigoNorm);
-      db.prepare("DELETE FROM vendas WHERE sku IN (SELECT sku FROM produtos WHERE fornecedorCodigo = ?)").run(codigoNorm);
-      db.prepare("DELETE FROM produtos WHERE fornecedorCodigo = ?").run(codigoNorm);
-      db.prepare("DELETE FROM pedidos WHERE fornecedorCodigo = ?").run(codigoNorm);
-      db.prepare("DELETE FROM pedido_itens WHERE fornecedorCodigo = ?").run(codigoNorm);
-      db.prepare("DELETE FROM usuarios_fornecedor WHERE fornecedorCodigo = ?").run(codigoNorm);
-      db.prepare("DELETE FROM sessoes_portal WHERE tipo = 'fornecedor' AND codigo = ?").run(codigoNorm);
-      db.prepare("DELETE FROM acordos_acesso_portal WHERE fornecedorCodigo = ?").run(codigoNorm);
-      db.prepare("DELETE FROM fornecedores WHERE codigo = ?").run(codigoNorm);
+      // Bloqueio preserva cadastro e histórico; a degustação não pode ser reiniciada.
+      db.prepare(
+        "UPDATE fornecedores SET acessoLiberado = 0, acessoStatus = CASE WHEN acessoStatus = 'DEGUSTACAO' THEN 'EXPIRADO' ELSE acessoStatus END WHERE codigo = ?",
+      ).run(codigoNorm);
     } else {
-      db.prepare("UPDATE fornecedores SET acessoLiberado = ? WHERE codigo = ?").run(acessoLiberado, codigoNorm);
+      const row = db
+        .prepare("SELECT acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?")
+        .get(codigoNorm) as { acessoStatus?: string; degustacaoUsada?: number } | undefined;
+      if (row?.acessoStatus === "EXPIRADO" || Number(row?.degustacaoUsada) === 1) {
+        throw new Error(
+          "A degustação já foi utilizada ou expirou. Valide o acordo assinado antes de liberar o acesso.",
+        );
+      }
+      db.prepare("UPDATE fornecedores SET acessoLiberado = 1 WHERE codigo = ?").run(codigoNorm);
     }
     return { success: true };
   });
 
 export const includeSupplier = createServerFn({ method: "POST" })
-  .validator((data: { codigo: string }) => data)
+  .validator((data: { codigo: string; nome?: string; cnpj?: string }) => data)
   .handler(async ({ data }) => {
     exigirInterno();
     const codigo = resolverCodigoFornecedorDados(data.codigo);
-    if (!codigo) {
-      throw new Error("Informe o código RMS do fornecedor.");
-    }
+    if (!codigo) throw new Error("Informe o código RMS do fornecedor.");
+    const nomeNovo = String(data.nome ?? "").trim();
+    const cnpjNovo = String(data.cnpj ?? "").trim();
+    ensureFornecedoresColumns();
+    const hoje = new Date();
+    const inicio = hoje.toISOString().slice(0, 10);
+    hoje.setUTCDate(hoje.getUTCDate() + 30);
+    const fim = hoje.toISOString().slice(0, 10);
     const existente = db
-      .prepare("SELECT codigo, acessoLiberado FROM fornecedores WHERE codigo = ?")
-      .get(codigo) as { codigo: string; acessoLiberado?: number } | undefined;
+      .prepare(
+        "SELECT codigo, nome, cnpj, acessoLiberado, acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?",
+      )
+      .get(codigo) as
+      | {
+          codigo: string;
+          nome?: string;
+          cnpj?: string;
+          acessoLiberado?: number;
+          acessoStatus?: string;
+          degustacaoUsada?: number;
+        }
+      | undefined;
     if (existente) {
-      db.prepare("UPDATE fornecedores SET acessoLiberado = 1 WHERE codigo = ?").run(codigo);
-      return { success: true, created: false, codigo };
+      if (existente.acessoStatus === "ATIVO_COM_ACORDO")
+        throw new Error("Fornecedor já possui acordo de acesso ativo.");
+      if (Number(existente.degustacaoUsada) === 1)
+        throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
+      db.prepare(
+        "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
+      ).run(inicio, fim, codigo);
+      return {
+        success: true,
+        created: false,
+        codigo,
+        status: "DEGUSTACAO",
+        acessoDataInicio: inicio,
+        acessoDataFim: fim,
+        fornecedorNome: existente.nome || `Fornecedor ${codigo}`,
+        fornecedorCnpj: existente.cnpj || "",
+      };
     }
     ensureFillrateMetaColumn();
     db.prepare(
-      "INSERT INTO fornecedores (codigo, nome, acessoLiberado, metaFillRatePct) VALUES (?, ?, 1, ?)",
-    ).run(codigo, `Fornecedor ${codigo}`, FILLRATE_META_PADRAO);
-    return { success: true, created: true, codigo };
+      "INSERT INTO fornecedores (codigo, nome, cnpj, acessoLiberado, metaFillRatePct, acessoDataInicio, acessoDataFim, acessoStatus, degustacaoUsada) VALUES (?, ?, ?, 1, ?, ?, ?, 'DEGUSTACAO', 1)",
+    ).run(codigo, nomeNovo, cnpjNovo, FILLRATE_META_PADRAO, inicio, fim);
+    return {
+      success: true,
+      created: true,
+      codigo,
+      status: "DEGUSTACAO",
+      acessoDataInicio: inicio,
+      acessoDataFim: fim,
+      fornecedorNome: nomeNovo,
+      fornecedorCnpj: cnpjNovo,
+    };
   });
-
 export { DESCONTO_ACESSO_PORTAL_PCT };
 
 function ensureAcordosAcessoPortal() {
@@ -1625,7 +1765,9 @@ function ensureAcordosAcessoPortal() {
 }
 
 function normalizarNumeroAcordo(raw: string) {
-  return String(raw ?? "").trim().replace(/\s+/g, "");
+  return String(raw ?? "")
+    .trim()
+    .replace(/\s+/g, "");
 }
 
 export type CompraMesAnteriorDB = {
@@ -1655,7 +1797,15 @@ export const fetchCompraMesAnterior = createServerFn({ method: "GET" })
                     WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
                     THEN COALESCE(i.quantidadeFaturada, 0)
                     ELSE COALESCE(i.quantidadePedida, 0)
-                  END * COALESCE(i.precoUnitario, 0)
+                  END * COALESCE(i.precoUnitario, 0) * COALESCE(
+                    (
+                      SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+                      FROM pedido_itens pi
+                      WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+                      HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+                    ),
+                    1.0
+                  )
                 ) AS compra
          FROM pedidos p
          INNER JOIN pedido_itens i
@@ -1722,7 +1872,15 @@ export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).hand
                   WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
                   THEN COALESCE(i.quantidadeFaturada, 0)
                   ELSE COALESCE(i.quantidadePedida, 0)
-                END * COALESCE(i.precoUnitario, 0)
+                END * COALESCE(i.precoUnitario, 0) * COALESCE(
+                  (
+                    SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+                    FROM pedido_itens pi
+                    WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+                    HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+                  ),
+                  1.0
+                )
               ) AS compra
        FROM pedidos p
        INNER JOIN pedido_itens i
@@ -1743,7 +1901,15 @@ export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).hand
            WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
            THEN COALESCE(i.quantidadeFaturada, 0)
            ELSE COALESCE(i.quantidadePedida, 0)
-         END * COALESCE(i.precoUnitario, 0)
+         END * COALESCE(i.precoUnitario, 0) * COALESCE(
+           (
+             SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+             FROM pedido_itens pi
+             WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+             HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+           ),
+           1.0
+         )
        ) > 0`,
     )
     .all(mes) as Array<{
@@ -1897,7 +2063,15 @@ export const registrarAcordoAcessoPortal = createServerFn({ method: "POST" })
                     WHEN COALESCE(i.quantidadeFaturada, 0) < COALESCE(i.quantidadePedida, 0)
                     THEN COALESCE(i.quantidadeFaturada, 0)
                     ELSE COALESCE(i.quantidadePedida, 0)
-                  END * COALESCE(i.precoUnitario, 0)
+                  END * COALESCE(i.precoUnitario, 0) * COALESCE(
+                    (
+                      SELECT p.totLiq / SUM(pi.quantidadePedida * pi.precoUnitario)
+                      FROM pedido_itens pi
+                      WHERE pi.numero = p.numero AND pi.lojaId = p.lojaId AND pi.fornecedorCodigo = p.fornecedorCodigo
+                      HAVING SUM(pi.quantidadePedida * pi.precoUnitario) > 0 AND p.totLiq IS NOT NULL AND p.totLiq > 0.0
+                    ),
+                    1.0
+                  )
                 ) AS compra
          FROM pedidos p
          INNER JOIN pedido_itens i
@@ -1930,13 +2104,15 @@ export const registrarAcordoAcessoPortal = createServerFn({ method: "POST" })
          LIMIT 1`,
       )
       .get(codigo, numeroAcordo, numeroAcordo) as
-      | { id: string; descricao: string | null; valor: number; contrato: string | null }
-      | undefined;
+      { id: string; descricao: string | null; valor: number; contrato: string | null } | undefined;
     if (!cobranca) {
       throw new Error("Acordo não encontrado no sistema de cobrança do Líder.");
     }
 
     ensureAcordosAcessoPortal();
+    db.prepare(
+      "UPDATE fornecedores SET acessoLiberado = 1, acessoStatus = 'ATIVO_COM_ACORDO', acordoNumero = ?, acessoDataFim = NULL WHERE codigo = ?",
+    ).run(cobranca.contrato || numeroAcordo, codigo);
     const id = `acesso-${codigo}-${mes}-${Date.now()}`;
     db.prepare(
       `INSERT INTO acordos_acesso_portal (
@@ -1992,7 +2168,9 @@ function normalizarMetaFillRate(valor: number) {
 function ensureFillrateMetaColumn() {
   const cols = db.prepare("PRAGMA table_info(fornecedores)").all() as { name: string }[];
   if (!cols.some((col) => col.name === "metaFillRatePct")) {
-    db.exec(`ALTER TABLE fornecedores ADD COLUMN metaFillRatePct REAL NOT NULL DEFAULT ${FILLRATE_META_PADRAO}`);
+    db.exec(
+      `ALTER TABLE fornecedores ADD COLUMN metaFillRatePct REAL NOT NULL DEFAULT ${FILLRATE_META_PADRAO}`,
+    );
   }
 }
 
@@ -2128,11 +2306,17 @@ export type VendasAnualItemDB = {
 
 export type VendasAnualDB = {
   corte: { data: string; dia: number; mes: number; anoAtual: number; anoBase: number };
+  segmento: string;
   farolPct: number;
   cacheAte: string | null;
   temAnoAtual: boolean;
   rede: { anualBase: number; ytdAtual: number; realizadoPct: number | null; pontos: number | null };
-  fornecedor: { anualBase: number; ytdAtual: number; realizadoPct: number | null; pontos: number | null };
+  fornecedor: {
+    anualBase: number;
+    ytdAtual: number;
+    realizadoPct: number | null;
+    pontos: number | null;
+  };
   meses: VendasAnualMesDB[];
   secoes: VendasAnualSecaoDB[];
   itens: VendasAnualItemDB[];
@@ -2147,10 +2331,207 @@ function crescimentoPct(atual: number, base: number): number | null {
   return (atual / base - 1) * 100;
 }
 
+function escopoSegmentoVendas(codigoFornecedor: string): { segmento: string; departamentos: string[] } {
+  const produtosFornecedor = db
+    .prepare(
+      `SELECT DISTINCT p.departamentoCodigo, p.departamento
+       FROM produtos p
+       WHERE ${sqlSkuVisivel("p")}`,
+    )
+    .all(codigoFornecedor) as Array<{ departamentoCodigo?: string | null; departamento?: string | null }>;
+
+  const segmentos = new Set(
+    produtosFornecedor.map((p) => segmentoIntelider(p.departamentoCodigo, p.departamento)),
+  );
+  const segmento = segmentos.size === 1 ? Array.from(segmentos)[0] ?? "OUTROS" : segmentos.size > 1 ? "MIX DE SEGMENTOS" : "OUTROS";
+  const departamentos = (db
+    .prepare("SELECT DISTINCT departamentoCodigo, departamento FROM produtos")
+    .all() as Array<{ departamentoCodigo?: string | null; departamento?: string | null }>)
+    .filter((p) => segmentos.size === 0 || segmentos.has(segmentoIntelider(p.departamentoCodigo, p.departamento)))
+    .map((p) => String(p.departamentoCodigo ?? "").trim())
+    .filter(Boolean);
+
+  return { segmento, departamentos: Array.from(new Set(departamentos)) };
+}
+
+export type OfertaInteliderDB = {
+  id: string;
+  tipo: "validade" | "rebaixa";
+  fornecedorCodigo: string;
+  sku: string;
+  descricao: string;
+  lojaId: string;
+  lojaNome: string;
+  precoNormal: number;
+  precoOferta: number;
+  descontoPercentual: number;
+  dataInicio: string | null;
+  dataFim: string | null;
+  dataVencimento: string | null;
+  quantidadeInicial: number;
+  quantidadeVendida: number;
+  estoqueAtual: number;
+  status: "Ativa" | "Próxima ao Fim" | "Expirada" | "Encerrada";
+  responsabilidade: "fornecedor" | "lider" | "indefinida";
+  reembolsoEstimado: number;
+  origemTabela: string;
+  atualizadoEm: string;
+};
+
+export type OfertasInteliderDB = {
+  rebaixas: OfertaInteliderDB[];
+  validade: OfertaInteliderDB[];
+  fonte: "intelider";
+  atualizadoEm: string | null;
+};
+
+function ensureOfertasIntelider() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ofertas_intelider (
+      id TEXT PRIMARY KEY,
+      tipo TEXT NOT NULL CHECK (tipo IN ('validade', 'rebaixa')),
+      fornecedorCodigo TEXT NOT NULL,
+      sku TEXT NOT NULL,
+      descricao TEXT NOT NULL,
+      lojaId TEXT NOT NULL,
+      lojaNome TEXT NOT NULL,
+      precoNormal REAL NOT NULL DEFAULT 0,
+      precoOferta REAL NOT NULL DEFAULT 0,
+      descontoPercentual REAL NOT NULL DEFAULT 0,
+      dataInicio TEXT,
+      dataFim TEXT,
+      dataVencimento TEXT,
+      quantidadeInicial REAL NOT NULL DEFAULT 0,
+      quantidadeVendida REAL NOT NULL DEFAULT 0,
+      estoqueAtual REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Ativa',
+      responsabilidade TEXT NOT NULL DEFAULT 'indefinida',
+      reembolsoEstimado REAL NOT NULL DEFAULT 0,
+      origemTabela TEXT NOT NULL,
+      atualizadoEm TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ofertas_intelider_forn_tipo
+      ON ofertas_intelider (fornecedorCodigo, tipo, dataFim);
+  `);
+}
+
+export const fetchOfertasIntelider = createServerFn({ method: "GET" })
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
+    ensureOfertasIntelider();
+    const rows = db
+      .prepare(
+        `SELECT id, tipo, fornecedorCodigo, sku, descricao, lojaId, lojaNome,
+                precoNormal, precoOferta, descontoPercentual, dataInicio, dataFim,
+                dataVencimento, quantidadeInicial, quantidadeVendida, estoqueAtual,
+                status, responsabilidade, reembolsoEstimado, origemTabela, atualizadoEm
+         FROM ofertas_intelider
+         WHERE fornecedorCodigo = ?
+         ORDER BY CASE tipo WHEN 'rebaixa' THEN 1 ELSE 2 END,
+                  COALESCE(dataFim, '9999-12-31'), descricao, lojaNome`,
+      )
+      .all(fornecedorCodigo) as OfertaInteliderDB[];
+    const atualizado = rows.reduce<string | null>(
+      (max, row) => (!max || row.atualizadoEm > max ? row.atualizadoEm : max),
+      null,
+    );
+    return {
+      rebaixas: rows.filter((row) => row.tipo === "rebaixa"),
+      validade: rows.filter((row) => row.tipo === "validade"),
+      fonte: "intelider" as const,
+      atualizadoEm: atualizado,
+    } satisfies OfertasInteliderDB;
+  });
+
+export type RebaixaSolicitacaoDB = {
+  id: string;
+  fornecedorCodigo: string;
+  titulo: string;
+  dataInicio: string;
+  dataFim: string;
+  segmentos: string;
+  lojas: string;
+  itens: string;
+  status: "rascunho" | "enviada" | "em análise" | "aprovada" | "recusada" | "efetivada";
+  criadoEm: string;
+  enviadoEm: string | null;
+};
+
+export type RebaixaSegmentoEmailDB = { segmento: string; email: string; atualizadoEm: string };
+
+function ensureSolicitacoesRebaixa() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rebaixa_solicitacoes (
+      id TEXT PRIMARY KEY, fornecedorCodigo TEXT NOT NULL, titulo TEXT NOT NULL,
+      dataInicio TEXT NOT NULL, dataFim TEXT NOT NULL, segmentos TEXT NOT NULL,
+      lojas TEXT NOT NULL, itens TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'em análise',
+      criadoEm TEXT NOT NULL, enviadoEm TEXT
+    );
+    CREATE TABLE IF NOT EXISTS rebaixa_segmento_emails (
+      segmento TEXT PRIMARY KEY, email TEXT NOT NULL, atualizadoEm TEXT NOT NULL
+    );
+  `);
+}
+
+export const fetchRebaixaSegmentosEmail = createServerFn({ method: "GET" }).handler(async () => {
+  exigirInterno();
+  ensureSolicitacoesRebaixa();
+  return db.prepare("SELECT segmento, email, atualizadoEm FROM rebaixa_segmento_emails ORDER BY segmento").all() as RebaixaSegmentoEmailDB[];
+});
+
+export const saveRebaixaSegmentoEmail = createServerFn({ method: "POST" })
+  .validator((data: { segmento: string; email: string }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    const segmento = String(data.segmento ?? "").trim().toUpperCase();
+    const email = String(data.email ?? "").trim().toLowerCase();
+    if (!segmento || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Informe segmento e e-mail válidos.");
+    ensureSolicitacoesRebaixa();
+    db.prepare(`INSERT INTO rebaixa_segmento_emails (segmento, email, atualizadoEm) VALUES (?, ?, datetime('now')) ON CONFLICT(segmento) DO UPDATE SET email=excluded.email, atualizadoEm=excluded.atualizadoEm`).run(segmento, email);
+    return { success: true };
+  });
+
+export const fetchMinhasSolicitacoesRebaixa = createServerFn({ method: "GET" }).handler(async () => {
+  const sessao = exigirSessaoFornecedor();
+  ensureSolicitacoesRebaixa();
+  return db.prepare("SELECT * FROM rebaixa_solicitacoes WHERE fornecedorCodigo = ? ORDER BY criadoEm DESC").all(sessao.codigo) as RebaixaSolicitacaoDB[];
+});
+
+export const submitSolicitacaoRebaixa = createServerFn({ method: "POST" })
+  .validator((data: { titulo: string; dataInicio: string; dataFim: string; segmentos: string[]; lojas: string[]; itens: unknown[] }) => data)
+  .handler(async ({ data }) => {
+    const sessao = exigirSessaoFornecedor();
+    const titulo = String(data.titulo ?? "").trim();
+    const dataInicio = String(data.dataInicio ?? "");
+    const dataFim = String(data.dataFim ?? "");
+    if (!titulo || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dataInicio) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(dataFim) || dataFim < dataInicio) throw new Error("Informe título e período válidos.");
+    const segmentos = [...new Set(data.segmentos.map((v) => String(v).trim().toUpperCase()).filter(Boolean))];
+    const lojas = [...new Set(data.lojas.map((v) => String(v).trim()).filter(Boolean))];
+    if (!segmentos.length || !lojas.length || !data.itens.length) throw new Error("Informe segmento, lojas e ao menos um produto.");
+    ensureSolicitacoesRebaixa();
+    if (tabelaExiste("contas_receber")) {
+      const limite = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+      const bloqueio = db.prepare("SELECT 1 FROM contas_receber WHERE fornecedorCodigo = ? AND status <> 'Descontado' AND vencimento IS NOT NULL AND vencimento <> '' AND vencimento < ? LIMIT 1").get(sessao.codigo, limite);
+      if (bloqueio) throw new Error("Solicitação bloqueada: existe débito vencido há mais de 60 dias.");
+    }
+    const destinos = db.prepare(`SELECT segmento, email FROM rebaixa_segmento_emails WHERE segmento IN (${segmentos.map(() => "?").join(",")})`).all(...segmentos) as Array<{ segmento: string; email: string }>;
+    if (destinos.length !== segmentos.length) throw new Error("Existe segmento sem e-mail configurado.");
+    const id = `rebaixa-${sessao.codigo}-${Date.now()}`;
+    const criadoEm = new Date().toISOString();
+    const destinatarios = destinos.map((row) => row.email).join(", ");
+    const fornecedor = db.prepare("SELECT nome FROM fornecedores WHERE codigo = ?").get(sessao.codigo) as { nome?: string } | undefined;
+    const transporter = nodemailer.createTransport({ host: process.env["SMTP_HOST"] || "localhost", port: parseInt(process.env["SMTP_PORT"] || "587", 10), secure: process.env["SMTP_SECURE"] === "true", auth: process.env["SMTP_USER"] && process.env["SMTP_PASS"] ? { user: process.env["SMTP_USER"], pass: process.env["SMTP_PASS"] } : undefined, tls: { rejectUnauthorized: false } });
+    await transporter.sendMail({ from: process.env["SMTP_FROM"] || "portal@lidernet.com.br", to: destinatarios, subject: `[Rebaixa em análise] ${titulo} - ${fornecedor?.nome || sessao.codigo}`, text: `Solicitação de rebaixa em análise. Fornecedor: ${fornecedor?.nome || sessao.codigo}. Período: ${dataInicio} a ${dataFim}. Segmentos: ${segmentos.join(", ")}. Produtos: ${data.itens.length}.` });
+    db.prepare(`INSERT INTO rebaixa_solicitacoes (id, fornecedorCodigo, titulo, dataInicio, dataFim, segmentos, lojas, itens, status, criadoEm, enviadoEm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'em análise', ?, datetime('now'))`).run(id, sessao.codigo, titulo, dataInicio, dataFim, JSON.stringify(segmentos), JSON.stringify(lojas), JSON.stringify(data.itens), criadoEm);
+    return { success: true, id, status: "em análise" as const };
+  });
+
 export const fetchVendasAnual = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
+    const escopo = escopoSegmentoVendas(fornecedorCodigo);
     const hoje = new Date();
     const anoAtual = hoje.getUTCFullYear();
     const mesCorte = hoje.getUTCMonth() + 1;
@@ -2160,6 +2541,7 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
 
     const vazio = (cacheAte: string | null, temAnoAtual: boolean): VendasAnualDB => ({
       corte: { data: corteIso, dia: diaCorte, mes: mesCorte, anoAtual, anoBase },
+      segmento: escopo.segmento,
       farolPct: 0,
       cacheAte,
       temAnoAtual,
@@ -2187,14 +2569,30 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
     const fornBase: MesAgg[] = Array.from({ length: 12 }, zeroMes);
     const fornAtual: MesAgg[] = Array.from({ length: 12 }, zeroMes);
 
+    const placeholdersSegmento = escopo.departamentos.map(() => "?").join(",");
+    const filtroSegmentoRede = escopo.departamentos.length
+      ? `AND p.departamentoCodigo IN (${placeholdersSegmento})`
+      : "AND 1 = 0";
     const redeRows = db
       .prepare(
-        `SELECT anoMes, SUM(valor) AS valor, SUM(quantidade) AS volume
-         FROM vendas_mensal
-         WHERE anoMes LIKE ? OR anoMes LIKE ?
-         GROUP BY anoMes`,
+        `SELECT vm.anoMes, SUM(vm.valor) AS valor, SUM(vm.quantidade) AS volume
+         FROM vendas_mensal vm
+         INNER JOIN produtos p
+           ON p.sku = vm.sku
+           OR (
+             length(vm.sku) > 1
+             AND p.codigoProdutoRms = substr(vm.sku, 1, length(vm.sku) - 1)
+             AND p.digitoProdutoRms = substr(vm.sku, -1)
+           )
+         WHERE (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
+           ${filtroSegmentoRede}
+         GROUP BY vm.anoMes`,
       )
-      .all(`${anoBase}-%`, `${anoAtual}-%`) as { anoMes: string; valor: number; volume: number }[];
+      .all(`${anoBase}-%`, `${anoAtual}-%`, ...escopo.departamentos) as {
+      anoMes: string;
+      valor: number;
+      volume: number;
+    }[];
 
     for (const row of redeRows) {
       const ano = Number(row.anoMes.slice(0, 4));
@@ -2398,6 +2796,7 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
 
     return {
       corte: { data: corteIso, dia: diaCorte, mes: mesCorte, anoAtual, anoBase },
+      segmento: escopo.segmento,
       farolPct,
       cacheAte,
       temAnoAtual,
@@ -2445,6 +2844,307 @@ function publicUsuarioFornecedor(row: UsuarioFornecedorRow): UsuarioFornecedorDB
   };
 }
 
+function ensureSolicitacoesAntecipacao() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS solicitacoes_antecipacao (
+      id TEXT PRIMARY KEY,
+      fornecedorCodigo TEXT NOT NULL,
+      protocolo TEXT NOT NULL UNIQUE,
+      valorBruto REAL NOT NULL,
+      valorLiquido REAL NOT NULL,
+      descontoTotal REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Pendente',
+      faturas TEXT NOT NULL,
+      criadoEm TEXT NOT NULL
+    );
+  `);
+}
+
+async function enviarEmailNotificacao(dados: {
+  protocolo: string;
+  fornecedorCodigo: string;
+  fornecedorNome: string;
+  fornecedorCnpj: string;
+  valorBruto: number;
+  desconto: number;
+  valorLiquido: number;
+  faturaIds: string[];
+  criadoEm: string;
+  usuarioEmail?: string | undefined;
+}) {
+  const host = process.env["SMTP_HOST"] || "localhost";
+  const port = parseInt(process.env["SMTP_PORT"] || "587", 10);
+  const secure = process.env["SMTP_SECURE"] === "true";
+  const user = process.env["SMTP_USER"];
+  const pass = process.env["SMTP_PASS"];
+  const from = process.env["SMTP_FROM"] || "portal@lidernet.com.br";
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: user && pass ? { user, pass } : undefined,
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+
+  const formatBRL = (v: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+  let faturasHTML = "";
+  try {
+    const todasFaturas = faturasDoFornecedor(dados.fornecedorCodigo);
+    const faturasSelecionadas = todasFaturas.filter((f) => dados.faturaIds.includes(f.id));
+    if (faturasSelecionadas.length > 0) {
+      faturasHTML = `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; font-family: sans-serif;">
+          <thead>
+            <tr style="background-color: #f3f4f6; text-align: left;">
+              <th style="padding: 8px; border: 1px solid #e5e7eb;">Nota Fiscal</th>
+              <th style="padding: 8px; border: 1px solid #e5e7eb;">Emissão</th>
+              <th style="padding: 8px; border: 1px solid #e5e7eb;">Previsão PGTO</th>
+              <th style="padding: 8px; border: 1px solid #e5e7eb; text-align: right;">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${faturasSelecionadas
+              .map(
+                (f) => `
+              <tr>
+                <td style="padding: 8px; border: 1px solid #e5e7eb;">${f.numeroNota}</td>
+                <td style="padding: 8px; border: 1px solid #e5e7eb;">${f.emissao}</td>
+                <td style="padding: 8px; border: 1px solid #e5e7eb;">${f.dataPagamento}</td>
+                <td style="padding: 8px; border: 1px solid #e5e7eb; text-align: right;">${formatBRL(f.valor)}</td>
+              </tr>
+            `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    } else {
+      faturasHTML = `<p style="font-family: sans-serif; color: #6b7280;">IDs das Faturas: ${dados.faturaIds.join(", ")}</p>`;
+    }
+  } catch (err) {
+    console.error("Erro ao carregar faturas para email:", err);
+    faturasHTML = `<p style="font-family: sans-serif; color: #6b7280;">IDs das Faturas: ${dados.faturaIds.join(", ")}</p>`;
+  }
+
+  const dataFormatada = new Date(dados.criadoEm).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
+
+  const subject = `[Antecipação Líder Fomento] Solicitação ${dados.protocolo} - ${dados.fornecedorNome}`;
+
+  const htmlContent = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+      <div style="background-color: #1e3a8a; padding: 20px; text-align: center; color: white;">
+        <h2 style="margin: 0; font-size: 20px; letter-spacing: 0.5px;">Solicitação de Antecipação de Recebíveis</h2>
+        <span style="font-size: 14px; opacity: 0.9;">Líder Fomento / Portal do Fornecedor</span>
+      </div>
+      <div style="padding: 24px; color: #1f2937; line-height: 1.5;">
+        <p style="margin-top: 0;">Olá,</p>
+        <p>Uma nova solicitação de antecipação de recebíveis foi registrada através do simulador no Portal do Fornecedor.</p>
+        
+        <div style="background-color: #f9fafb; border-left: 4px solid #1e3a8a; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 16px; color: #1e3a8a;">Detalhes da Solicitação</h3>
+          <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 4px 0; color: #6b7280; width: 40%;"><strong>Protocolo:</strong></td>
+              <td style="padding: 4px 0; font-weight: bold; color: #111827;">${dados.protocolo}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6b7280;"><strong>Fornecedor:</strong></td>
+              <td style="padding: 4px 0; color: #111827;">${dados.fornecedorNome} (${dados.fornecedorCodigo})</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6b7280;"><strong>CNPJ:</strong></td>
+              <td style="padding: 4px 0; color: #111827;">${dados.fornecedorCnpj}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6b7280;"><strong>Data/Hora:</strong></td>
+              <td style="padding: 4px 0; color: #111827;">${dataFormatada}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #6b7280;"><strong>Solicitante:</strong></td>
+              <td style="padding: 4px 0; color: #111827;">${dados.usuarioEmail || "Não identificado"}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
+          <h3 style="margin-top: 0; margin-bottom: 10px; font-size: 16px; color: #1d4ed8;">Resumo Financeiro</h3>
+          <table style="width: 100%; font-size: 14px; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 4px 0; color: #4b5563;"><strong>Valor Bruto:</strong></td>
+              <td style="padding: 4px 0; text-align: right; color: #111827;">${formatBRL(dados.valorBruto)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 4px 0; color: #dc2626;"><strong>Desconto Total:</strong></td>
+              <td style="padding: 4px 0; text-align: right; color: #dc2626;">- ${formatBRL(dados.desconto)}</td>
+            </tr>
+            <tr style="border-top: 1px solid #bfdbfe; font-size: 16px;">
+              <td style="padding: 8px 0 0 0; color: #1d4ed8;"><strong>Líquido a Receber:</strong></td>
+              <td style="padding: 8px 0 0 0; text-align: right; font-weight: bold; color: #1d4ed8;">${formatBRL(dados.valorLiquido)}</td>
+            </tr>
+          </table>
+        </div>
+
+        <h3 style="font-size: 15px; color: #1f2937; margin-bottom: 5px; margin-top: 25px;">Títulos Selecionados</h3>
+        ${faturasHTML}
+
+        <p style="margin-top: 30px; font-size: 13px; color: #6b7280;">
+          Este é um e-mail automático gerado pelo Portal do Fornecedor Grupo Líder. Por favor, não responda diretamente a este e-mail.
+        </p>
+      </div>
+      <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+        &copy; 2026 Grupo Líder. Todos os direitos reservados.
+      </div>
+    </div>
+  `;
+
+  const recipients = ["fomento@lidernet.com.br"];
+  if (dados.usuarioEmail && dados.usuarioEmail.trim()) {
+    recipients.push(dados.usuarioEmail.trim());
+  }
+
+  const mailOptions = {
+    from: `"Portal do Fornecedor" <${from}>`,
+    to: recipients.join(", "),
+    subject,
+    html: htmlContent,
+  };
+
+  console.log(`[SMTP] Iniciando envio de e-mail de antecipação para: ${recipients.join(", ")}`);
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[SMTP] E-mail enviado com sucesso. MessageID: ${info.messageId}`);
+    return info;
+  } catch (error) {
+    console.error("[SMTP] Erro ao enviar e-mail de antecipação:", error);
+    throw error;
+  }
+}
+
+export const solicitarAntecipacao = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      fornecedorCodigo: string;
+      faturaIds: string[];
+      valorBruto: number;
+      desconto: number;
+      valorLiquido: number;
+    }) => ({
+      ...data,
+      fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
+    ensureSolicitacoesAntecipacao();
+
+    const { faturaIds, valorBruto, desconto, valorLiquido } = data;
+    const id = `rec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const protocolo = `ANT-${Date.now().toString(36).toUpperCase()}`;
+    const criadoEm = new Date().toISOString();
+    const faturasJson = JSON.stringify(faturaIds);
+
+    // Salvar no SQLite local
+    db.prepare(
+      `
+      INSERT INTO solicitacoes_antecipacao (id, fornecedorCodigo, protocolo, valorBruto, valorLiquido, descontoTotal, status, faturas, criadoEm)
+      VALUES (?, ?, ?, ?, ?, ?, 'Pendente', ?, ?)
+    `,
+    ).run(id, codigo, protocolo, valorBruto, valorLiquido, desconto, faturasJson, criadoEm);
+
+    // Buscar info do fornecedor
+    let fornecedorNome = "Fornecedor Não Identificado";
+    let fornecedorCnpj = "CNPJ Não Cadastrado";
+    try {
+      const forn = db
+        .prepare("SELECT nome, cnpj FROM fornecedores WHERE codigo = ?")
+        .get(codigo) as { nome: string; cnpj: string } | undefined;
+      if (forn) {
+        fornecedorNome = forn.nome;
+        fornecedorCnpj = forn.cnpj;
+      }
+    } catch (err) {
+      console.error("Erro ao obter dados do fornecedor para e-mail:", err);
+    }
+
+    // Obter email de login atual
+    let usuarioEmail: string | undefined;
+    try {
+      const sessao = lerSessaoPortal();
+      if (sessao && sessao.usuarioEmail) {
+        usuarioEmail = sessao.usuarioEmail;
+      }
+    } catch (err) {
+      console.error("Erro ao obter e-mail de sessao para e-mail:", err);
+    }
+
+    let emailEnviado = false;
+    let erroEmail: string | undefined = undefined;
+
+    try {
+      await enviarEmailNotificacao({
+        protocolo,
+        fornecedorCodigo: codigo,
+        fornecedorNome,
+        fornecedorCnpj,
+        valorBruto,
+        desconto,
+        valorLiquido,
+        faturaIds,
+        criadoEm,
+        usuarioEmail,
+      });
+      emailEnviado = true;
+    } catch (err: any) {
+      console.error("Falha no envio do e-mail de antecipação:", err);
+      erroEmail = err.message || "Erro de rede / SMTP";
+    }
+
+    return {
+      codigoAuditoria: protocolo,
+      criadoEm,
+      faturaIds,
+      valorBruto,
+      desconto,
+      valorLiquido,
+      emailEnviado,
+      erroEmail,
+    };
+  });
+
+export const fetchAntecipacoes = createServerFn({ method: "GET" })
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    const codigo = codigoFornecedorEfetivo(codigoPedido);
+    ensureSolicitacoesAntecipacao();
+
+    const rows = db
+      .prepare(
+        `
+      SELECT id, fornecedorCodigo, protocolo, valorBruto, valorLiquido, descontoTotal, status, faturas, criadoEm
+      FROM solicitacoes_antecipacao
+      WHERE fornecedorCodigo = ?
+      ORDER BY criadoEm DESC
+    `,
+      )
+      .all(codigo) as any[];
+
+    return rows.map((r) => ({
+      codigoAuditoria: String(r.protocolo),
+      criadoEm: String(r.criadoEm),
+      faturaIds: JSON.parse(r.faturas || "[]") as string[],
+      valorBruto: Number(r.valorBruto ?? 0),
+      desconto: Number(r.descontoTotal ?? 0),
+      valorLiquido: Number(r.valorLiquido ?? 0),
+    }));
+  });
+
 export const fetchUsuariosFornecedor = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
@@ -2472,7 +3172,8 @@ export const salvarUsuarioFornecedor = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } = await import("./server/usuarios-fornecedor");
+    const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } =
+      await import("./server/usuarios-fornecedor");
     const codigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
     const nome = String(data.nome ?? "").trim();
     const email = normalizarEmail(data.email);
@@ -2558,7 +3259,9 @@ export const excluirUsuarioFornecedor = createServerFn({ method: "POST" })
 export const loginUsuarioFornecedor = createServerFn({ method: "POST" })
   .validator((data: { codigo: string; email: string; senha: string }) => ({
     codigo: String(data.codigo ?? "").trim(),
-    email: String(data.email ?? "").trim().toLowerCase(),
+    email: String(data.email ?? "")
+      .trim()
+      .toLowerCase(),
     senha: String(data.senha ?? ""),
   }))
   .handler(async ({ data }) => {
@@ -2599,13 +3302,14 @@ export const loginUsuarioFornecedor = createServerFn({ method: "POST" })
 export const primeiroAcessoFornecedor = createServerFn({ method: "POST" })
   .validator((data: { codigo: string; email: string; senha: string }) => ({
     codigo: String(data.codigo ?? "").trim(),
-    email: String(data.email ?? "").trim().toLowerCase(),
+    email: String(data.email ?? "")
+      .trim()
+      .toLowerCase(),
     senha: String(data.senha ?? ""),
   }))
   .handler(async ({ data }) => {
-    const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } = await import(
-      "./server/usuarios-fornecedor"
-    );
+    const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } =
+      await import("./server/usuarios-fornecedor");
     const email = normalizarEmail(data.email);
     if (!emailLoginValido(email)) {
       throw new Error("Informe um e-mail válido. O e-mail é o login da sua conta.");
@@ -2613,9 +3317,7 @@ export const primeiroAcessoFornecedor = createServerFn({ method: "POST" })
     const forn = exigirFornecedorLiberado(data.codigo);
     ensureUsuariosFornecedor();
     const existente = db
-      .prepare(
-        `SELECT id FROM usuarios_fornecedor WHERE fornecedorCodigo = ? AND email = ?`,
-      )
+      .prepare(`SELECT id FROM usuarios_fornecedor WHERE fornecedorCodigo = ? AND email = ?`)
       .get(forn.codigo, email) as { id: string } | undefined;
     if (existente) {
       throw new Error("EMAIL_JA_CADASTRADO");
@@ -2667,7 +3369,13 @@ export const fetchMinhaContaFornecedor = createServerFn({ method: "GET" }).handl
        WHERE fornecedorCodigo = ? AND email = ?`,
     )
     .get(sessao.codigo, sessao.usuarioEmail) as
-    | { id: string; nome: string; email: string; precisaTrocarSenha?: number; precisatrocarsenha?: number }
+    | {
+        id: string;
+        nome: string;
+        email: string;
+        precisaTrocarSenha?: number;
+        precisatrocarsenha?: number;
+      }
     | undefined;
   if (!row) return null;
   return {
@@ -2684,9 +3392,8 @@ export const alterarMinhaSenhaFornecedor = createServerFn({ method: "POST" })
     senhaAtual: String(data.senhaAtual ?? ""),
   }))
   .handler(async ({ data }) => {
-    const { senhaFornecedorConfere, hashSenhaFornecedor } = await import(
-      "./server/usuarios-fornecedor"
-    );
+    const { senhaFornecedorConfere, hashSenhaFornecedor } =
+      await import("./server/usuarios-fornecedor");
     const sessao = exigirSessaoFornecedor();
     if (data.novaSenha.length < 8) {
       throw new Error("A nova senha precisa ter no mínimo 8 caracteres.");
@@ -2818,7 +3525,7 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
       .toLowerCase();
     const nome = String(data.nome ?? "").trim();
     const senha = String(data.senha ?? "").trim();
-    const role = data.role === "colaborador" ? "colaborador" : "admin";
+    const role = data.role === "comprador" || data.role === "colaborador" ? data.role : "admin";
     if (!username || !nome || !senha) {
       throw new Error("Preencha usuário, nome e senha.");
     }
@@ -2864,11 +3571,13 @@ export type PropostaPrecoDB = {
 };
 
 export const submitPropostaPreco = createServerFn({ method: "POST" })
-  .validator((data: {
-    fornecedorCodigo: string;
-    justificativa: string;
-    itens: { sku: string; descricao: string; precoAtual: number; precoProposto: number }[];
-  }) => data)
+  .validator(
+    (data: {
+      fornecedorCodigo: string;
+      justificativa: string;
+      itens: { sku: string; descricao: string; precoAtual: number; precoProposto: number }[];
+    }) => data,
+  )
   .handler(async ({ data }) => {
     const { justificativa, itens } = data;
     const fornecedorCodigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
@@ -2890,7 +3599,7 @@ export const submitPropostaPreco = createServerFn({ method: "POST" })
           item.descricao,
           item.precoAtual,
           item.precoProposto,
-          justificativa
+          justificativa,
         );
       }
     });
@@ -2904,23 +3613,32 @@ export const fetchPropostasPrecos = createServerFn({ method: "GET" })
   .handler(async ({ data: fornecedorCodigo }) => {
     if (fornecedorCodigo) {
       const code = codigoFornecedorEfetivo(fornecedorCodigo);
-      const stmt = db.prepare("SELECT * FROM propostas_precos WHERE fornecedorCodigo = ? ORDER BY criadoEm DESC");
+      const stmt = db.prepare(
+        "SELECT * FROM propostas_precos WHERE fornecedorCodigo = ? ORDER BY criadoEm DESC",
+      );
       return stmt.all(code) as PropostaPrecoDB[];
     } else {
       exigirInterno();
-      const stmt = db.prepare("SELECT * FROM propostas_precos ORDER BY status = 'pendente' DESC, criadoEm DESC");
+      const stmt = db.prepare(
+        "SELECT * FROM propostas_precos ORDER BY status = 'pendente' DESC, criadoEm DESC",
+      );
       return stmt.all() as PropostaPrecoDB[];
     }
   });
 
 export const responderPropostaPreco = createServerFn({ method: "POST" })
-  .validator((data: { id: number; status: "aprovado" | "rejeitado"; respostaAdmin: string }) => data)
+  .validator(
+    (data: { id: number; status: "aprovado" | "rejeitado"; respostaAdmin: string }) => data,
+  )
   .handler(async ({ data }) => {
     exigirInterno();
     const { id, status, respostaAdmin } = data;
 
-    const selectStmt = db.prepare("SELECT sku, precoProposto, status FROM propostas_precos WHERE id = ?");
-    const proposal = selectStmt.get(id) as { sku: string; precoProposto: number; status: string } | undefined;
+    const selectStmt = db.prepare(
+      "SELECT sku, precoProposto, status FROM propostas_precos WHERE id = ?",
+    );
+    const proposal = selectStmt.get(id) as
+      { sku: string; precoProposto: number; status: string } | undefined;
 
     if (!proposal) {
       throw new Error("Proposta não encontrada.");
@@ -2954,13 +3672,29 @@ export const responderPropostaPreco = createServerFn({ method: "POST" })
   });
 
 export const updateSupplierAccessConfig = createServerFn({ method: "POST" })
-  .validator((data: { codigo: string; isentoCobranca: number; acessoDataInicio: string | null; acessoDataFim: string | null }) => data)
+  .validator(
+    (data: {
+      codigo: string;
+      isentoCobranca: number;
+      acessoDataInicio: string | null;
+      acessoDataFim: string | null;
+    }) => data,
+  )
   .handler(async ({ data }) => {
     exigirInterno();
     ensureFornecedoresColumns();
     const { codigo, isentoCobranca, acessoDataInicio, acessoDataFim } = data;
+    const atual = db
+      .prepare("SELECT acessoStatus, acessoDataFim FROM fornecedores WHERE codigo = ?")
+      .get(codigo) as { acessoStatus?: string; acessoDataFim?: string | null } | undefined;
+    if (
+      atual?.acessoStatus === "DEGUSTACAO" &&
+      String(atual.acessoDataFim || "") !== String(acessoDataFim || "")
+    ) {
+      throw new Error("A vigência da degustação de 30 dias é fixa e não pode ser prorrogada.");
+    }
     db.prepare(
-      "UPDATE fornecedores SET isentoCobranca = ?, acessoDataInicio = ?, acessoDataFim = ? WHERE codigo = ?"
+      "UPDATE fornecedores SET isentoCobranca = ?, acessoDataInicio = ?, acessoDataFim = ? WHERE codigo = ?",
     ).run(isentoCobranca, acessoDataInicio, acessoDataFim, codigo);
     return { success: true };
   });
@@ -2982,3 +3716,4 @@ export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
       throw new Error("Erro de execução no script de sincronização do RMS.");
     }
   });
+

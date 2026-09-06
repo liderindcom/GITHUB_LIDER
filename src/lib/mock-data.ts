@@ -440,8 +440,10 @@ export type Produto = {
   marca?: string | null;
   fornecedorComercialCodigo?: string | null;
   fornecedorComercialNome?: string | null;
-  /** Classe ABCD composta (valor + volume) no subgrupo, ex.: Aa, Bc. */
+  /** Classe ABCD composta normal (valor + volume no subgrupo), ex.: Aa, Bc. */
   classeComposta?: string | null;
+  /** Classe usada para Top Star: valor no subgrupo + quantidade no grupo. */
+  classeTopStar?: string | null;
   sistematica?: string | null;
 };
 
@@ -801,6 +803,7 @@ export type Pedido = {
   entradaCdam?: string;
   lojaId: string;
   status: PedidoStatus;
+  totLiq?: number;
   itens: PedidoItem[];
 };
 
@@ -1187,18 +1190,25 @@ const all_pedidos: Pedido[] = [
 ];
 
 export const pedidos = createDynamicArrayProxy(() => {
-  if (globalDbCache.pedidos) {
-    return globalDbCache.pedidos.filter((p) => !lojaForaDoPortalFornecedor(p.lojaId));
-  }
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  return all_pedidos.map((p) => ({
-    ...p,
-    numero: p.numero.startsWith("PC-") ? p.numero.substring(3) : p.numero,
-  })).filter((p) => p.itens.some((item) => activeSkus.has(item.sku)));
+  const fonte = globalDbCache.pedidos
+    ? globalDbCache.pedidos.filter((p) => !lojaForaDoPortalFornecedor(p.lojaId))
+    : all_pedidos.map((p) => ({
+        ...p,
+        numero: p.numero.startsWith("PC-") ? p.numero.substring(3) : p.numero,
+      }));
+  return fonte
+    .map((p) => ({
+      ...p,
+      itens: p.itens.filter((item) => activeSkus.has(item.sku)),
+    }))
+    .filter((p) => p.itens.length > 0 && !lojaForaDoPortalFornecedor(p.lojaId));
 });
 
 export const totalPedido = (pedido: Pedido) =>
-  pedido.itens.reduce((acc, item) => acc + item.quantidadePedida * item.precoUnitario, 0);
+  pedido.totLiq !== undefined && pedido.totLiq > 0
+    ? pedido.totLiq
+    : pedido.itens.reduce((acc, item) => acc + item.quantidadePedida * item.precoUnitario, 0);
 
 export const quantidadesPedido = (pedido: Pedido) =>
   pedido.itens.reduce(

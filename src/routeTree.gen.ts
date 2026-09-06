@@ -17,8 +17,10 @@ import { Route as PortalAcordoFillrateRouteImport } from './routes/_portal.acord
 import { Route as PortalAdminAcordoAcessoRouteImport } from './routes/_portal.admin-acordo-acesso'
 import { Route as PortalAdminFornecedoresRouteImport } from './routes/_portal.admin-fornecedores'
 import { Route as PortalAdminPrecosRouteImport } from './routes/_portal.admin-precos'
+import { Route as PortalAdminRebaixaRouteImport } from './routes/_portal.admin-rebaixa'
 import { Route as PortalAdminUsuariosRouteImport } from './routes/_portal.admin-usuarios'
 import { Route as PortalAgendaRouteImport } from './routes/_portal.agenda'
+import { Route as PortalCatalogoComercialRouteImport } from './routes/_portal.catalogo-comercial'
 import { Route as PortalClassificacaoRouteImport } from './routes/_portal.classificacao'
 import { Route as PortalConciliacaoRouteImport } from './routes/_portal.conciliacao'
 import { Route as PortalContasReceberRouteImport } from './routes/_portal.contas-receber'
@@ -80,6 +82,11 @@ const PortalAdminPrecosRoute = PortalAdminPrecosRouteImport.update({
   path: '/admin-precos',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalAdminRebaixaRoute = PortalAdminRebaixaRouteImport.update({
+  id: '/admin-rebaixa',
+  path: '/admin-rebaixa',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalAdminUsuariosRoute = PortalAdminUsuariosRouteImport.update({
   id: '/admin-usuarios',
   path: '/admin-usuarios',
@@ -88,6 +95,11 @@ const PortalAdminUsuariosRoute = PortalAdminUsuariosRouteImport.update({
 const PortalAgendaRoute = PortalAgendaRouteImport.update({
   id: '/agenda',
   path: '/agenda',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalCatalogoComercialRoute = PortalCatalogoComercialRouteImport.update({
+  id: '/catalogo-comercial',
+  path: '/catalogo-comercial',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalClassificacaoRoute = PortalClassificacaoRouteImport.update({
@@ -205,8 +217,10 @@ export interface FileRoutesByFullPath {
   '/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
   '/admin-precos': typeof PortalAdminPrecosRoute
+  '/admin-rebaixa': typeof PortalAdminRebaixaRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/agenda': typeof PortalAgendaRoute
+  '/catalogo-comercial': typeof PortalCatalogoComercialRoute
   '/classificacao': typeof PortalClassificacaoRoute
   '/conciliacao': typeof PortalConciliacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
@@ -237,8 +251,10 @@ export interface FileRoutesByTo {
   '/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
   '/admin-precos': typeof PortalAdminPrecosRoute
+  '/admin-rebaixa': typeof PortalAdminRebaixaRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/agenda': typeof PortalAgendaRoute
+  '/catalogo-comercial': typeof PortalCatalogoComercialRoute
   '/classificacao': typeof PortalClassificacaoRoute
   '/conciliacao': typeof PortalConciliacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
@@ -271,8 +287,10 @@ export interface FileRoutesById {
   '/_portal/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/_portal/admin-fornecedores': typeof PortalAdminFornecedoresRoute
   '/_portal/admin-precos': typeof PortalAdminPrecosRoute
+  '/_portal/admin-rebaixa': typeof PortalAdminRebaixaRoute
   '/_portal/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/_portal/agenda': typeof PortalAgendaRoute
+  '/_portal/catalogo-comercial': typeof PortalCatalogoComercialRoute
   '/_portal/classificacao': typeof PortalClassificacaoRoute
   '/_portal/conciliacao': typeof PortalConciliacaoRoute
   '/_portal/contas-receber': typeof PortalContasReceberRoute
@@ -305,8 +323,10 @@ export interface FileRouteTypes {
     | '/admin-acordo-acesso'
     | '/admin-fornecedores'
     | '/admin-precos'
+    | '/admin-rebaixa'
     | '/admin-usuarios'
     | '/agenda'
+    | '/catalogo-comercial'
     | '/classificacao'
     | '/conciliacao'
     | '/contas-receber'
@@ -337,8 +357,10 @@ export interface FileRouteTypes {
     | '/admin-acordo-acesso'
     | '/admin-fornecedores'
     | '/admin-precos'
+    | '/admin-rebaixa'
     | '/admin-usuarios'
     | '/agenda'
+    | '/catalogo-comercial'
     | '/classificacao'
     | '/conciliacao'
     | '/contas-receber'
@@ -370,8 +392,10 @@ export interface FileRouteTypes {
     | '/_portal/admin-acordo-acesso'
     | '/_portal/admin-fornecedores'
     | '/_portal/admin-precos'
+    | '/_portal/admin-rebaixa'
     | '/_portal/admin-usuarios'
     | '/_portal/agenda'
+    | '/_portal/catalogo-comercial'
     | '/_portal/classificacao'
     | '/_portal/conciliacao'
     | '/_portal/contas-receber'
@@ -459,6 +483,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAdminPrecosRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/admin-rebaixa': {
+      id: '/_portal/admin-rebaixa'
+      path: '/admin-rebaixa'
+      fullPath: '/admin-rebaixa'
+      preLoaderRoute: typeof PortalAdminRebaixaRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/admin-usuarios': {
       id: '/_portal/admin-usuarios'
       path: '/admin-usuarios'
@@ -471,6 +502,13 @@ declare module '@tanstack/react-router' {
       path: '/agenda'
       fullPath: '/agenda'
       preLoaderRoute: typeof PortalAgendaRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/catalogo-comercial': {
+      id: '/_portal/catalogo-comercial'
+      path: '/catalogo-comercial'
+      fullPath: '/catalogo-comercial'
+      preLoaderRoute: typeof PortalCatalogoComercialRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/classificacao': {
@@ -629,8 +667,10 @@ interface PortalRouteChildren {
   PortalAdminAcordoAcessoRoute: typeof PortalAdminAcordoAcessoRoute
   PortalAdminFornecedoresRoute: typeof PortalAdminFornecedoresRoute
   PortalAdminPrecosRoute: typeof PortalAdminPrecosRoute
+  PortalAdminRebaixaRoute: typeof PortalAdminRebaixaRoute
   PortalAdminUsuariosRoute: typeof PortalAdminUsuariosRoute
   PortalAgendaRoute: typeof PortalAgendaRoute
+  PortalCatalogoComercialRoute: typeof PortalCatalogoComercialRoute
   PortalClassificacaoRoute: typeof PortalClassificacaoRoute
   PortalConciliacaoRoute: typeof PortalConciliacaoRoute
   PortalContasReceberRoute: typeof PortalContasReceberRoute
@@ -660,8 +700,10 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalAdminAcordoAcessoRoute: PortalAdminAcordoAcessoRoute,
   PortalAdminFornecedoresRoute: PortalAdminFornecedoresRoute,
   PortalAdminPrecosRoute: PortalAdminPrecosRoute,
+  PortalAdminRebaixaRoute: PortalAdminRebaixaRoute,
   PortalAdminUsuariosRoute: PortalAdminUsuariosRoute,
   PortalAgendaRoute: PortalAgendaRoute,
+  PortalCatalogoComercialRoute: PortalCatalogoComercialRoute,
   PortalClassificacaoRoute: PortalClassificacaoRoute,
   PortalConciliacaoRoute: PortalConciliacaoRoute,
   PortalContasReceberRoute: PortalContasReceberRoute,

@@ -10,6 +10,7 @@ import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -224,6 +225,8 @@ function LogisticaPage() {
   const abaAtual: AbaLogistica = aba === "agenda" ? "agenda" : "fila";
   const [tipo, setTipo] = useState<TipoFila>("todos");
   const [selecionado, setSelecionado] = useState<SelecionadoFila | null>(null);
+  const [filtrosTabela, setFiltrosTabela] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ campo: keyof LinhaLogistica; asc: boolean }>({ campo: "dataIso", asc: false });
 
   const nfes = useMemo(
     () => (globalDbCache.nfePendentes ?? []).filter((n) => dentroDaJanela(n.agendaPrevisao)),
@@ -289,7 +292,27 @@ function LogisticaPage() {
     return [...linhasNfe, ...linhasPedido].sort((a, b) => b.dataIso.localeCompare(a.dataIso));
   }, [nfes, pedidosAbertos]);
 
-  const visiveis = tipo === "todos" ? fila : fila.filter((l) => l.tipo === tipo);
+  const visiveis = useMemo(() => {
+    const filtradas = (tipo === "todos" ? fila : fila.filter((l) => l.tipo === tipo)).filter((linha) => {
+      const valores: Record<string, string> = {
+        tipo: linha.tipo === "nfe" ? "NF-e" : "Pedido",
+        documento: `${linha.documento} ${linha.detalhe}`,
+        destino: linha.destino,
+        fluxo: rotuloFluxoEntrega[linha.fluxo],
+        dataLabel: linha.dataLabel,
+        situacao: linha.situacao,
+      };
+      return Object.entries(filtrosTabela).every(([campo, filtro]) => !filtro || valores[campo].toLowerCase().includes(filtro.toLowerCase()));
+    });
+    return [...filtradas].sort((a, b) => {
+      const av = String(a[ordenacao.campo] ?? "");
+      const bv = String(b[ordenacao.campo] ?? "");
+      const cmp = av.localeCompare(bv, "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacao.asc ? cmp : -cmp;
+    });
+  }, [tipo, fila, filtrosTabela, ordenacao]);
+
+  const ordenar = (campo: keyof LinhaLogistica) => setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
 
   function abrirLinha(linha: LinhaLogistica) {
     if (linha.tipo === "nfe") {
@@ -378,12 +401,14 @@ function LogisticaPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="bg-stone-100">
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Documento</TableHead>
-                  <TableHead>Destino</TableHead>
-                  <TableHead>Fluxo</TableHead>
-                  <TableHead>Previsão de chegada</TableHead>
-                  <TableHead>Situação</TableHead>
+                  {([["tipo", "Tipo"], ["documento", "Documento"], ["destino", "Destino"], ["fluxo", "Fluxo"], ["dataLabel", "Previsão de chegada"], ["situacao", "Situação"]] as const).map(([campo, titulo]) => (
+                    <TableHead key={campo}>
+                      <div className="flex min-w-[100px] items-center gap-1">
+                        <Input value={filtrosTabela[campo] ?? ""} onChange={(e) => setFiltrosTabela((atual) => ({ ...atual, [campo]: e.target.value }))} placeholder={titulo} className="h-7 w-full text-xs" />
+                        <button type="button" className="text-muted-foreground" onClick={() => ordenar(campo === "tipo" ? "tipo" : campo === "dataLabel" ? "dataLabel" : campo)} aria-label={`Ordenar ${titulo}`}>↕</button>
+                      </div>
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>

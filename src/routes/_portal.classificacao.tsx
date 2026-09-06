@@ -3,6 +3,7 @@ import { Boxes, ChevronDown, ChevronRight, Layers3, PackageSearch, Tags, Trendin
 import { useMemo, useState, type ReactNode } from "react";
 import { usePortal } from "@/context/portal-context";
 import { classificarProduto } from "@/lib/classificacao-dinamica";
+import { TableColumnHeader } from "@/components/table-column-header";
 
 import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +73,10 @@ function ClassificacaoPage() {
   const [secao, setSecao] = useState("todos");
   const [grupo, setGrupo] = useState("todos");
   const [subgrupo, setSubgrupo] = useState("todos");
+  const [buscasColuna, setBuscasColuna] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ coluna: string; direcao: "asc" | "desc" } | null>(null);
+  const alterarBuscaColuna = (coluna: string, valor: string) => setBuscasColuna((atual) => ({ ...atual, [coluna]: valor }));
+  const ordenarPor = (coluna: string) => setOrdenacao((atual) => atual?.coluna === coluna ? { coluna, direcao: atual.direcao === "asc" ? "desc" : "asc" } : { coluna, direcao: "asc" });
 
   const analise = useMemo(() => {
     void dadosFornecedorVersao;
@@ -132,6 +137,7 @@ function ClassificacaoPage() {
         lojasRuptura,
         fillRate,
         classeComposta: formatarClasseComposta(produto.classeComposta),
+        classeTopStar: formatarClasseComposta(produto.classeTopStar || produto.classeComposta),
         participacaoSubgrupo: 0,
         participacaoAcumuladaSubgrupo: 0,
       };
@@ -179,15 +185,27 @@ function ClassificacaoPage() {
       .map(subgrupoMercadologico),
   );
 
-  const lista = analise.filter((linha) => {
-    const produto = linha.produto;
-    if (departamento !== "todos" && departamentoMercadologico(produto) !== departamento)
-      return false;
-    if (secao !== "todos" && secaoMercadologica(produto) !== secao) return false;
-    if (grupo !== "todos" && grupoMercadologico(produto) !== grupo) return false;
-    if (subgrupo !== "todos" && subgrupoMercadologico(produto) !== subgrupo) return false;
-    return true;
-  });
+  const lista = useMemo(() => {
+    const filtrada = analise.filter((linha) => {
+      const produto = linha.produto;
+      if (departamento !== "todos" && departamentoMercadologico(produto) !== departamento) return false;
+      if (secao !== "todos" && secaoMercadologico(produto) !== secao) return false;
+      if (grupo !== "todos" && grupoMercadologico(produto) !== grupo) return false;
+      if (subgrupo !== "todos" && subgrupoMercadologico(produto) !== subgrupo) return false;
+      const valores: Record<string, string> = {
+        codigo: `${produto.sku} ${codigoProdutoComDigito(produto.sku)}`, produto: produto.descricao,
+        papel: produto.papelMercadologico, classe: linha.classeComposta,
+      };
+      return Object.entries(buscasColuna).every(([coluna, valor]) => !valor || (valores[coluna] ?? "").toLowerCase().includes(valor.toLowerCase()));
+    });
+    if (!ordenacao) return filtrada;
+    return [...filtrada].sort((a, b) => {
+      const valor = (linha: typeof a) => ({ codigo: linha.produto.sku, produto: linha.produto.descricao, papel: linha.produto.papelMercadologico, classe: linha.classeComposta, venda: linha.vendaMedia90, participacao: linha.participacaoSubgrupo, acumulado: linha.participacaoAcumuladaSubgrupo, margem: linha.margem, estoque: linha.estoqueAtual, rupturas: linha.lojasRuptura, fill: linha.fillRate }[ordenacao.coluna] ?? "");
+      const va = valor(a), vb = valor(b);
+      const comparacao = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacao.direcao === "asc" ? comparacao : -comparacao;
+    });
+  }, [analise, departamento, secao, grupo, subgrupo, buscasColuna, ordenacao]);
 
   const arvore = useMemo(() => {
     type NoSub = { nome: string; linhas: typeof lista };
@@ -380,17 +398,7 @@ function ClassificacaoPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="bg-stone-100">
-                    <TableHead>Cód. produto</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Papel</TableHead>
-                    <TableHead>Classe</TableHead>
-                    <TableHead className="text-right">Venda média 90d</TableHead>
-                    <TableHead className="text-right">Part. subgrupo</TableHead>
-                    <TableHead className="text-right">Acum.</TableHead>
-                    <TableHead className="text-right">Margem</TableHead>
-                    <TableHead className="text-right">Estoque</TableHead>
-                    <TableHead className="text-right">Rupturas</TableHead>
-                    <TableHead className="text-right">Fill rate</TableHead>
+                    {[["codigo", "Cód. produto"], ["produto", "Produto"], ["papel", "Papel"], ["classe", "Classe"], ["venda", "Venda média 90d"], ["participacao", "Part. subgrupo"], ["acumulado", "Acum."], ["margem", "Margem"], ["estoque", "Estoque"], ["rupturas", "Rupturas"], ["fill", "Fill rate"]].map(([key, title]) => <TableHead key={key} className={Number(["venda", "participacao", "acumulado", "margem", "estoque", "rupturas", "fill"].includes(key)) ? "text-right" : ""}><TableColumnHeader title={title} value={buscasColuna[key] ?? ""} onChange={(value) => alterarBuscaColuna(key, value)} onSort={() => ordenarPor(key)} direction={ordenacao?.coluna === key ? ordenacao.direcao : null} /></TableHead>)}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -522,6 +530,7 @@ function ProdutoClassificacaoRow({
     lojasRuptura: number;
     fillRate: number;
     classeComposta: string;
+    classeTopStar: string;
   };
 }) {
   return (
@@ -532,7 +541,7 @@ function ProdutoClassificacaoRow({
         <Badge className="border-0 bg-primary/10 text-primary">{linha.produto.papelMercadologico}</Badge>
       </TableCell>
       <TableCell>
-        {linha.classeComposta === "Aa" ? (
+        {linha.classeTopStar === "Aa" ? (
           <span className="inline-flex items-center justify-center gap-1 rounded border border-amber-500/40 bg-amber-950 px-2 py-1 text-[10px] font-extrabold text-amber-300 shadow-sm animate-pulse">
             ⭐ Aa <span className="text-[8px] uppercase tracking-wider text-amber-200">Top Star</span>
           </span>

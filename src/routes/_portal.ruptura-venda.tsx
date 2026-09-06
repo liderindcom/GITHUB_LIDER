@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { brl, numero } from "@/lib/format";
+import { TableColumnHeader } from "@/components/table-column-header";
 import {
   codigoProdutoComDigito,
   coberturaDias,
@@ -66,6 +67,10 @@ function RupturaVendaPage() {
   const [lojaId, setLojaId] = useState("todas");
   const [situacao, setSituacao] = useState<FiltroSituacao>("todas");
   const [busca, setBusca] = useState("");
+  const [buscasColuna, setBuscasColuna] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ coluna: string; direcao: "asc" | "desc" } | null>(null);
+  const alterarBuscaColuna = (coluna: string, valor: string) => setBuscasColuna((atual) => ({ ...atual, [coluna]: valor }));
+  const ordenarPor = (coluna: string) => setOrdenacao((atual) => atual?.coluna === coluna ? { coluna, direcao: atual.direcao === "asc" ? "desc" : "asc" } : { coluna, direcao: "asc" });
 
   const linhasBase = useMemo(() => {
     return Array.from(estoque)
@@ -111,10 +116,17 @@ function RupturaVendaPage() {
           const alvo = `${linha.sku} ${codigoProdutoComDigito(linha.sku)} ${linha.produto.descricao} ${linha.lojaNome}`.toLowerCase();
           if (!alvo.includes(busca.toLowerCase())) return false;
         }
-        return true;
+        const valores: Record<string, string> = { sku: `${linha.sku} ${codigoProdutoComDigito(linha.sku)}`, produto: linha.produto.descricao, loja: linha.lojaNome, situacao: linha.status };
+        return Object.entries(buscasColuna).every(([coluna, valor]) => !valor || (valores[coluna] ?? "").toLowerCase().includes(valor.toLowerCase()));
       })
-      .sort((a, b) => b.risco7Dias - a.risco7Dias);
-  }, [busca, linhasBase, lojaId, situacao]);
+      .sort((a, b) => {
+        if (!ordenacao) return b.risco7Dias - a.risco7Dias;
+        const valor = (linha: typeof a) => ({ sku: linha.sku, produto: linha.produto.descricao, loja: linha.lojaNome, situacao: linha.status, estoque: linha.estoqueAtual, venda: linha.mediaDiaria, cobertura: linha.cobertura ?? -1, perda: linha.perdaDiaria, mes: linha.perdaDiaria * diasDecorridosMes, risco: linha.risco7Dias }[ordenacao.coluna] ?? "");
+        const va = valor(a), vb = valor(b);
+        const comparacao = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "pt-BR", { numeric: true, sensitivity: "base" });
+        return ordenacao.direcao === "asc" ? comparacao : -comparacao;
+      });
+  }, [busca, linhasBase, lojaId, situacao, buscasColuna, ordenacao]);
 
   const lojasFiltro = useMemo(() => {
     const map = new Map<string, string>();
@@ -347,16 +359,7 @@ function RupturaVendaPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="bg-muted/60">
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Loja</TableHead>
-                    <TableHead>Situação</TableHead>
-                    <TableHead className="text-right">Estoque atual / mín.</TableHead>
-                    <TableHead className="text-right">Venda/dia</TableHead>
-                    <TableHead className="text-right">Cobertura</TableHead>
-                    <TableHead className="text-right">Perda/dia</TableHead>
-                    <TableHead className="text-right">Perda no mês</TableHead>
-                    <TableHead className="text-right">Risco 7d</TableHead>
+                    {[["sku", "SKU"], ["produto", "Produto"], ["loja", "Loja"], ["situacao", "Situação"], ["estoque", "Estoque atual / mín."], ["venda", "Venda/dia"], ["cobertura", "Cobertura"], ["perda", "Perda/dia"], ["mes", "Perda no mês"], ["risco", "Risco 7d"]].map(([key, title]) => <TableHead key={key} className={key === "produto" || key === "loja" ? "" : "text-right"}><TableColumnHeader title={title} value={buscasColuna[key] ?? ""} onChange={(value) => alterarBuscaColuna(key, value)} onSort={() => ordenarPor(key)} direction={ordenacao?.coluna === key ? ordenacao.direcao : null} /></TableHead>)}
                   </TableRow>
                 </TableHeader>
                 <TableBody>

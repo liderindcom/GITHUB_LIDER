@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
+import { TableColumnHeader } from "@/components/table-column-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +57,11 @@ function SugestaoCompraPage() {
   const [janela, setJanela] = useState<JanelaSugestaoCompra>("90");
   const [somenteComprar, setSomenteComprar] = useState("sim");
   const [busca, setBusca] = useState("");
+  const [filtrosColuna, setFiltrosColuna] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ chave: string; direcao: "asc" | "desc" }>({
+    chave: "produto",
+    direcao: "asc",
+  });
 
   const linhas = useMemo<LinhaSugestaoCompra[]>(() => {
     void dadosFornecedorVersao;
@@ -69,8 +75,79 @@ function SugestaoCompraPage() {
         `${linha.codigo} ${linha.produto.sku} ${linha.produto.descricao} ${linha.subgrupo}`.toLowerCase();
       if (!alvo.includes(busca.toLowerCase())) return false;
     }
-    return true;
+    const valores: Record<string, string> = {
+      codigo: linha.codigo,
+      produto: linha.produto.descricao,
+      comprador: linha.comprador,
+      subgrupo: linha.subgrupo,
+      classe: linha.classeComposta,
+      venda: String(linha.vendaMediaDiaria),
+      leadTime: String(linha.leadTimeEntregaDias),
+      alvo: String(linha.estoqueAlvo),
+      estoque: String(linha.estoqueCdam),
+      cobertura: String(linha.coberturaAtual ?? "sem venda"),
+      pedido: String(linha.pedidoAberto),
+      necessidade: String(linha.sugestaoBase),
+      embalagem: String(linha.embalagemCompra),
+      sugestao: String(linha.quantidadeEmbalagens),
+      valor: String(linha.valorSugerido),
+    };
+    return Object.entries(filtrosColuna).every(([chave, valor]) =>
+      !valor || (valores[chave] ?? "").toLocaleLowerCase().includes(valor.toLocaleLowerCase()),
+    );
   });
+
+  const listaOrdenada = useMemo(() => {
+    const valores = (linha: LinhaSugestaoCompra): string | number => {
+      const mapa: Record<string, string | number> = {
+        codigo: linha.codigo,
+        produto: linha.produto.descricao,
+        comprador: linha.comprador,
+        subgrupo: linha.subgrupo,
+        classe: linha.classeComposta,
+        venda: linha.vendaMediaDiaria,
+        leadTime: linha.leadTimeEntregaDias,
+        alvo: linha.estoqueAlvo,
+        estoque: linha.estoqueCdam,
+        cobertura: linha.coberturaAtual ?? -1,
+        pedido: linha.pedidoAberto,
+        necessidade: linha.sugestaoBase,
+        embalagem: linha.embalagemCompra,
+        sugestao: linha.quantidadeEmbalagens,
+        valor: linha.valorSugerido,
+      };
+      return mapa[ordenacao.chave] ?? "";
+    };
+    return [...lista].sort((a, b) => {
+      const av = valores(a);
+      const bv = valores(b);
+      const resultado = typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacao.direcao === "asc" ? resultado : -resultado;
+    });
+  }, [lista, ordenacao]);
+
+  const alternarOrdenacao = (chave: string) =>
+    setOrdenacao((atual) => ({
+      chave,
+      direcao: atual.chave === chave && atual.direcao === "asc" ? "desc" : "asc",
+    }));
+
+  const filtro = (chave: string) => ({
+    value: filtrosColuna[chave] ?? "",
+    onChange: (value: string) => setFiltrosColuna((atual) => ({ ...atual, [chave]: value })),
+  });
+
+  const cabecalho = (titulo: string, chave: string) => (
+    <TableColumnHeader
+      title={titulo}
+      {...filtro(chave)}
+      onSort={() => alternarOrdenacao(chave)}
+      direction={ordenacao.chave === chave ? ordenacao.direcao : null}
+      placeholder={titulo}
+    />
+  );
 
   const sugestaoTotal = lista.reduce((acc, linha) => acc + linha.sugestaoCompra, 0);
   const valorSugerido = lista.reduce((acc, linha) => acc + linha.valorSugerido, 0);
@@ -208,25 +285,25 @@ function SugestaoCompraPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/60">
-                    <TableHead>Cód. produto</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Comprador</TableHead>
-                    <TableHead>Subgrupo</TableHead>
-                    <TableHead>Classe</TableHead>
-                    <TableHead className="text-right">Venda média/dia</TableHead>
-                    <TableHead className="text-right">LT médio</TableHead>
-                    <TableHead className="text-right">Alvo</TableHead>
-                    <TableHead className="text-right">Estoque CDAM</TableHead>
-                    <TableHead className="text-right">Cob. atual</TableHead>
-                    <TableHead className="text-right">Pedido aberto</TableHead>
-                    <TableHead className="text-right">Necessidade</TableHead>
-                    <TableHead className="text-right">Emb.</TableHead>
-                    <TableHead className="text-right">Sugestão</TableHead>
-                    <TableHead className="text-right">Valor</TableHead>
+                    <TableHead>{cabecalho("Cód. produto", "codigo")}</TableHead>
+                    <TableHead>{cabecalho("Produto", "produto")}</TableHead>
+                    <TableHead>{cabecalho("Comprador", "comprador")}</TableHead>
+                    <TableHead>{cabecalho("Subgrupo", "subgrupo")}</TableHead>
+                    <TableHead>{cabecalho("Classe", "classe")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Venda média/dia", "venda")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("LT médio", "leadTime")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Alvo", "alvo")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Estoque CDAM", "estoque")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Cob. atual", "cobertura")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Pedido aberto", "pedido")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Necessidade", "necessidade")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Emb.", "embalagem")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Sugestão", "sugestao")}</TableHead>
+                    <TableHead className="text-right">{cabecalho("Valor", "valor")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lista.map((linha) => (
+                  {listaOrdenada.map((linha) => (
                     <TableRow key={linha.produto.sku}>
                       <TableCell className="font-mono text-xs">{linha.codigo}</TableCell>
                       <TableCell className="min-w-[240px] font-medium">

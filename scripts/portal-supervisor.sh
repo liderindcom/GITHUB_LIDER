@@ -4,7 +4,7 @@ set -u
 PANEL_DIR="/lider/portal-fornecedor"
 LOG_DIR="$PANEL_DIR/logs"
 LOCK_FILE="/tmp/portal-fornecedor.lock"
-HOST="10.15.2.101"
+HOST="0.0.0.0"
 PORT="8090"
 
 mkdir -p "$LOG_DIR"

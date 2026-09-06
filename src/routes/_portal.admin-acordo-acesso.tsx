@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
+import { TableColumnHeader } from "@/components/table-column-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +56,11 @@ function RelatorioAcordoAcessoPage() {
   const [linhas, setLinhas] = useState<RelatorioAcordoAcessoLinhaDB[]>([]);
   const [segmento, setSegmento] = useState("todos");
   const [busca, setBusca] = useState("");
+  const [filtrosColuna, setFiltrosColuna] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ chave: string; direcao: "asc" | "desc" }>({
+    chave: "fornecedor",
+    direcao: "asc",
+  });
   const [carregando, setCarregando] = useState(false);
   const [selecionado, setSelecionado] = useState<RelatorioAcordoAcessoLinhaDB | null>(null);
   const [numeroAcordo, setNumeroAcordo] = useState("");
@@ -94,8 +100,56 @@ function RelatorioAcordoAcessoPage() {
     });
   }, [busca, linhas, segmento]);
 
+  const filtradasOrdenadas = useMemo(() => {
+    const filtradas = visiveis.filter((linha) => {
+      const valores: Record<string, string> = {
+        segmento: linha.segmento,
+        codigo: formatarCodigoFornecedorComDigito(linha.codigo),
+        fornecedor: linha.nome,
+        pedidos: String(linha.documentos),
+        compra: String(linha.compra),
+        percentual: String(linha.umPct),
+      };
+      return Object.entries(filtrosColuna).every(([chave, valor]) =>
+        !valor || (valores[chave] ?? "").toLocaleLowerCase().includes(valor.toLocaleLowerCase()),
+      );
+    });
+    const valor = (linha: RelatorioAcordoAcessoLinhaDB): string | number => ({
+      segmento: linha.segmento,
+      codigo: formatarCodigoFornecedorComDigito(linha.codigo),
+      fornecedor: linha.nome,
+      pedidos: linha.documentos,
+      compra: linha.compra,
+      percentual: linha.umPct,
+    }[ordenacao.chave] ?? "");
+    return [...filtradas].sort((a, b) => {
+      const av = valor(a);
+      const bv = valor(b);
+      const resultado = typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacao.direcao === "asc" ? resultado : -resultado;
+    });
+  }, [visiveis, filtrosColuna, ordenacao]);
+
+  const alternarOrdenacao = (chave: string) =>
+    setOrdenacao((atual) => ({
+      chave,
+      direcao: atual.chave === chave && atual.direcao === "asc" ? "desc" : "asc",
+    }));
+  const cabecalho = (titulo: string, chave: string) => (
+    <TableColumnHeader
+      title={titulo}
+      value={filtrosColuna[chave] ?? ""}
+      onChange={(value) => setFiltrosColuna((atual) => ({ ...atual, [chave]: value }))}
+      onSort={() => alternarOrdenacao(chave)}
+      direction={ordenacao.chave === chave ? ordenacao.direcao : null}
+      placeholder={titulo}
+    />
+  );
+
   const totais = useMemo(() => {
-    return visiveis.reduce(
+    return filtradasOrdenadas.reduce(
       (acc, l) => {
         acc.compra += l.compra;
         acc.umPct += l.umPct;
@@ -103,7 +157,7 @@ function RelatorioAcordoAcessoPage() {
       },
       { compra: 0, umPct: 0 },
     );
-  }, [visiveis]);
+  }, [filtradasOrdenadas]);
 
   function exportar() {
     const cabecalho = ["Segmento", "Codigo", "Codigo com digito", "Fornecedor", "Pedidos", "Compra", "1%"];
@@ -258,16 +312,16 @@ function RelatorioAcordoAcessoPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100">
                 <TableRow className="bg-stone-100">
-                  <TableHead>Segmento</TableHead>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Fornecedor</TableHead>
-                  <TableHead className="text-right">Pedidos</TableHead>
-                  <TableHead className="text-right">Compra</TableHead>
-                  <TableHead className="text-right">1%</TableHead>
+                  <TableHead>{cabecalho("Segmento", "segmento")}</TableHead>
+                  <TableHead>{cabecalho("Código", "codigo")}</TableHead>
+                  <TableHead>{cabecalho("Fornecedor", "fornecedor")}</TableHead>
+                  <TableHead className="text-right">{cabecalho("Pedidos", "pedidos")}</TableHead>
+                  <TableHead className="text-right">{cabecalho("Compra", "compra")}</TableHead>
+                  <TableHead className="text-right">{cabecalho("1%", "percentual")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visiveis.map((l) => (
+                {filtradasOrdenadas.map((l) => (
                   <TableRow
                     key={`${l.codigo}-${l.segmento}`}
                     className={`cursor-pointer ${selecionado?.codigo === l.codigo && selecionado.segmento === l.segmento ? "bg-primary/10" : ""}`}
@@ -287,7 +341,7 @@ function RelatorioAcordoAcessoPage() {
                     <TableCell className="text-right text-xs font-semibold">{brl(l.umPct)}</TableCell>
                   </TableRow>
                 ))}
-                {visiveis.length === 0 && (
+                {filtradasOrdenadas.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
                       {carregando ? "Carregando relatório…" : "Nenhum fornecedor neste filtro."}

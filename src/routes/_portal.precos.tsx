@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, ChevronRight, Minus, Search, TrendingDown, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronRight, Minus, Search, TrendingDown, TrendingUp, Upload, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useEffect, useMemo, useState } from "react";
 
-import { fetchFaixasPrecoSubgrupo, type FaixaPrecoSubgrupoDB } from "@/api";
+import { fetchFaixasPrecoSubgrupo, submitPropostaPreco, type FaixaPrecoSubgrupoDB } from "@/api";
 import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -148,6 +149,10 @@ function PrecosPage() {
   const [status, setStatus] = useState<StatusPreco | "todos">("todos");
   const [busca, setBusca] = useState("");
   const [faixas, setFaixas] = useState<FaixaPrecoSubgrupoDB[]>([]);
+  const [arquivoTabela, setArquivoTabela] = useState<string | null>(null);
+  const [itensImportados, setItensImportados] = useState<Array<{ sku: string; descricao: string; precoAtual: number; precoProposto: number }>>([]);
+  const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
+  const [enviandoTabela, setEnviandoTabela] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -263,6 +268,72 @@ function PrecosPage() {
     setSubcategoria("todas");
     setStatus("todos");
     setBusca("");
+  };
+
+  const processarTabelaExcel = async (arquivo: File) => {
+    setArquivoTabela(arquivo.name);
+    setItensImportados([]);
+    setErrosImportacao([]);
+    try {
+      const workbook = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
+      const linhas = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+      const normalizar = (valor: unknown) => String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const achar = (linha: Record<string, unknown>, nomes: string[]) => Object.entries(linha).find(([chave]) => nomes.includes(normalizar(chave)))?.[1];
+      const porCodigo = new Map(produtos.flatMap((produto) => [[String(produto.sku), produto], [String(produto.codigoProdutoRms), produto]]));
+      const importados: Array<{ sku: string; descricao: string; precoAtual: number; precoProposto: number }> = [];
+      const erros: string[] = [];
+      const vistos = new Set<string>();
+      linhas.forEach((linha, indice) => {
+        const codigo = String(achar(linha, ["codigo", "codigoproduto", "skuproduto", "sku"]) ?? "").trim();
+        const bruto = String(achar(linha, ["precoproposto", "preconovo", "preco", "valor"]) ?? "").replace(/[^0-9,.-]/g, "");
+        const preco = Number(bruto.includes(",") ? bruto.replace(/\./g, "").replace(",", ".") : bruto);
+        const produto = porCodigo.get(codigo) ?? porCodigo.get(codigo.replace(/^0+/, ""));
+        if (!codigo && !bruto) return;
+        if (!produto) { erros.push(`Linha ${indice + 2}: produto ${codigo || "(sem código)"} não encontrado para este fornecedor.`); return; }
+        if (vistos.has(produto.sku)) { erros.push(`Linha ${indice + 2}: produto ${codigo} duplicado.`); return; }
+        if (!(preco > 0)) { erros.push(`Linha ${indice + 2}: preço proposto inválido.`); return; }
+        vistos.add(produto.sku);
+        importados.push({ sku: produto.sku, descricao: produto.descricao, precoAtual: Number(produto.precoTabela ?? 0), precoProposto: preco });
+      });
+      setItensImportados(importados);
+      setErrosImportacao(erros);
+    } catch {
+      setErrosImportacao(["Não foi possível ler o arquivo. Use um arquivo Excel .xlsx ou .xls baseado no modelo."]);
+    }
+  };
+
+  const baixarModeloTabela = () => {
+    const planilha = XLSX.utils.json_to_sheet([{ "Código do produto": "", "Descrição": "", "Preço proposto": "", "Unidade": "", "Observação": "" }]);
+    const arquivo = XLSX.write({ Sheets: { "Tabela de preços": planilha }, SheetNames: ["Tabela de preços"] }, { bookType: "xlsx", type: "array" });
+    const url = URL.createObjectURL(new Blob([arquivo], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const link = document.createElement("a"); link.href = url; link.download = "modelo-tabela-precos.xlsx"; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const exportarTabelaAtual = () => {
+    const linhas = analise.map((item) => ({
+      "Código do produto": item.produto.sku,
+      "Descrição": item.produto.descricao,
+      "Preço atual": item.precoFornecedor,
+      "Preço proposto": "",
+      "Unidade": "UN",
+      "Observação": "",
+    }));
+    const planilha = XLSX.utils.json_to_sheet(linhas);
+    const arquivo = XLSX.write({ Sheets: { "Tabela de preços": planilha }, SheetNames: ["Tabela de preços"] }, { bookType: "xlsx", type: "array" });
+    const url = URL.createObjectURL(new Blob([arquivo], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const link = document.createElement("a"); link.href = url; link.download = `tabela-precos-${codigoFornecedorAtivo}.xlsx`; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const enviarTabelaImportada = async () => {
+    if (!itensImportados.length) return;
+    setEnviandoTabela(true);
+    try {
+      await submitPropostaPreco({ data: { fornecedorCodigo: codigoFornecedorAtivo, justificativa: `Tabela importada: ${arquivoTabela || "arquivo Excel"}`, itens: itensImportados } });
+      setItensImportados([]);
+      setArquivoTabela(null);
+      setErrosImportacao(["Tabela enviada para análise com sucesso."]);
+    } catch (error) { setErrosImportacao([error instanceof Error ? error.message : "Não foi possível enviar a tabela."]); }
+    finally { setEnviandoTabela(false); }
   };
 
 

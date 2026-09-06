@@ -50,6 +50,7 @@ const itens = [
   { title: "Vendas Anual", url: "/vendas-anual", icon: TrendingUp },
   { title: "Estoque", url: "/estoque", icon: Package },
   { title: "Meus Itens", url: "/itens", icon: PackageCheck },
+  { title: "Catálogo Comercial", url: "/catalogo-comercial", icon: PackagePlus },
   { title: "Ruptura e Perda Venda", url: "/ruptura-venda", icon: AlertTriangle },
   { title: "Perdas Físicas", url: "/perdas", icon: TrendingDown },
   { title: "Relatório MIX", url: "/relatorio-mix", icon: FileSpreadsheet },
@@ -103,7 +104,11 @@ export function AppSidebar() {
       if (item.url === "/admin-usuarios") {
         return usuarioInterno !== null && usuarioInterno.role === "admin";
       }
-      if (item.url === "/usuarios" || item.url === "/acordo-acesso" || item.url === "/corrigir-senha") {
+      if (
+        item.url === "/usuarios" ||
+        item.url === "/acordo-acesso" ||
+        item.url === "/corrigir-senha"
+      ) {
         return usuarioInterno === null;
       }
       return true;

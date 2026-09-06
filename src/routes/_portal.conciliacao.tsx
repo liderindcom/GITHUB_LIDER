@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle2, Scale } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -326,6 +327,31 @@ function TabelaConciliacao({
   linhas: LinhaConciliacao[];
   vazia: string;
 }) {
+  const [filtros, setFiltros] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ campo: string; asc: boolean }>({ campo: "data", asc: false });
+  const linhasVisiveis = useMemo(() => {
+    const valor = (linha: LinhaConciliacao, campo: string) => ({
+      data: linha.dataLabel,
+      nota: linha.numeroNota,
+      pedido: linha.pedido,
+      sku: linha.sku,
+      descricao: linha.descricaoXml,
+      quantidadeXml: linha.quantidadeXml,
+      quantidadePedida: linha.quantidadePedida,
+      precoXml: linha.precoXml,
+      precoPedido: linha.precoPedido,
+      divergencia: linha.problemas.map((p) => p.label).join(" "),
+    }[campo] ?? "");
+    const filtradas = linhas.filter((linha) => Object.entries(filtros).every(([campo, filtro]) => String(valor(linha, campo)).toLowerCase().includes(filtro.toLowerCase())));
+    return [...filtradas].sort((a, b) => {
+      const av = valor(a, ordenacao.campo);
+      const bv = valor(b, ordenacao.campo);
+      const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacao.asc ? cmp : -cmp;
+    });
+  }, [linhas, filtros, ordenacao]);
+  const ordenar = (campo: string) => setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
+
   return (
     <Card className="shadow-panel">
       <CardHeader>
@@ -341,20 +367,18 @@ function TabelaConciliacao({
         >
           <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
             <TableRow className="bg-stone-100">
-              <TableHead>Data</TableHead>
-              <TableHead>Nota</TableHead>
-              <TableHead>Pedido</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Descrição no XML</TableHead>
-              <TableHead className="text-right">Qtd XML</TableHead>
-              <TableHead className="text-right">Qtd Pedido</TableHead>
-              <TableHead className="text-right">Preço XML</TableHead>
-              <TableHead className="text-right">Preço Pedido</TableHead>
-              <TableHead>Divergência</TableHead>
+              {([["data", "Data"], ["nota", "Nota"], ["pedido", "Pedido"], ["sku", "SKU"], ["descricao", "Descrição no XML"], ["quantidadeXml", "Qtd XML"], ["quantidadePedida", "Qtd Pedido"], ["precoXml", "Preço XML"], ["precoPedido", "Preço Pedido"], ["divergencia", "Divergência"]] as const).map(([campo, titulo]) => (
+                <TableHead key={campo} className={campo.startsWith("quantidade") || campo.startsWith("preco") ? "text-right" : undefined}>
+                  <div className="flex min-w-[90px] items-center gap-1">
+                    <Input value={filtros[campo] ?? ""} onChange={(e) => setFiltros((atual) => ({ ...atual, [campo]: e.target.value }))} placeholder={titulo} className="h-7 w-full text-xs" />
+                    <button type="button" className="text-muted-foreground" onClick={() => ordenar(campo)} aria-label={`Ordenar ${titulo}`}>↕</button>
+                  </div>
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {linhas.map((i) => (
+            {linhasVisiveis.map((i) => (
               <TableRow key={i.id}>
                 <TableCell className="whitespace-nowrap font-mono text-xs">{i.dataLabel}</TableCell>
                 <TableCell className="font-mono text-xs">{i.numeroNota}</TableCell>

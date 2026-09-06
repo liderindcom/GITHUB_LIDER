@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
+import { TableColumnHeader } from "@/components/table-column-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,6 +36,13 @@ export const Route = createFileRoute("/_portal/acordo-fillrate")({
   component: AcordoFillRatePage,
 });
 
+type DirecaoTabela = "asc" | "desc" | null;
+type OrdenacaoTabela = { campo: string; direcao: DirecaoTabela };
+
+function alternarOrdenacao(atual: OrdenacaoTabela, campo: string): OrdenacaoTabela {
+  return { campo, direcao: atual.campo === campo ? (atual.direcao === null ? "asc" : atual.direcao === "asc" ? "desc" : null) : "asc" };
+}
+
 function AcordoFillRatePage() {
   const { fornecedor, codigoFornecedorAtivo, dadosFornecedorVersao } = usePortal();
   
@@ -52,6 +60,8 @@ function AcordoFillRatePage() {
   const [mesSelecionado, setMesSelecionado] = useState<string>("");
   const [metaFillRate, setMetaFillRate] = useState<number>(FILLRATE_META_PADRAO);
   const [taxaMulta, setTaxaMulta] = useState<number>(FILLRATE_TAXA_PADRAO);
+  const [buscaPedidos, setBuscaPedidos] = useState("");
+  const [ordemPedidos, setOrdemPedidos] = useState<OrdenacaoTabela>({ campo: "numero", direcao: null });
 
   useEffect(() => {
     if (mesesDisponiveis.length === 0) return;
@@ -110,6 +120,30 @@ function AcordoFillRatePage() {
     }
     return max;
   }, [pedidosDoMes]);
+
+  const pedidosTabela = useMemo(() => {
+    const filtrados = pedidosDoMes.filter((pedido) => {
+      const texto = `${formatarNumeroPedido(pedido.numero)} ${pedido.emissao ?? ""} ${nomeLoja(pedido.lojaId)} ${pedido.status}`.toLowerCase();
+      return !buscaPedidos || texto.includes(buscaPedidos.toLowerCase());
+    });
+    if (!ordemPedidos.direcao) return filtrados;
+    const valor = (pedido: typeof pedidosDoMes[number]) => {
+      if (ordemPedidos.campo === "emissao") return pedido.emissao ?? "";
+      if (ordemPedidos.campo === "loja") return nomeLoja(pedido.lojaId);
+      if (ordemPedidos.campo === "status") return pedido.status;
+      if (ordemPedidos.campo === "pedida") return quantidadesPedido(pedido).pedida;
+      if (ordemPedidos.campo === "faturada") return quantidadesPedido(pedido).faturada;
+      if (ordemPedidos.campo === "fillrate") return fillRatePedido(pedido);
+      if (ordemPedidos.campo === "valor") return totalPedido(pedido);
+      if (ordemPedidos.campo === "entregue") return pedido.itens.reduce((acc, item) => acc + item.quantidadeFaturada * item.precoUnitario, 0);
+      return pedido.numero;
+    };
+    return [...filtrados].sort((a, b) => {
+      const esquerda = valor(a), direita = valor(b);
+      const comparacao = typeof esquerda === "number" && typeof direita === "number" ? esquerda - direita : String(esquerda).localeCompare(String(direita), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordemPedidos.direcao === "asc" ? comparacao : -comparacao;
+    });
+  }, [pedidosDoMes, buscaPedidos, ordemPedidos]);
 
   const metricas = useMemo(() => {
     let totalQtdPedida = 0;
@@ -330,26 +364,26 @@ function AcordoFillRatePage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="hover:bg-transparent bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider text-muted-foreground">
-                    <TableHead className="px-4 py-3">Número</TableHead>
-                    <TableHead className="px-4 py-3">Emissão</TableHead>
-                    <TableHead className="px-4 py-3">Loja Destino</TableHead>
-                    <TableHead className="px-4 py-3 text-right">Qtd Pedida</TableHead>
-                    <TableHead className="px-4 py-3 text-right">Qtd Faturada</TableHead>
-                    <TableHead className="px-4 py-3 text-center">Fill Rate</TableHead>
-                    <TableHead className="px-4 py-3 text-right">Valor Pedido</TableHead>
-                    <TableHead className="px-4 py-3 text-right">Valor Entregue</TableHead>
-                    <TableHead className="px-4 py-3 text-center">Status</TableHead>
+                    <TableHead className="px-4 py-3"><TableColumnHeader title="Número" value={buscaPedidos} onChange={setBuscaPedidos} onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "numero"))} direction={ordemPedidos.campo === "numero" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3"><TableColumnHeader title="Emissão" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "emissao"))} direction={ordemPedidos.campo === "emissao" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3"><TableColumnHeader title="Loja Destino" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "loja"))} direction={ordemPedidos.campo === "loja" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3 text-right"><TableColumnHeader title="Qtd Pedida" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "pedida"))} direction={ordemPedidos.campo === "pedida" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3 text-right"><TableColumnHeader title="Qtd Faturada" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "faturada"))} direction={ordemPedidos.campo === "faturada" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3 text-center"><TableColumnHeader title="Fill Rate" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "fillrate"))} direction={ordemPedidos.campo === "fillrate" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3 text-right"><TableColumnHeader title="Valor Pedido" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "valor"))} direction={ordemPedidos.campo === "valor" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3 text-right"><TableColumnHeader title="Valor Entregue" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "entregue"))} direction={ordemPedidos.campo === "entregue" ? ordemPedidos.direcao : null} /></TableHead>
+                    <TableHead className="px-4 py-3 text-center"><TableColumnHeader title="Status" onSort={() => setOrdemPedidos(alternarOrdenacao(ordemPedidos, "status"))} direction={ordemPedidos.campo === "status" ? ordemPedidos.direcao : null} /></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pedidosDoMes.length === 0 ? (
+                  {pedidosTabela.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         Nenhum pedido de fornecedor registrado neste mês.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    pedidosDoMes.map((pedido) => {
+                    pedidosTabela.map((pedido) => {
                       const totaisPed = quantidadesPedido(pedido);
                       const fillRatePed = fillRatePedido(pedido);
                       const valPedido = totalPedido(pedido);

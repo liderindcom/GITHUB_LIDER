@@ -182,7 +182,7 @@ export const calcularSugestoesCompraCdam = (
 
   const linhasBase = produtosAtuais.map((produto) => {
     const vendaProduto = vendaSku.get(produto.sku) ?? { quantidade: 0, faturamento: 0 };
-    const cls = formatarClasseComposta(produto.classeComposta);
+    const cls = formatarClasseComposta(produto.classeTopStar || produto.classeComposta);
     const clV = cls[0] as ClasseAbcd;
     const clQ = (cls[1] || "d").toUpperCase() as ClasseAbcd;
     

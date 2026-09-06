@@ -44,11 +44,10 @@ export function PortalLayout({
   const listFiltrada = useMemo(() => {
     return fornecedoresList.filter((f) => {
       const q = busca.toLowerCase();
-      return (
-        f.codigo.toLowerCase().includes(q) ||
-        f.nome.toLowerCase().includes(q) ||
-        (f.cnpj && f.cnpj.includes(q))
-      );
+      const code = String(f.codigo || "").toLowerCase();
+      const name = String(f.nome || "").toLowerCase();
+      const cnpj = String(f.cnpj || "").toLowerCase();
+      return code.includes(q) || name.includes(q) || cnpj.includes(q);
     });
   }, [fornecedoresList, busca]);
 

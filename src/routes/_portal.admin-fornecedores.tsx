@@ -1,5 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ShieldCheck, Search, Check, X, ShieldAlert, ArrowLeft, ArrowRight, Percent, UserPlus, RefreshCw } from "lucide-react";
+import {
+  ShieldCheck,
+  Search,
+  Check,
+  X,
+  ShieldAlert,
+  ArrowLeft,
+  ArrowRight,
+  Percent,
+  UserPlus,
+  RefreshCw,
+  Printer,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -69,7 +84,8 @@ export const Route = createFileRoute("/_portal/admin-fornecedores")({
       { title: "Controle de Acesso - Admin | Portal do Fornecedor" },
       {
         name: "description",
-        content: "Painel de administração para liberação e controle de acesso dos fornecedores do Grupo Líder.",
+        content:
+          "Painel de administração para liberação e controle de acesso dos fornecedores do Grupo Líder.",
       },
     ],
   }),
@@ -89,8 +105,44 @@ function AdminFornecedoresPage() {
   const [incluindo, setIncluindo] = useState(false);
   const [salvandoMeta, setSalvandoMeta] = useState<string | null>(null);
   const [atualizandoCodigo, setAtualizandoCodigo] = useState<string | null>(null);
+  const [colunaOrdenacao, setColunaOrdenacao] = useState<string | null>(null);
+  const [ordemOrdenacao, setOrdemOrdenacao] = useState<"asc" | "desc">("asc");
 
   const limit = 15;
+
+  const fornecedoresOrdenados = [...fornecedores].sort((a, b) => {
+    const alvo = (search.trim() || codigoNovo.trim()).replace(/\D/g, "");
+    const codigoA = String(a.codigo ?? "").replace(/\D/g, "");
+    const codigoB = String(b.codigo ?? "").replace(/\D/g, "");
+    const prioridade = (codigo: string) => codigo === alvo ? 0 : codigo.startsWith(alvo) ? 1 : 2;
+    if (!colunaOrdenacao) return prioridade(codigoA) - prioridade(codigoB);
+    const valorA = String(a[colunaOrdenacao] ?? "").toLocaleLowerCase();
+    const valorB = String(b[colunaOrdenacao] ?? "").toLocaleLowerCase();
+    const resultado = valorA.localeCompare(valorB, "pt-BR", { numeric: true });
+    return ordemOrdenacao === "asc" ? resultado : -resultado;
+  });
+
+  const ordenarPor = (coluna: string) => {
+    if (colunaOrdenacao === coluna) {
+      setOrdemOrdenacao((atual) => (atual === "asc" ? "desc" : "asc"));
+    } else {
+      setColunaOrdenacao(coluna);
+      setOrdemOrdenacao("asc");
+    }
+  };
+
+  const indicadorOrdenacao = (coluna: string) =>
+    colunaOrdenacao !== coluna ? <ArrowUpDown className="size-3 opacity-50" /> :
+      ordemOrdenacao === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />;
+
+  const cabecalhoOrdenavel = (titulo: string, coluna: string) => (
+    <div className="flex items-center justify-between gap-1">
+      <span>{titulo}</span>
+      <Button type="button" variant="ghost" size="icon" className="size-5" onClick={() => ordenarPor(coluna)} aria-label={`Ordenar por ${titulo}`}>
+        {indicadorOrdenacao(coluna)}
+      </Button>
+    </div>
+  );
 
   const handleUpdateConfig = async (
     codigo: string,
@@ -138,7 +190,7 @@ function AdminFornecedoresPage() {
           search: searchTerm,
           limit,
           offset: pageNum * limit,
-        }
+        },
       });
       setFornecedores(data.rows);
       setTotal(data.total);
@@ -196,6 +248,24 @@ function AdminFornecedoresPage() {
     setPage(0);
   };
 
+  const imprimirContratoDegustacao = (
+    codigo: string,
+    nome: string,
+    cnpj: string,
+    inicio: string,
+    fim: string,
+  ) => {
+    const janela = window.open("", "_blank", "width=800,height=1100");
+    if (!janela) {
+      toast.error("Permita pop-ups para imprimir o contrato.");
+      return;
+    }
+    janela.document.write(
+      `<html><head><title>Acordo de acesso - ${codigo}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial;padding:0;line-height:1.5}h1{font-size:22px}hr{margin:28px 0}.assinatura{margin-top:90px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:8px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${nome}</b>, CNPJ <b>${cnpj || "não informado"}</b>, código RMS <b>${codigo}</b>, registram este termo de acesso experimental.</p><p>O acesso de degustação inicia em <b>${inicio}</b> e termina em <b>${fim}</b>, totalizando 30 dias corridos. Este prazo é único, não prorrogável e não gera cobrança durante a degustação.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
+    );
+    janela.document.close();
+  };
+
   const handleIncluirFornecedor = async () => {
     const codigo = codigoNovo.trim();
     if (!codigo) {
@@ -206,17 +276,22 @@ function AdminFornecedoresPage() {
     try {
       const resultado = await includeSupplier({ data: { codigo } });
       const codigoExibicao = formatarCodigoFornecedorComDigito(resultado.codigo);
-      toast.success(
-        resultado.created
-          ? `Fornecedor ${codigoExibicao} incluído no portal.`
-          : `Acesso liberado novamente para ${codigoExibicao}.`,
+      toast.success(`Fornecedor ${codigoExibicao} ativado para degustação de 30 dias.`);
+      imprimirContratoDegustacao(
+        codigoExibicao,
+        resultado.fornecedorNome || `Fornecedor ${codigoExibicao}`,
+        resultado.fornecedorCnpj || "não informado",
+        resultado.acessoDataInicio,
+        resultado.acessoDataFim,
       );
       setCodigoNovo("");
       setPage(0);
       await carregarFornecedores(search, 0);
     } catch (err) {
       console.error(err);
-      toast.error("Não foi possível incluir o fornecedor.");
+      const mensagem =
+        err instanceof Error ? err.message : "Não foi possível incluir o fornecedor.";
+      toast.error(mensagem);
     } finally {
       setIncluindo(false);
     }
@@ -254,15 +329,15 @@ function AdminFornecedoresPage() {
 
   const handleToggleAccess = async (codigo: string, statusAtual: number) => {
     const novoStatus = statusAtual === 1 ? 0 : 1;
-    
+
     // Otimista: atualiza o estado local primeiro
     setFornecedores((prev) =>
-      prev.map((f) => (f.codigo === codigo ? { ...f, acessoLiberado: novoStatus } : f))
+      prev.map((f) => (f.codigo === codigo ? { ...f, acessoLiberado: novoStatus } : f)),
     );
 
     try {
       await updateSupplierAccess({
-        data: { codigo, acessoLiberado: novoStatus }
+        data: { codigo, acessoLiberado: novoStatus },
       });
       toast.success(
         novoStatus === 1
@@ -274,7 +349,7 @@ function AdminFornecedoresPage() {
       toast.error("Erro ao atualizar status de acesso. Revertendo...");
       // Reverter estado local em caso de falha
       setFornecedores((prev) =>
-        prev.map((f) => (f.codigo === codigo ? { ...f, acessoLiberado: statusAtual } : f))
+        prev.map((f) => (f.codigo === codigo ? { ...f, acessoLiberado: statusAtual } : f)),
       );
     }
   };
@@ -283,12 +358,16 @@ function AdminFornecedoresPage() {
 
   if (!usuarioInterno) {
     return (
-      <PortalLayout titulo="Acesso Restrito" descricao="Esta área é de uso exclusivo de funcionários do Grupo Líder.">
+      <PortalLayout
+        titulo="Acesso Restrito"
+        descricao="Esta área é de uso exclusivo de funcionários do Grupo Líder."
+      >
         <div className="flex flex-col items-center justify-center p-8 bg-card rounded-lg border border-border shadow-panel">
           <ShieldAlert className="size-12 text-destructive mb-3" />
           <h2 className="text-lg font-bold">Acesso Negado</h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-[340px] text-center">
-            Você não possui as permissões necessárias para acessar este painel. Caso seja um colaborador, faça o login administrativo.
+            Você não possui as permissões necessárias para acessar este painel. Caso seja um
+            colaborador, faça o login administrativo.
           </p>
         </div>
       </PortalLayout>
@@ -305,8 +384,8 @@ function AdminFornecedoresPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Controle de Acesso</h1>
             <p className="text-xs text-muted-foreground">
-              Só entram no portal fornecedores com acesso ativo. Para incluir, use o código RMS com dígito
-              (ex.: 100561-8).
+              Só entram no portal fornecedores com acesso ativo. Para incluir, use o código RMS com
+              dígito (ex.: 100561-8).
             </p>
           </div>
         </div>
@@ -324,7 +403,8 @@ function AdminFornecedoresPage() {
                 Taxa da multa
               </p>
               <p className="max-w-xl text-xs text-muted-foreground">
-                Valor único da rede. A meta é pacto individual e fica na coluna de cada fornecedor abaixo. Os dois valores só aparecem no Fill Rate como espelho do cálculo.
+                Valor único da rede. A meta é pacto individual e fica na coluna de cada fornecedor
+                abaixo. Os dois valores só aparecem no Fill Rate como espelho do cálculo.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -364,8 +444,8 @@ function AdminFornecedoresPage() {
                 Código RMS com dígito
               </p>
               <p className="text-xs text-muted-foreground">
-                Digite o código RMS com o dígito verdadeiro (100561-8 ou 1005618). Se já existir e
-                estiver bloqueado, o acesso é liberado de novo.
+                Informe apenas o código RMS. Nome e CNPJ serão preenchidos pelo cadastro RMS quando
+                o cache for sincronizado.
               </p>
             </div>
             <div className="flex gap-2">
@@ -416,30 +496,42 @@ function AdminFornecedoresPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[100px]">Código RMS</TableHead>
-                    <TableHead className="w-[180px]">Fornecedor</TableHead>
-                    <TableHead className="w-[130px] text-center">Cobrança 1%</TableHead>
-                    <TableHead className="w-[240px] text-center">Vigência Acesso</TableHead>
-                    <TableHead className="w-[110px] text-center">Meta Fill</TableHead>
-                    <TableHead className="w-[100px] text-center">Acesso</TableHead>
+                    <TableHead className="w-[100px]">{cabecalhoOrdenavel("Código RMS", "codigo")}</TableHead>
+                    <TableHead className="w-[180px]">
+                      <div className="space-y-1">
+                        {cabecalhoOrdenavel("Fornecedor", "nome")}
+                        <Input value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Buscar..." className="h-6 px-1.5 text-[10px]" />
+                      </div>
+                    </TableHead>
+                    <TableHead className="w-[150px] text-center">{cabecalhoOrdenavel("Acordo / status", "acessoStatus")}</TableHead>
+                    <TableHead className="w-[130px] text-center">{cabecalhoOrdenavel("Cobrança 1%", "isentoCobranca")}</TableHead>
+                    <TableHead className="w-[240px] text-center">{cabecalhoOrdenavel("Vigência Acesso", "acessoDataFim")}</TableHead>
+                    <TableHead className="w-[110px] text-center">{cabecalhoOrdenavel("Meta Fill", "metaFillRatePct")}</TableHead>
+                    <TableHead className="w-[100px] text-center">{cabecalhoOrdenavel("Acesso", "acessoLiberado")}</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {carregando && fornecedores.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                      <TableCell
+                        colSpan={6}
+                        className="h-32 text-center text-sm text-muted-foreground"
+                      >
                         Carregando fornecedores...
                       </TableCell>
                     </TableRow>
                   ) : fornecedores.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                      <TableCell
+                        colSpan={6}
+                        className="h-32 text-center text-sm text-muted-foreground"
+                      >
                         Nenhum fornecedor encontrado para a busca "{search}".
                       </TableCell>
                     </TableRow>
                   ) : (
-                    fornecedores.map((f) => {
+                    fornecedoresOrdenados.map((f) => {
                       const ativo = f.acessoLiberado === 1;
                       const isento = f.isentoCobranca === 1;
                       const meta = Number(f.metaFillRatePct ?? FILLRATE_META_PADRAO);
@@ -448,8 +540,50 @@ function AdminFornecedoresPage() {
                           <TableCell className="font-mono text-xs font-semibold">
                             {formatarCodigoFornecedorComDigito(f.codigo)}
                           </TableCell>
-                          <TableCell className="max-w-[180px] truncate text-xs font-medium" title={f.nome}>
+                          <TableCell
+                            className="max-w-[180px] truncate text-xs font-medium"
+                            title={f.nome}
+                          >
                             {f.nome}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="space-y-1 text-[10px]">
+                              <span className="font-bold">
+                                {f.acessoStatus === "ATIVO_COM_ACORDO"
+                                  ? "ACORDO VALIDADO"
+                                  : f.acessoStatus === "DEGUSTACAO"
+                                    ? "DEGUSTAÇÃO 30 DIAS"
+                                    : f.acessoStatus === "EXPIRADO"
+                                      ? "EXPIRADO"
+                                      : "SEM ACORDO"}
+                              </span>
+                              {f.acordoNumero ? (
+                                <div className="font-mono text-muted-foreground">
+                                  {f.acordoNumero}
+                                </div>
+                              ) : null}
+                              {f.acessoStatus === "DEGUSTACAO" && f.acessoDataFim ? (
+                                <div>até {f.acessoDataFim}</div>
+                              ) : null}
+                              {f.acessoStatus !== "ATIVO_COM_ACORDO" ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1 text-[10px]"
+                                  onClick={() =>
+                                    imprimirContratoDegustacao(
+                                      formatarCodigoFornecedorComDigito(f.codigo),
+                                      f.nome || `Fornecedor ${f.codigo}`,
+                                      f.cnpj || "",
+                                      f.acessoDataInicio || "",
+                                      f.acessoDataFim || "",
+                                    )
+                                  }
+                                >
+                                  <Printer className="mr-1 size-3" /> Imprimir acordo
+                                </Button>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center">
@@ -512,7 +646,9 @@ function AdminFornecedoresPage() {
                               >
                                 -
                               </Button>
-                              <span className="w-8 text-center font-mono text-[11px] font-bold">{meta}%</span>
+                              <span className="w-8 text-center font-mono text-[11px] font-bold">
+                                {meta}%
+                              </span>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -573,7 +709,8 @@ function AdminFornecedoresPage() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-2">
                 <span className="text-xs text-muted-foreground">
-                  Página <strong>{page + 1}</strong> de <strong>{totalPages}</strong> (Exibindo {fornecedores.length} de {total} itens)
+                  Página <strong>{page + 1}</strong> de <strong>{totalPages}</strong> (Exibindo{" "}
+                  {fornecedores.length} de {total} itens)
                 </span>
                 <div className="flex items-center gap-2">
                   <Button

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Download,
+  Upload,
   Search,
   Coins,
   Package,
@@ -15,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useMemo, useState, useEffect, useCallback, ComponentType } from "react";
+import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
@@ -60,7 +62,7 @@ export const Route = createFileRoute("/_portal/preco-sistema")({
 });
 
 function PrecoSistemaPage() {
-  const { fornecedor } = usePortal();
+  const { fornecedor, codigoFornecedorAtivo } = usePortal();
 
   // Tabs state
   const [activeTab, setActiveTab] = useState("atual");
@@ -69,6 +71,8 @@ function PrecoSistemaPage() {
   const [linha, setLinha] = useState("todas");
   const [comprador, setComprador] = useState("todos");
   const [busca, setBusca] = useState("");
+  const [filtrosTabela, setFiltrosTabela] = useState<Record<string, string>>({});
+  const [ordenacaoTabela, setOrdenacaoTabela] = useState<{ campo: string; asc: boolean }>({ campo: "descricao", asc: true });
 
   // Edit/Proposal states
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -79,6 +83,10 @@ function PrecoSistemaPage() {
   // Proposal History states
   const [historico, setHistorico] = useState<PropostaPrecoDB[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const [arquivoTabela, setArquivoTabela] = useState<string | null>(null);
+  const [itensImportados, setItensImportados] = useState<Array<{ sku: string; descricao: string; precoAtual: number; precoProposto: number }>>([]);
+  const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
+  const [enviandoTabela, setEnviandoTabela] = useState(false);
 
   // Map products data safely
   const listaItens = useMemo(() => {
@@ -120,6 +128,48 @@ function PrecoSistemaPage() {
     }
   }, [activeTab, carregarHistorico]);
 
+  const processarTabelaExcel = async (arquivo: File) => {
+    setArquivoTabela(arquivo.name); setItensImportados([]); setErrosImportacao([]);
+    try {
+      const workbook = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
+      const linhas = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+      const normalizar = (valor: unknown) => String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const achar = (linha: Record<string, unknown>, nomes: string[]) => Object.entries(linha).find(([chave]) => nomes.includes(normalizar(chave)))?.[1];
+      const porCodigo = new Map(listaItens.flatMap((item) => [[String(item.sku), item], [String(item.codigo), item]]));
+      const importados: Array<{ sku: string; descricao: string; precoAtual: number; precoProposto: number }> = []; const erros: string[] = []; const vistos = new Set<string>();
+      linhas.forEach((linha, indice) => {
+        const codigo = String(achar(linha, ["codigo", "codigoproduto", "skuproduto", "sku"]) ?? "").trim();
+        const bruto = String(achar(linha, ["precoproposto", "preconovo", "preco", "valor"]) ?? "").replace(/[^0-9,.-]/g, "");
+        const preco = Number(bruto.includes(",") ? bruto.replace(/\./g, "").replace(",", ".") : bruto);
+        const item = porCodigo.get(codigo) ?? porCodigo.get(codigo.replace(/^0+/, ""));
+        if (!codigo && !bruto) return;
+        if (!item) { erros.push(`Linha ${indice + 2}: produto ${codigo || "(sem código)"} não encontrado.`); return; }
+        if (vistos.has(item.sku)) { erros.push(`Linha ${indice + 2}: produto ${codigo} duplicado.`); return; }
+        if (!(preco > 0)) { erros.push(`Linha ${indice + 2}: preço proposto inválido.`); return; }
+        vistos.add(item.sku); importados.push({ sku: item.sku, descricao: item.descricao, precoAtual: item.cmvUnit, precoProposto: preco });
+      });
+      setItensImportados(importados); setErrosImportacao(erros);
+    } catch { setErrosImportacao(["Não foi possível ler o arquivo. Use o modelo Excel."]); }
+  };
+
+  const baixarModeloTabela = () => {
+    const planilha = XLSX.utils.json_to_sheet([{ "Código do produto": "", "Descrição": "", "Preço proposto": "", "Unidade": "UN", "Observação": "" }]);
+    const arquivo = XLSX.write({ Sheets: { "Tabela de preços": planilha }, SheetNames: ["Tabela de preços"] }, { bookType: "xlsx", type: "array" });
+    const url = URL.createObjectURL(new Blob([arquivo], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); const link = document.createElement("a"); link.href = url; link.download = "modelo-tabela-precos.xlsx"; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const exportarTabelaAtual = () => {
+    const linhas = listaItens.map((item) => ({ "Código do produto": item.sku, "Descrição": item.descricao, "Preço atual": item.cmvUnit, "Preço proposto": "", "Unidade": "UN", "Observação": "" }));
+    const planilha = XLSX.utils.json_to_sheet(linhas); const arquivo = XLSX.write({ Sheets: { "Tabela de preços": planilha }, SheetNames: ["Tabela de preços"] }, { bookType: "xlsx", type: "array" });
+    const url = URL.createObjectURL(new Blob([arquivo], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); const link = document.createElement("a"); link.href = url; link.download = `tabela-precos-${codigoFornecedorAtivo}.xlsx`; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const enviarTabelaImportada = async () => {
+    if (!itensImportados.length) return; setEnviandoTabela(true);
+    try { await submitPropostaPreco({ data: { fornecedorCodigo: codigoFornecedorAtivo, justificativa: `Tabela importada: ${arquivoTabela || "arquivo Excel"}`, itens: itensImportados } }); setItensImportados([]); setArquivoTabela(null); setErrosImportacao(["Tabela enviada para análise com sucesso."]); }
+    catch (error) { setErrosImportacao([error instanceof Error ? error.message : "Não foi possível enviar a tabela."]); } finally { setEnviandoTabela(false); }
+  };
+
   // Dynamic filter options
   const linhas = useMemo(() => {
     return Array.from(new Set(listaItens.map((item) => item.linha).filter(Boolean))).sort();
@@ -131,23 +181,48 @@ function PrecoSistemaPage() {
 
   // Apply filters
   const filtrados = useMemo(() => {
-    return listaItens.filter((item) => {
+    const resultados = listaItens.filter((item) => {
       const matchLinha = linha === "todas" || item.linha === linha;
       const matchComprador = comprador === "todos" || item.compradorNome === comprador;
-
       const textoBusca = busca.toLowerCase().trim();
-      const matchBusca =
-        !textoBusca ||
-        item.sku.toLowerCase().includes(textoBusca) ||
-        item.codigo.toLowerCase().includes(textoBusca) ||
-        item.descricao.toLowerCase().includes(textoBusca) ||
-        item.ean.toLowerCase().includes(textoBusca) ||
-        item.linha.toLowerCase().includes(textoBusca) ||
-        item.compradorNome.toLowerCase().includes(textoBusca);
-
-      return matchLinha && matchComprador && matchBusca;
+      const matchBusca = !textoBusca || [item.sku, item.codigo, item.descricao, item.ean, item.linha, item.compradorNome].some((valor) => valor.toLowerCase().includes(textoBusca));
+      const valores: Record<string, string> = {
+        codigo: item.codigo,
+        descricao: item.descricao,
+        ean: item.ean,
+        embalagem: `${item.embalagemCompra} ${item.tipoEmbalagemCompra}`,
+        custo: String(item.cmvUnit),
+        custoEmbalagem: String(item.precoCompraEmbalagem),
+        comprador: item.compradorNome,
+        linha: item.linha,
+      };
+      const matchColunas = Object.entries(filtrosTabela).every(([campo, valor]) => !valor.trim() || (valores[campo] ?? "").toLowerCase().includes(valor.toLowerCase().trim()));
+      return matchLinha && matchComprador && matchBusca && matchColunas;
     });
-  }, [listaItens, linha, comprador, busca]);
+    return [...resultados].sort((a, b) => {
+      const valoresA: Record<string, string | number> = { codigo: a.codigo, descricao: a.descricao, ean: a.ean, embalagem: a.embalagemCompra, custo: a.cmvUnit, custoEmbalagem: a.precoCompraEmbalagem, comprador: a.compradorNome, linha: a.linha };
+      const valoresB: Record<string, string | number> = { codigo: b.codigo, descricao: b.descricao, ean: b.ean, embalagem: b.embalagemCompra, custo: b.cmvUnit, custoEmbalagem: b.precoCompraEmbalagem, comprador: b.compradorNome, linha: b.linha };
+      const valorA = valoresA[ordenacaoTabela.campo] ?? "";
+      const valorB = valoresB[ordenacaoTabela.campo] ?? "";
+      const comparacao = typeof valorA === "number" && typeof valorB === "number" ? valorA - valorB : String(valorA).localeCompare(String(valorB), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacaoTabela.asc ? comparacao : -comparacao;
+    });
+  }, [listaItens, linha, comprador, busca, filtrosTabela, ordenacaoTabela]);
+
+  const alternarOrdenacaoTabela = (campo: string) => {
+    setOrdenacaoTabela((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
+  };
+
+  const cabecalhoTabela = (campo: string, titulo: string, placeholder: string, className = "") => (
+    <TableHead className={className}>
+      <div className="flex min-w-[110px] items-center gap-1">
+        <Input value={filtrosTabela[campo] ?? ""} onChange={(event) => setFiltrosTabela((atual) => ({ ...atual, [campo]: event.target.value }))} placeholder={placeholder} className="h-7 min-w-0 flex-1 text-xs" aria-label={`Buscar ${titulo}`} disabled={modoEdicao} />
+        <button type="button" className="shrink-0 text-muted-foreground" onClick={() => alternarOrdenacaoTabela(campo)} aria-label={`Ordenar ${titulo}`}>
+          {ordenacaoTabela.campo === campo ? (ordenacaoTabela.asc ? "↑" : "↓") : "↕"}
+        </button>
+      </div>
+    </TableHead>
+  );
 
   // KPI Calculations
   const totalItens = filtrados.length;
@@ -444,6 +519,13 @@ function PrecoSistemaPage() {
             </CardContent>
           </Card>
 
+          <Card className="shadow-panel">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="text-base">Importar tabela de preços</CardTitle><p className="mt-1 text-sm text-muted-foreground">Exporte a tabela, preencha o preço proposto no Excel e importe novamente para conferência.</p></div><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={exportarTabelaAtual}><Download className="mr-2 size-4" />Exportar tabela atual</Button><Button type="button" variant="outline" onClick={baixarModeloTabela}><Download className="mr-2 size-4" />Baixar modelo vazio</Button></div></div>
+            </CardHeader>
+            <CardContent className="space-y-3"><div className="flex flex-wrap items-center gap-3"><Input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => { const arquivo = event.target.files?.[0]; if (arquivo) void processarTabelaExcel(arquivo); }} className="max-w-md" /><Upload className="size-4 text-muted-foreground" /></div>{arquivoTabela && <p className="text-xs text-muted-foreground">Arquivo: {arquivoTabela} · {numero(itensImportados.length)} itens válidos</p>}{errosImportacao.length > 0 && <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">{errosImportacao.map((erro, indice) => <p key={indice}>{erro}</p>)}</div>}{itensImportados.length > 0 && <><div className="max-h-48 overflow-auto rounded-md border"><Table><TableHeader><TableRow><TableHead>Código</TableHead><TableHead>Produto</TableHead><TableHead className="text-right">Preço atual</TableHead><TableHead className="text-right">Preço proposto</TableHead></TableRow></TableHeader><TableBody>{itensImportados.map((item) => <TableRow key={item.sku}><TableCell className="font-mono">{item.sku}</TableCell><TableCell>{item.descricao}</TableCell><TableCell className="text-right">{brl(item.precoAtual)}</TableCell><TableCell className="text-right font-semibold">{brl(item.precoProposto)}</TableCell></TableRow>)}</TableBody></Table></div><Button type="button" onClick={() => void enviarTabelaImportada()} disabled={enviandoTabela}>{enviandoTabela ? "Enviando..." : "Enviar tabela para análise"}</Button></>}</CardContent>
+          </Card>
+
           {/* Proposal/Edit Mode Panel */}
           {modoEdicao && (
             <Card className="border-l-4 border-l-primary bg-primary/5 shadow-panel">
@@ -533,12 +615,12 @@ function PrecoSistemaPage() {
               >
                 <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                   <TableRow className="bg-stone-100">
-                      <TableHead className="w-[120px]">Cód. Produto</TableHead>
-                      <TableHead className="min-w-[240px]">Descrição</TableHead>
-                      <TableHead>EAN (Cód. Barras)</TableHead>
-                      <TableHead className="text-center">Embalagem</TableHead>
-                      <TableHead className="text-right">Preço Compra (Unitário)</TableHead>
-                      <TableHead className="text-right">Preço Compra (Embalagem)</TableHead>
+                      {cabecalhoTabela("codigo", "código do produto", "Código", "w-[150px]")}
+                      {cabecalhoTabela("descricao", "descrição", "Descrição", "min-w-[240px]")}
+                      {cabecalhoTabela("ean", "EAN", "EAN")}
+                      {cabecalhoTabela("embalagem", "embalagem", "Embalagem", "text-center")}
+                      {cabecalhoTabela("custo", "preço de compra unitário", "Preço unit.", "text-right")}
+                      {cabecalhoTabela("custoEmbalagem", "preço da embalagem", "Preço emb.", "text-right")}
                       {modoEdicao && (
                         <>
                           <TableHead className="text-right text-primary font-bold">
@@ -550,8 +632,8 @@ function PrecoSistemaPage() {
                           <TableHead className="text-center w-[80px]">Delta</TableHead>
                         </>
                       )}
-                      <TableHead>Comprador</TableHead>
-                      <TableHead>Linha</TableHead>
+                      {cabecalhoTabela("comprador", "comprador", "Comprador")}
+                      {cabecalhoTabela("linha", "linha", "Linha")}
                     </TableRow>
                   </TableHeader>
                   <TableBody>

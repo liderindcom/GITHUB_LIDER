@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PackageCheck, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { TableColumnHeader } from "@/components/table-column-header";
+
 import { usePortal } from "@/context/portal-context";
 import { PortalLayout } from "@/components/portal-layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +48,7 @@ export const Route = createFileRoute("/_portal/estoque")({
 });
 
 type SituacaoEstoque = "Falta" | "Excesso" | "Equilibrado";
+type OrdenacaoEstoque = "sku" | "descricao" | "lojaNome" | "classe" | "sistematica" | "vendaMensal" | "estoqueAtual" | "estoqueIdeal" | "diferenca" | "situacao";
 
 const filtros: Array<SituacaoEstoque | "Todos"> = [
   "Todos",
@@ -56,8 +59,8 @@ const filtros: Array<SituacaoEstoque | "Todos"> = [
 
 const LINHAS_POR_PAGINA = 120;
 
-function chaveClasseCard(classe: string): "TOP STAR" | "A" | "B" | "C" | "D" {
-  if (classe === "Aa") return "TOP STAR";
+function chaveClasseCard(classe: string, topStar = false): "TOP STAR" | "A" | "B" | "C" | "D" {
+  if (topStar || classe === "Aa") return "TOP STAR";
   const letra = String(classe || "D").toUpperCase().trim()[0] || "D";
   if (letra === "A" || letra === "B" || letra === "C") return letra;
   return "D";
@@ -70,6 +73,8 @@ function EstoquePage() {
   const [viewMode, setViewMode] = useState<"qtd" | "vlr">("qtd");
   const [classeCard, setClasseCard] = useState<"TOP STAR" | "A" | "B" | "C" | "D" | null>(null);
   const [pagina, setPagina] = useState(1);
+  const [buscas, setBuscas] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ campo: OrdenacaoEstoque; direcao: "asc" | "desc" }>({ campo: "classe", direcao: "asc" });
 
   // Helper for meta calculation based on Systematic, Class, and CDAM/Store type (Lider Official spreadsheet)
   const getMetasCobertura = (sistematica: string, classe: string, isCdam: boolean): number => {
@@ -133,6 +138,7 @@ function EstoquePage() {
       diferenca: number;
       situacao: SituacaoEstoque;
       classe: string;
+      topStar: boolean;
       sistematica: string;
       preco: number;
     }> = [];
@@ -150,7 +156,12 @@ function EstoquePage() {
       visto.add(chave);
       const produto = produtoPorSkuMap.get(sku);
       const cls = produto?.classeComposta || "Dd";
-      const diasCobertura = getMetasCobertura(produto?.sistematica || "ESTOCADO", cls, lojaItem.tipo === "D");
+      const topStar = (produto?.classeTopStar || cls) === "Aa";
+      const diasCobertura = getMetasCobertura(
+        produto?.sistematica || "ESTOCADO",
+        topStar ? "Aa" : cls,
+        lojaItem.tipo === "D",
+      );
       const estoqueIdeal = Math.round((vendaMensal / 30) * diasCobertura);
       const diferenca = estoqueAtual - estoqueIdeal;
       arr.push({
@@ -164,6 +175,7 @@ function EstoquePage() {
         diferenca,
         situacao: diferenca < 0 ? "Falta" : diferenca > 0 ? "Excesso" : "Equilibrado",
         classe: cls,
+        topStar,
         sistematica: produto?.sistematica || "ESTOCADO",
         preco: produto?.precoTabela || 1.0,
       });
@@ -200,7 +212,7 @@ function EstoquePage() {
     }
 
     for (const item of listaCompleta) {
-      const key = chaveClasseCard(item.classe);
+      const key = chaveClasseCard(item.classe, item.topStar);
 
       const current = map.get(key) || { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0 };
       current.realQtd += Number(item.estoqueAtual) || 0;
@@ -229,13 +241,24 @@ function EstoquePage() {
   const listaFiltrada = useMemo(() => {
     return listaCompleta
       .filter((item) => {
-        if (classeCard && chaveClasseCard(item.classe) !== classeCard) return false;
+        if (classeCard && chaveClasseCard(item.classe, item.topStar) !== classeCard) return false;
         if (loja !== "todas" && !mesmoCodigoLoja(item.lojaId, loja)) return false;
         if (filtro !== "Todos" && item.situacao !== filtro) return false;
-        return true;
+        const campos: Record<string, string> = {
+          sku: codigoProdutoComDigito(item.sku), descricao: item.descricao, lojaNome: item.lojaNome,
+          classe: item.classe === "Aa" ? "TOP STAR Aa" : item.classe, sistematica: item.sistematica,
+          vendaMensal: String(item.vendaMensal), estoqueAtual: String(item.estoqueAtual),
+          estoqueIdeal: String(item.estoqueIdeal), diferenca: String(item.diferenca), situacao: item.situacao,
+        };
+        return Object.entries(buscas).every(([campo, termo]) => !termo || (campos[campo] ?? "").toLowerCase().includes(termo.toLowerCase()));
       })
-      .sort((a, b) => a.classe.localeCompare(b.classe));
-  }, [listaCompleta, loja, filtro, classeCard]);
+      .sort((a, b) => {
+        const av = a[ordenacao.campo];
+        const bv = b[ordenacao.campo];
+        const comparacao = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
+        return ordenacao.direcao === "asc" ? comparacao : -comparacao;
+      });
+  }, [listaCompleta, loja, filtro, classeCard, buscas, ordenacao]);
 
   const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / LINHAS_POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
@@ -258,7 +281,10 @@ function EstoquePage() {
 
   useEffect(() => {
     setPagina(1);
-  }, [loja, filtro, classeCard]);
+  }, [loja, filtro, classeCard, buscas, ordenacao]);
+
+  const alterarOrdenacao = (campo: OrdenacaoEstoque) => setOrdenacao((atual) => ({ campo, direcao: atual.campo === campo && atual.direcao === "asc" ? "desc" : "asc" }));
+  const buscaColuna = (campo: string) => (valor: string) => setBuscas((atual) => ({ ...atual, [campo]: valor }));
 
   return (
     <PortalLayout
@@ -440,16 +466,11 @@ function EstoquePage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="bg-muted/60">
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Loja</TableHead>
-                    <TableHead className="text-center">Classe</TableHead>
-                    <TableHead className="text-center">Sistemática</TableHead>
-                    <TableHead className="text-right">Venda Média Mensal</TableHead>
-                    <TableHead className="text-right">Estoque Real</TableHead>
-                    <TableHead className="text-right">Estoque Ideal</TableHead>
-                    <TableHead className="text-right">Diferença</TableHead>
-                    <TableHead>Situação</TableHead>
+                    {([["sku", "SKU"], ["descricao", "Produto"], ["lojaNome", "Loja"], ["classe", "Classe"], ["sistematica", "Sistemática"], ["vendaMensal", "Venda Média Mensal"], ["estoqueAtual", "Estoque Real"], ["estoqueIdeal", "Estoque Ideal"], ["diferenca", "Diferença"], ["situacao", "Situação"]] as Array<[OrdenacaoEstoque, string]>).map(([campo, titulo]) => (
+                      <TableHead key={campo} className="min-w-[110px]">
+                        <TableColumnHeader title={titulo} value={buscas[campo] ?? ""} onChange={buscaColuna(campo)} onSort={() => alterarOrdenacao(campo)} direction={ordenacao.campo === campo ? ordenacao.direcao : null} placeholder={`Buscar ${titulo.toLowerCase()}`} />
+                      </TableHead>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>

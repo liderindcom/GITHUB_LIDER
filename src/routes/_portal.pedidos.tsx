@@ -5,6 +5,7 @@ import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -90,14 +91,27 @@ const corFillRate = (fillRate: number) => {
 function PedidosPage() {
   const [filtro, setFiltro] = useState<PedidoStatus | "Todos">("Todos");
   const [selecionado, setSelecionado] = useState<Pedido | null>(null);
+  const [buscaTabela, setBuscaTabela] = useState("");
+  const [ordenacao, setOrdenacao] = useState<{ campo: string; asc: boolean }>({ campo: "emissao", asc: false });
   const pedidosFornecedor = pedidos.filter(
     (p) => p.destino === "Fornecedor" && emissaoNosUltimosDias(p.emissao, JANELA_PEDIDOS_DIAS),
   );
 
   const lista = pedidosFornecedor.filter((p) => {
     const statusOk = filtro === "Todos" || p.status === filtro;
-    return statusOk;
+    const comprador = compradorPedido(p.itens, produtoPorSku, produtos);
+    const termo = buscaTabela.trim().toLowerCase();
+    const texto = `${p.numero} ${p.destino} ${p.emissao} ${p.entradaCdam ?? ""} ${p.entregaPrevista} ${p.destinoOperacional} ${comprador} ${p.status}`.toLowerCase();
+    return statusOk && texto.includes(termo);
+  }).sort((a, b) => {
+    const compradorA = compradorPedido(a.itens, produtoPorSku, produtos);
+    const compradorB = compradorPedido(b.itens, produtoPorSku, produtos);
+    const valor = (p: Pedido) => ordenacao.campo === "numero" ? String(p.numero) : ordenacao.campo === "tipo" ? p.destino : ordenacao.campo === "emissao" ? p.emissao : ordenacao.campo === "entradaCdam" ? (p.entradaCdam ?? "") : ordenacao.campo === "entregaPrevista" ? p.entregaPrevista : ordenacao.campo === "destinoOperacional" ? p.destinoOperacional : ordenacao.campo === "comprador" ? (p === a ? compradorA : compradorB) : ordenacao.campo === "itens" ? p.itens.length : ordenacao.campo === "fillRate" ? fillRatePedido(p) : ordenacao.campo === "valor" ? totalPedido(p) : p.status;
+    const av = valor(a); const bv = valor(b);
+    const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
+    return ordenacao.asc ? cmp : -cmp;
   });
+  const ordenar = (campo: string) => setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
 
   const mesFillRate = mesFechadoIso();
   const pedidosMesFechado = pedidos.filter(
@@ -166,17 +180,17 @@ function PedidosPage() {
           >
             <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
               <TableRow className="bg-muted/60">
-                  <TableHead>Pedido</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Emissão</TableHead>
-                  <TableHead>Entrada CDAM</TableHead>
-                  <TableHead>Entrega prevista</TableHead>
-                  <TableHead>Destino operacional</TableHead>
-                  <TableHead>Comprador</TableHead>
-                  <TableHead className="text-right">Itens</TableHead>
-                  <TableHead className="text-right">Fill rate</TableHead>
-                  <TableHead className="text-right">Valor total</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead><div className="flex items-center gap-1"><Input value={buscaTabela} onChange={(e) => setBuscaTabela(e.target.value)} placeholder="Pedido / busca" className="h-7 min-w-[120px] text-xs" /><button type="button" onClick={() => ordenar("numero")}>↕</button></div></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("tipo")}>Tipo ↕</button></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("emissao")}>Emissão ↕</button></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("entradaCdam")}>Entrada CDAM ↕</button></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("entregaPrevista")}>Entrega prevista ↕</button></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("destinoOperacional")}>Destino operacional ↕</button></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("comprador")}>Comprador ↕</button></TableHead>
+                  <TableHead className="text-right"><button type="button" onClick={() => ordenar("itens")}>Itens ↕</button></TableHead>
+                  <TableHead className="text-right"><button type="button" onClick={() => ordenar("fillRate")}>Fill rate ↕</button></TableHead>
+                  <TableHead className="text-right"><button type="button" onClick={() => ordenar("valor")}>Valor total ↕</button></TableHead>
+                  <TableHead><button type="button" onClick={() => ordenar("status")}>Status ↕</button></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

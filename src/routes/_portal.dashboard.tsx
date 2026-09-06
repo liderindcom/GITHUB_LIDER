@@ -24,6 +24,7 @@ import {
 import { PortalLayout } from "@/components/portal-layout";
 import { usePortal } from "@/context/portal-context";
 import { fetchComprasAno, type ComprasAnoDB } from "@/api";
+import { filtroMercadologicoAtivo } from "@/lib/filtro-mercadologico";
 import { brl, dataBR, numero, percentual } from "@/lib/format";
 import {
   codigoProdutoComDigito,
@@ -128,14 +129,29 @@ function Painel({ className = "", children }: { className?: string; children: Re
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { fornecedor, dadosFornecedorVersao } = usePortal();
+  const { fornecedor, dadosFornecedorVersao, filtroMercadologico } = usePortal();
   const ateMesPadrao = mesFechadoIso();
   const [comprasAno, setComprasAno] = useState<ComprasAnoDB | null>(null);
+  const mixAtivo = filtroMercadologicoAtivo(filtroMercadologico);
+  const rotuloMix = [
+    filtroMercadologico.segmento,
+    filtroMercadologico.departamento,
+    filtroMercadologico.secao,
+    filtroMercadologico.grupo,
+    filtroMercadologico.subgrupo,
+    filtroMercadologico.comprador,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   useEffect(() => {
     let ativo = true;
     fetchComprasAno({
-      data: { fornecedorCodigo: fornecedor.codigo, ano: Number(ateMesPadrao.slice(0, 4)) },
+      data: {
+        fornecedorCodigo: fornecedor.codigo,
+        ano: Number(ateMesPadrao.slice(0, 4)),
+        filtro: filtroMercadologico,
+      },
     })
       .then((dados) => {
         if (ativo) setComprasAno(dados);
@@ -147,7 +163,7 @@ function Dashboard() {
     return () => {
       ativo = false;
     };
-  }, [fornecedor.codigo, ateMesPadrao, dadosFornecedorVersao]);
+  }, [fornecedor.codigo, ateMesPadrao, dadosFornecedorVersao, filtroMercadologico]);
 
   const pedidoAno = comprasAno?.pedido ?? 0;
   const entregueAno = comprasAno?.entregue ?? 0;
@@ -250,7 +266,14 @@ function Dashboard() {
   ];
 
   return (
-    <PortalLayout titulo="Dashboard" descricao="Visão geral da sua operação com o Grupo Líder">
+    <PortalLayout
+      titulo="Dashboard"
+      descricao={
+        mixAtivo
+          ? `Visão geral · mix ${rotuloMix}`
+          : "Visão geral da sua operação com o Grupo Líder"
+      }
+    >
       <div className="grid gap-4 lg:grid-cols-6">
         {/* Destaque principal */}
         <Painel className="lg:col-span-4">

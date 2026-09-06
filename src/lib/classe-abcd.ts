@@ -1,4 +1,4 @@
-/** Curva ABCD única do portal. Valor (1ª letra) + volume (2ª letra minúscula): Aa, Bc, Dd. */
+/** Curva ABCD do portal: valor (1ª letra) + volume (2ª letra minúscula). */
 
 export type ClasseAbcd = "A" | "B" | "C" | "D";
 
@@ -19,6 +19,8 @@ export function formatarClasseComposta(classe?: string | null): string {
 export type ItemCurvaAbcd = {
   sku: string;
   grupo: string;
+  /** Grupo de consolidação da quantidade; por padrão usa `grupo`. */
+  grupoQuantidade?: string;
   valor: number;
   volume: number;
 };
@@ -29,41 +31,65 @@ export type ResultadoCurvaAbcd = {
   classeComposta: string;
 };
 
-export function classificarCurvaAbcd(itens: ItemCurvaAbcd[]): Map<string, ResultadoCurvaAbcd> {
-  const saida = new Map<string, ResultadoCurvaAbcd>();
+function classificarDimensao(
+  itens: ItemCurvaAbcd[],
+  chaveGrupo: (item: ItemCurvaAbcd) => string,
+  valorItem: (item: ItemCurvaAbcd) => number,
+): Map<string, ClasseAbcd> {
+  const classes = new Map<string, ClasseAbcd>();
   const porGrupo = new Map<string, ItemCurvaAbcd[]>();
   for (const item of itens) {
-    const lista = porGrupo.get(item.grupo) ?? [];
+    const grupo = chaveGrupo(item);
+    const lista = porGrupo.get(grupo) ?? [];
     lista.push(item);
-    porGrupo.set(item.grupo, lista);
+    porGrupo.set(grupo, lista);
   }
 
   for (const grupoItens of porGrupo.values()) {
-    const porValor = [...grupoItens].sort((a, b) => b.valor - a.valor);
-    const totalValor = porValor.reduce((acc, item) => acc + item.valor, 0);
-    let acumuladoValor = 0;
-    const classeValor = new Map<string, ClasseAbcd>();
-    for (const item of porValor) {
-      const pct = totalValor > 0 ? (acumuladoValor / totalValor) * 100 : 100;
-      classeValor.set(item.sku, classeAbcdAcumulado(pct));
-      acumuladoValor += item.valor;
-    }
-
-    const porVolume = [...grupoItens].sort((a, b) => b.volume - a.volume);
-    const totalVolume = porVolume.reduce((acc, item) => acc + item.volume, 0);
-    let acumuladoVolume = 0;
-    for (const item of porVolume) {
-      const pct = totalVolume > 0 ? (acumuladoVolume / totalVolume) * 100 : 100;
-      const volume = classeAbcdAcumulado(pct);
-      const valor = classeValor.get(item.sku) ?? "D";
-      saida.set(item.sku, {
-        classeValor: valor,
-        classeVolume: volume,
-        classeComposta: formatarClasseComposta(`${valor}${volume}`),
-      });
-      acumuladoVolume += item.volume;
+    const ordenados = [...grupoItens].sort(
+      (a, b) => valorItem(b) - valorItem(a) || a.sku.localeCompare(b.sku),
+    );
+    const total = ordenados.reduce((acc, item) => acc + valorItem(item), 0);
+    let acumulado = 0;
+    for (const item of ordenados) {
+      const pct = total > 0 ? (acumulado / total) * 100 : 100;
+      classes.set(item.sku, classeAbcdAcumulado(pct));
+      acumulado += valorItem(item);
     }
   }
 
+  return classes;
+}
+
+function combinarClasses(
+  classeValor: Map<string, ClasseAbcd>,
+  classeVolume: Map<string, ClasseAbcd>,
+): Map<string, ResultadoCurvaAbcd> {
+  const saida = new Map<string, ResultadoCurvaAbcd>();
+  for (const [sku, valor] of classeValor) {
+    const volume = classeVolume.get(sku) ?? "D";
+    saida.set(sku, {
+      classeValor: valor,
+      classeVolume: volume,
+      classeComposta: formatarClasseComposta(`${valor}${volume}`),
+    });
+  }
   return saida;
+}
+
+export function classificarCurvaAbcd(itens: ItemCurvaAbcd[]): Map<string, ResultadoCurvaAbcd> {
+  const classeValor = classificarDimensao(itens, (item) => item.grupo, (item) => item.valor);
+  const classeVolume = classificarDimensao(itens, (item) => item.grupo, (item) => item.volume);
+  return combinarClasses(classeValor, classeVolume);
+}
+
+/** Top Star: valor por subgrupo e quantidade consolidada no grupo. */
+export function classificarCurvaTopStar(itens: ItemCurvaAbcd[]): Map<string, ResultadoCurvaAbcd> {
+  const classeValor = classificarDimensao(itens, (item) => item.grupo, (item) => item.valor);
+  const classeVolume = classificarDimensao(
+    itens,
+    (item) => item.grupoQuantidade ?? item.grupo,
+    (item) => item.volume,
+  );
+  return combinarClasses(classeValor, classeVolume);
 }

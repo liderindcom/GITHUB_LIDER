@@ -26,6 +26,7 @@ import { toast } from "sonner";
 
 import { fetchShareFornecedor, type ShareCategoriaDB, type ShareFornecedorDB } from "@/api";
 import { PortalLayout } from "@/components/portal-layout";
+import { TableColumnHeader } from "@/components/table-column-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,6 +97,26 @@ type ShareCategoriaView = ShareCategoriaDB & {
   shareValor: number;
   shareQuantidade: number;
 };
+
+type DirecaoTabela = "asc" | "desc" | null;
+type OrdenacaoTabela = { campo: string; direcao: DirecaoTabela };
+
+function ordenarTabela<T>(linhas: T[], busca: string, texto: (linha: T) => string, ordenacao: OrdenacaoTabela, valor: (linha: T, campo: string) => string | number) {
+  const filtradas = linhas.filter((linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()));
+  if (!ordenacao.direcao) return filtradas;
+  return [...filtradas].sort((a, b) => {
+    const esquerda = valor(a, ordenacao.campo);
+    const direita = valor(b, ordenacao.campo);
+    const comparacao = typeof esquerda === "number" && typeof direita === "number"
+      ? esquerda - direita
+      : String(esquerda).localeCompare(String(direita), "pt-BR", { numeric: true, sensitivity: "base" });
+    return ordenacao.direcao === "asc" ? comparacao : -comparacao;
+  });
+}
+
+function alternarOrdenacao(atual: OrdenacaoTabela, campo: string): OrdenacaoTabela {
+  return { campo, direcao: atual.campo === campo ? (atual.direcao === null ? "asc" : atual.direcao === "asc" ? "desc" : null) : "asc" };
+}
 
 type ShareMarcaView = {
   marca: string;
@@ -249,6 +270,12 @@ function RepresentatividadePage() {
   const [shareFornecedor, setShareFornecedor] = useState<ShareFornecedorDB | null>(null);
   const [carregandoShare, setCarregandoShare] = useState(false);
   const [erroShare, setErroShare] = useState<string | null>(null);
+  const [buscaCategoriaTabela, setBuscaCategoriaTabela] = useState("");
+  const [buscaMarcaTabela, setBuscaMarcaTabela] = useState("");
+  const [buscaProdutoTabela, setBuscaProdutoTabela] = useState("");
+  const [ordemCategoriaTabela, setOrdemCategoriaTabela] = useState<OrdenacaoTabela>({ campo: "categoria", direcao: null });
+  const [ordemMarcaTabela, setOrdemMarcaTabela] = useState<OrdenacaoTabela>({ campo: "marca", direcao: null });
+  const [ordemProdutoTabela, setOrdemProdutoTabela] = useState<OrdenacaoTabela>({ campo: "codigo", direcao: null });
 
   const baseProdutos = Array.from(produtos);
 
@@ -392,6 +419,9 @@ function RepresentatividadePage() {
   const fonteShareReal = Boolean(shareFornecedor?.categorias.length);
   const categoriasShareBase = fonteShareReal ? (shareFornecedor?.categorias ?? []) : categoriasDemo;
   const marcasShareBase = fonteShareReal ? (shareFornecedor?.marcas ?? []) : marcasDemo;
+  const categoriasTabela = useMemo(() => ordenarTabela(categoriasShare, buscaCategoriaTabela, (linha) => `${linha.categoria} ${linha.subgrupo}`, ordemCategoriaTabela, (linha, campo) => campo === "fornecedor" ? linha.fornecedorValor : campo === "categoriaTotal" ? linha.liderValor : campo === "share" ? linha.shareValor : linha.categoria), [categoriasShare, buscaCategoriaTabela, ordemCategoriaTabela]);
+  const marcasTabela = useMemo(() => ordenarTabela(marcasShareBase, buscaMarcaTabela, (linha) => linha.marca, ordemMarcaTabela, (linha, campo) => campo === "venda" ? linha.fornecedorValor : campo === "produtos" ? linha.produtos : campo === "share" ? linha.sharePortfolio : linha.marca), [marcasShareBase, buscaMarcaTabela, ordemMarcaTabela]);
+  const listaTabela = useMemo(() => ordenarTabela(lista, buscaProdutoTabela, (linha) => `${linha.codigo} ${linha.produto.descricao} ${linha.departamento} ${linha.secao} ${linha.grupo} ${linha.subgrupo}`, ordemProdutoTabela, (linha, campo) => campo === "produto" ? linha.produto.descricao : campo === "departamento" ? linha.departamento : campo === "secao" ? linha.secao : campo === "grupo" ? linha.grupo : campo === "subgrupo" ? linha.subgrupo : campo === "venda" ? linha.faturamento : campo === "vendaSubgrupo" ? linha.vendaSubgrupo : campo === "representatividade" ? linha.representatividade : campo === "acumulado" ? linha.acumulado : campo === "posicao" ? linha.posicao : linha.codigo), [lista, buscaProdutoTabela, ordemProdutoTabela]);
   const categoriasShare = categoriasShareBase.filter((linha) => {
     if (departamento !== "todos" && linha.departamento !== departamento) return false;
     if (secao !== "todos" && linha.secao !== secao) return false;
@@ -549,8 +579,8 @@ function RepresentatividadePage() {
                       <Tooltip
                         formatter={(value, name) => {
                           if (name === "share") return [percentual(Number(value)), "Share"];
-                          if (name === "fornecedor") return [brl(Number(value)), "Fornecedor"];
-                          return [brl(Number(value)), "Total categoria"];
+                          if (name === "fornecedor") return [brl(Number(value)), "Total do fornecedor"];
+                          return [brl(Number(value)), "Total da categoria"];
                         }}
                         labelFormatter={(_, payload) =>
                           String(payload?.[0]?.payload?.categoriaCompleta ?? "")
@@ -559,7 +589,7 @@ function RepresentatividadePage() {
                       <Legend />
                       <Bar
                         dataKey="lider"
-                        name="Total categoria"
+                        name="Total da categoria"
                         fill="#94a3b8"
                         radius={[0, 4, 4, 0]}
                       />
@@ -728,14 +758,14 @@ function RepresentatividadePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead>Categoria</TableHead>
-                      <TableHead className="text-right">Fornecedor</TableHead>
-                      <TableHead className="text-right">Total da categoria</TableHead>
-                      <TableHead className="text-right">Share</TableHead>
+                      <TableHead><TableColumnHeader title="Categoria" value={buscaCategoriaTabela} onChange={setBuscaCategoriaTabela} onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "categoria"))} direction={ordemCategoriaTabela.campo === "categoria" ? ordemCategoriaTabela.direcao : null} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Fornecedor" onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "fornecedor"))} direction={ordemCategoriaTabela.campo === "fornecedor" ? ordemCategoriaTabela.direcao : null} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Total da categoria" onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "categoriaTotal"))} direction={ordemCategoriaTabela.campo === "categoriaTotal" ? ordemCategoriaTabela.direcao : null} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Share" onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "share"))} direction={ordemCategoriaTabela.campo === "share" ? ordemCategoriaTabela.direcao : null} /></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {categoriasShare.map((linha) => (
+                    {categoriasTabela.map((linha) => (
                       <TableRow key={`${linha.categoria}-${linha.subgrupo}`}>
                         <TableCell className="min-w-[190px]">
                           <div className="font-medium">{linha.categoria}</div>
@@ -775,14 +805,14 @@ function RepresentatividadePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead>Marca</TableHead>
-                      <TableHead className="text-right">Venda</TableHead>
-                      <TableHead className="text-right">Produtos</TableHead>
-                      <TableHead className="text-right">Part. portfólio</TableHead>
+                      <TableHead><TableColumnHeader title="Marca" value={buscaMarcaTabela} onChange={setBuscaMarcaTabela} onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "marca"))} direction={ordemMarcaTabela.campo === "marca" ? ordemMarcaTabela.direcao : null} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Venda" onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "venda"))} direction={ordemMarcaTabela.campo === "venda" ? ordemMarcaTabela.direcao : null} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Produtos" onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "produtos"))} direction={ordemMarcaTabela.campo === "produtos" ? ordemMarcaTabela.direcao : null} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Part. portfólio" onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "share"))} direction={ordemMarcaTabela.campo === "share" ? ordemMarcaTabela.direcao : null} /></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {marcasShareBase.map((linha) => (
+                    {marcasTabela.map((linha) => (
                       <TableRow key={linha.marca}>
                         <TableCell className="min-w-[170px] font-medium">{linha.marca}</TableCell>
                         <TableCell className="text-right font-medium">
@@ -826,22 +856,22 @@ function RepresentatividadePage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/60">
-                    <TableHead>Cód. produto</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead>Departamento</TableHead>
-                    <TableHead>Seção</TableHead>
-                    <TableHead>Grupo</TableHead>
-                    <TableHead>Subgrupo</TableHead>
-                    <TableHead className="text-right">Venda produto</TableHead>
-                    <TableHead className="text-right">Venda subgrupo</TableHead>
-                    <TableHead>Representatividade</TableHead>
-                    <TableHead className="text-right">Acum.</TableHead>
-                    <TableHead className="text-center">Pos.</TableHead>
+                    <TableHead><TableColumnHeader title="Cód. produto" value={buscaProdutoTabela} onChange={setBuscaProdutoTabela} onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "codigo"))} direction={ordemProdutoTabela.campo === "codigo" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead><TableColumnHeader title="Produto" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "produto"))} direction={ordemProdutoTabela.campo === "produto" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead><TableColumnHeader title="Departamento" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "departamento"))} direction={ordemProdutoTabela.campo === "departamento" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead><TableColumnHeader title="Seção" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "secao"))} direction={ordemProdutoTabela.campo === "secao" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead><TableColumnHeader title="Grupo" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "grupo"))} direction={ordemProdutoTabela.campo === "grupo" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead><TableColumnHeader title="Subgrupo" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "subgrupo"))} direction={ordemProdutoTabela.campo === "subgrupo" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead className="text-right"><TableColumnHeader title="Venda produto" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "venda"))} direction={ordemProdutoTabela.campo === "venda" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead className="text-right"><TableColumnHeader title="Venda subgrupo" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "vendaSubgrupo"))} direction={ordemProdutoTabela.campo === "vendaSubgrupo" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead><TableColumnHeader title="Representatividade" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "representatividade"))} direction={ordemProdutoTabela.campo === "representatividade" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead className="text-right"><TableColumnHeader title="Acum." onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "acumulado"))} direction={ordemProdutoTabela.campo === "acumulado" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead className="text-center"><TableColumnHeader title="Pos." onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "posicao"))} direction={ordemProdutoTabela.campo === "posicao" ? ordemProdutoTabela.direcao : null} /></TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lista.map((linha) => {
+                  {listaTabela.map((linha) => {
                     const status = statusParticipacao(linha.representatividade, linha.posicao);
 
                     return (
@@ -883,7 +913,7 @@ function RepresentatividadePage() {
                       </TableRow>
                     );
                   })}
-                  {lista.length === 0 && (
+                  {listaTabela.length === 0 && (
                     <TableRow>
                       <TableCell
                         colSpan={12}

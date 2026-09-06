@@ -52,6 +52,8 @@ function AdminPrecosPage() {
   const [carregando, setCarregando] = useState(false);
   const [activeTab, setActiveTab] = useState("pendentes");
   const [busca, setBusca] = useState("");
+  const [filtrosItens, setFiltrosItens] = useState<Record<string, string>>({});
+  const [ordenacaoItens, setOrdenacaoItens] = useState<{ campo: string; asc: boolean }>({ campo: "descricao", asc: true });
   const [respostasAdmin, setRespostaAdmin] = useState<Record<number, string>>({}); // id -> text input
   const [processandoId, setProcessandoId] = useState<number | null>(null);
 
@@ -148,6 +150,44 @@ function AdminPrecosPage() {
       return matchStatus && matchBusca;
     });
   }, [propostas, activeTab, busca]);
+
+  const alternarOrdenacaoItens = (campo: string) => {
+    setOrdenacaoItens((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
+  };
+
+  const itensVisiveis = (itens: PropostaPrecoDB[]) => {
+    const filtrados = itens.filter((item) => {
+      const valores: Record<string, string> = {
+        sku: item.sku,
+        descricao: item.descricao,
+        atual: String(item.precoAtual),
+        proposto: String(item.precoProposto),
+        delta: String(((item.precoProposto - item.precoAtual) / item.precoAtual) * 100),
+        status: item.status,
+        resposta: item.respostaAdmin ?? "",
+      };
+      return Object.entries(filtrosItens).every(([campo, valor]) => !valor.trim() || (valores[campo] ?? "").toLowerCase().includes(valor.toLowerCase().trim()));
+    });
+    return [...filtrados].sort((a, b) => {
+      const valoresA: Record<string, string | number> = { sku: a.sku, descricao: a.descricao, atual: a.precoAtual, proposto: a.precoProposto, delta: (a.precoProposto - a.precoAtual) / a.precoAtual, status: a.status, resposta: a.respostaAdmin ?? "" };
+      const valoresB: Record<string, string | number> = { sku: b.sku, descricao: b.descricao, atual: b.precoAtual, proposto: b.precoProposto, delta: (b.precoProposto - b.precoAtual) / b.precoAtual, status: b.status, resposta: b.respostaAdmin ?? "" };
+      const valorA = valoresA[ordenacaoItens.campo] ?? "";
+      const valorB = valoresB[ordenacaoItens.campo] ?? "";
+      const comparacao = typeof valorA === "number" && typeof valorB === "number" ? valorA - valorB : String(valorA).localeCompare(String(valorB), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacaoItens.asc ? comparacao : -comparacao;
+    });
+  };
+
+  const cabecalhoItem = (campo: string, titulo: string, placeholder: string, className = "") => (
+    <TableHead className={className}>
+      <div className="flex min-w-[105px] items-center gap-1">
+        <Input value={filtrosItens[campo] ?? ""} onChange={(event) => setFiltrosItens((atual) => ({ ...atual, [campo]: event.target.value }))} placeholder={placeholder} className="h-7 min-w-0 flex-1 text-xs" aria-label={`Buscar ${titulo}`} />
+        <button type="button" className="shrink-0 text-muted-foreground" onClick={() => alternarOrdenacaoItens(campo)} aria-label={`Ordenar ${titulo}`}>
+          {ordenacaoItens.campo === campo ? (ordenacaoItens.asc ? "↑" : "↓") : "↕"}
+        </button>
+      </div>
+    </TableHead>
+  );
 
   // Group filtered proposals by loteId
   const lotesAgrupados = useMemo(() => {
@@ -281,22 +321,16 @@ function AdminPrecosPage() {
                           <Table>
                             <TableHeader>
                               <TableRow className="bg-muted/40">
-                                <TableHead className="w-[120px]">Cód. SKU</TableHead>
-                                <TableHead className="min-w-[200px]">
-                                  Descrição do Produto
-                                </TableHead>
-                                <TableHead className="text-right">Custo Atual</TableHead>
-                                <TableHead className="text-right text-primary font-bold">
-                                  Custo Proposto
-                                </TableHead>
-                                <TableHead className="text-center w-[80px]">Reajuste</TableHead>
-                                <TableHead className="min-w-[250px] pl-6">
-                                  Decisão & Comentário do Comprador (Oscar)
-                                </TableHead>
+                                {cabecalhoItem("sku", "SKU", "SKU", "w-[150px]")}
+                                {cabecalhoItem("descricao", "descrição", "Descrição", "min-w-[200px]")}
+                                {cabecalhoItem("atual", "custo atual", "Custo", "text-right")}
+                                {cabecalhoItem("proposto", "custo proposto", "Proposto", "text-right")}
+                                {cabecalhoItem("delta", "reajuste", "Reajuste", "text-center w-[110px]")}
+                                {cabecalhoItem("resposta", "comentário do comprador", "Comentário", "min-w-[250px] pl-6")}
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {lote.itens.map((p) => {
+                              {itensVisiveis(lote.itens).map((p) => {
                                 const pctDelta =
                                   ((p.precoProposto - p.precoAtual) / p.precoAtual) * 100;
                                 const isProcessing = processandoId === p.id;
@@ -437,27 +471,17 @@ function AdminPrecosPage() {
                           <Table>
                             <TableHeader>
                               <TableRow className="bg-muted/30 h-8">
-                                <TableHead className="py-1 text-xs">Cód. SKU</TableHead>
-                                <TableHead className="py-1 text-xs">Descrição do Produto</TableHead>
-                                <TableHead className="py-1 text-xs text-right">
-                                  Custo Anterior
-                                </TableHead>
-                                <TableHead className="py-1 text-xs text-right font-bold text-primary">
-                                  Custo Proposto
-                                </TableHead>
-                                <TableHead className="py-1 text-xs text-center w-[80px]">
-                                  Delta
-                                </TableHead>
-                                <TableHead className="py-1 text-xs text-center w-[120px]">
-                                  Status
-                                </TableHead>
-                                <TableHead className="py-1 text-xs pl-6">
-                                  Comentário/Retorno do Comprador
-                                </TableHead>
+                                {cabecalhoItem("sku", "SKU", "SKU", "py-1 text-xs")}
+                                {cabecalhoItem("descricao", "descrição", "Descrição", "py-1 text-xs")}
+                                {cabecalhoItem("atual", "custo anterior", "Anterior", "py-1 text-xs text-right")}
+                                {cabecalhoItem("proposto", "custo proposto", "Proposto", "py-1 text-xs text-right")}
+                                {cabecalhoItem("delta", "delta", "Delta", "py-1 text-xs text-center w-[100px]")}
+                                {cabecalhoItem("status", "status", "Status", "py-1 text-xs text-center w-[120px]")}
+                                {cabecalhoItem("resposta", "comentário do comprador", "Comentário", "py-1 text-xs pl-6")}
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {lote.itens.map((p) => {
+                              {itensVisiveis(lote.itens).map((p) => {
                                 const pctDelta =
                                   ((p.precoProposto - p.precoAtual) / p.precoAtual) * 100;
                                 const approved = p.status === "aprovado";

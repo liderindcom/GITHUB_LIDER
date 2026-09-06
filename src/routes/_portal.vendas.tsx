@@ -54,6 +54,7 @@ function VendasPage() {
   const [sku, setSku] = useState("todos");
   const [busca, setBusca] = useState("");
   const [agrupamento, setAgrupamento] = useState<"dia" | "mes" | "produto">("dia");
+  const [ordenacao, setOrdenacao] = useState<{ campo: "data" | "loja" | "sku" | "produto" | "quantidade" | "unitario" | "total"; asc: boolean }>({ campo: "data", asc: false });
 
   const nomeLoja = (id: string) => lojas.find((l) => l.id === id)?.nome ?? id;
 
@@ -118,6 +119,15 @@ function VendasPage() {
       valorUnitario: item.quantidade > 0 ? item.faturamento / item.quantidade : 0,
     }));
   }, [filtradas, agrupamento]);
+
+  const agrupadasOrdenadas = useMemo(() => [...agrupadas].sort((a, b) => {
+    const valor = (item: typeof a) => ordenacao.campo === "data" ? item.data : ordenacao.campo === "loja" ? nomeLoja(item.lojaId) : ordenacao.campo === "sku" ? item.sku : ordenacao.campo === "produto" ? produtoPorSku(item.sku).descricao : ordenacao.campo === "quantidade" ? item.quantidade : ordenacao.campo === "unitario" ? item.valorUnitario : item.quantidade * item.valorUnitario;
+    const av = valor(a); const bv = valor(b);
+    const comparacao = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true, sensitivity: "base" });
+    return ordenacao.asc ? comparacao : -comparacao;
+  }), [agrupadas, ordenacao]);
+
+  const ordenar = (campo: typeof ordenacao.campo) => setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
 
   const totalValor = useMemo(() => agrupadas.reduce((acc, v) => acc + v.quantidade * v.valorUnitario, 0), [agrupadas]);
   const totalQtd = useMemo(() => agrupadas.reduce((acc, v) => acc + v.quantidade, 0), [agrupadas]);
@@ -251,17 +261,17 @@ function VendasPage() {
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-muted">
                   <TableRow>
-                    <TableHead>Data/Período</TableHead>
-                    <TableHead>Loja</TableHead>
-                    <TableHead>Cód. produto</TableHead>
-                    <TableHead>Produto</TableHead>
-                    <TableHead className="text-right">Qtd Total</TableHead>
-                    <TableHead className="text-right">Val. Unit. Médio</TableHead>
-                    <TableHead className="text-right">Total faturado</TableHead>
+                    <TableHead><button type="button" onClick={() => ordenar("data")} className="inline-flex items-center gap-1">Data/Período ↕</button></TableHead>
+                    <TableHead><button type="button" onClick={() => ordenar("loja")} className="inline-flex items-center gap-1">Loja ↕</button></TableHead>
+                    <TableHead><button type="button" onClick={() => ordenar("sku")} className="inline-flex items-center gap-1">Cód. produto ↕</button></TableHead>
+                    <TableHead><div className="flex items-center gap-1"><Input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Produto / código" className="h-7 min-w-[150px] text-xs" /><button type="button" onClick={() => ordenar("produto")} aria-label="Ordenar produto">↕</button></div></TableHead>
+                    <TableHead className="text-right"><button type="button" onClick={() => ordenar("quantidade")} className="inline-flex items-center gap-1">Qtd Total ↕</button></TableHead>
+                    <TableHead className="text-right"><button type="button" onClick={() => ordenar("unitario")} className="inline-flex items-center gap-1">Val. Unit. Médio ↕</button></TableHead>
+                    <TableHead className="text-right"><button type="button" onClick={() => ordenar("total")} className="inline-flex items-center gap-1">Total faturado ↕</button></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {agrupadas.slice(0, 300).map((v, i) => (
+                  {agrupadasOrdenadas.slice(0, 300).map((v, i) => (
                     <TableRow key={`${v.data}-${v.lojaId}-${v.sku}-${i}`}>
                       <TableCell>
                         {v.data === "-" ? "Consolidado Geral" : agrupamento === "mes" ? v.data.slice(0, 7) : dataBR(v.data)}

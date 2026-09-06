@@ -51,6 +51,7 @@ import {
   type Pedido 
 } from "@/lib/mock-data";
 import { calcularSugestoesCompraCdam } from "@/lib/sugestao-compra";
+import { TableColumnHeader } from "@/components/table-column-header";
 
 export const Route = createFileRoute("/_portal/itens")({
   head: () => ({
@@ -72,6 +73,10 @@ function ItensPage() {
   const [classeFiltro, setClasseFiltro] = useState("todas");
   const [pendenciaFiltro, setPendenciaFiltro] = useState("todas");
   const [coberturaFiltro, setCoberturaFiltro] = useState("todas");
+  const [buscasColuna, setBuscasColuna] = useState<Record<string, string>>({});
+  const [ordenacao, setOrdenacao] = useState<{ coluna: string; direcao: "asc" | "desc" } | null>(null);
+  const alterarBuscaColuna = (coluna: string, valor: string) => setBuscasColuna((atual) => ({ ...atual, [coluna]: valor }));
+  const ordenarPor = (coluna: string) => setOrdenacao((atual) => atual?.coluna === coluna ? { coluna, direcao: atual.direcao === "asc" ? "desc" : "asc" } : { coluna, direcao: "asc" });
 
   // Load suggestions which contains composite classes, stock, sales, coverage
   const sugestoes = useMemo(() => {
@@ -156,6 +161,7 @@ function ItensPage() {
       }
 
       const classe = formatarClasseComposta(produto.classeComposta || sug?.classeComposta || "Dd");
+      const topStar = formatarClasseComposta(produto.classeTopStar || classe) === "Aa";
       const vendaMediaDiaria = sug?.vendaMediaDiaria || stockSales.averageSalesDaily;
       const vendaMediaMensal = vendaMediaDiaria * 30;
 
@@ -165,6 +171,7 @@ function ItensPage() {
       return {
         produto,
         classe,
+        topStar,
         vendaMediaDiaria,
         vendaMediaMensal,
         pedidosAbertos: orders,
@@ -180,7 +187,7 @@ function ItensPage() {
 
   // Filter items
   const listaFiltrada = useMemo(() => {
-    return listaItens.filter((item) => {
+    const filtrada = listaItens.filter((item) => {
       // Filter by text search
       if (busca) {
         const query = busca.toLowerCase();
@@ -225,9 +232,17 @@ function ItensPage() {
         }
       }
 
-      return true;
+      const valores: Record<string, string> = { sku: `${item.produto.sku} ${codigoProdutoComDigito(item.produto.sku)}`, ean: item.produto.ean ?? "", referencia: item.produto.referencia ?? "", marca: marcaProduto(item.produto), descricao: `${item.produto.descricao} ${descricaoComercial(item.produto)}`, subgrupo: item.produto.subgrupo, classe: item.classe, pendencia: item.hasPendente ? "sim" : "não" };
+      return Object.entries(buscasColuna).every(([coluna, valor]) => !valor || (valores[coluna] ?? "").toLowerCase().includes(valor.toLowerCase()));
     });
-  }, [listaItens, busca, classeFiltro, pendenciaFiltro, coberturaFiltro]);
+    if (!ordenacao) return filtrada;
+    return [...filtrada].sort((a, b) => {
+      const valor = (item: typeof a) => ({ sku: item.produto.sku, ean: item.produto.ean ?? "", referencia: item.produto.referencia ?? "", marca: marcaProduto(item.produto), descricao: descricaoComercial(item.produto), subgrupo: item.produto.subgrupo, diaria: item.vendaMediaDiaria, mensal: item.vendaMediaMensal, classe: item.classe, pedido: item.openOrderQty, pendencia: item.hasPendente ? 1 : 0, cobertura: item.coberturaCdam ?? -1, estoque: item.coberturaCdam !== null && item.vendaMediaDiaria > 0 ? item.coberturaCdam * item.vendaMediaDiaria : 0 }[ordenacao.coluna] ?? "");
+      const va = valor(a), vb = valor(b);
+      const comparacao = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "pt-BR", { numeric: true, sensitivity: "base" });
+      return ordenacao.direcao === "asc" ? comparacao : -comparacao;
+    });
+  }, [listaItens, busca, classeFiltro, pendenciaFiltro, coberturaFiltro, buscasColuna, ordenacao]);
 
   // KPI Calculations
   const totalItens = listaItens.length;
@@ -436,20 +451,7 @@ function ItensPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="bg-muted/60">
-                    <TableHead className="w-[80px]">SKU</TableHead>
-                    <TableHead className="min-w-[110px]">EAN</TableHead>
-                    <TableHead>Referência</TableHead>
-                    <TableHead>Marca</TableHead>
-                    <TableHead className="min-w-[220px]">Descrição de marketing</TableHead>
-                    <TableHead>Saiu de linha</TableHead>
-                    <TableHead>Subgrupo</TableHead>
-                    <TableHead className="text-right">Venda Média Diária</TableHead>
-                    <TableHead className="text-right">Venda Média Mensal</TableHead>
-                    <TableHead className="text-center">Classe</TableHead>
-                    <TableHead className="text-right">Pedido Aberto</TableHead>
-                    <TableHead className="text-center">Se Tem Pendência</TableHead>
-                    <TableHead className="text-right">Cobertura CDAM</TableHead>
-                    <TableHead className="text-right">Estoque CDAM</TableHead>
+                    {[["sku", "SKU", "w-[80px]"], ["ean", "EAN", "min-w-[110px]"], ["referencia", "Referência", ""], ["marca", "Marca", ""], ["descricao", "Descrição", "min-w-[220px]"], ["saida", "Saiu de linha", ""], ["subgrupo", "Subgrupo", ""], ["diaria", "Venda média diária", "text-right"], ["mensal", "Venda média mensal", "text-right"], ["classe", "Classe", "text-center"], ["pedido", "Pedido aberto", "text-right"], ["pendencia", "Pendência", "text-center"], ["cobertura", "Cobertura CDAM", "text-right"], ["estoque", "Estoque CDAM", "text-right"]].map(([key, title, classe]) => <TableHead key={key} className={classe}><TableColumnHeader title={title} value={buscasColuna[key] ?? ""} onChange={(value) => alterarBuscaColuna(key, value)} onSort={() => ordenarPor(key)} direction={ordenacao?.coluna === key ? ordenacao.direcao : null} /></TableHead>)}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -530,7 +532,7 @@ function ItensPage() {
                             {numero(Math.round(item.vendaMediaMensal))}
                           </TableCell>
                           <TableCell className="text-center">
-                            {item.classe === "Aa" ? (
+                            {item.topStar ? (
                               <span className="inline-flex items-center justify-center gap-1 rounded bg-amber-950 border border-amber-500/40 px-2 py-1 text-[10px] font-extrabold text-amber-300 shadow-sm animate-pulse">
                                 ⭐ Aa <span className="text-[8px] uppercase tracking-wider text-amber-200">Top Star</span>
                               </span>

@@ -1,6 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { AlertCircle, BanknoteArrowDown, Download, ReceiptText, WalletCards } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
@@ -60,6 +60,8 @@ const tipoClasses: Record<ContaReceberFornecedor["tipo"], string> = {
 
 function ContasReceberPage() {
   const { fornecedor, dadosFornecedorVersao } = usePortal();
+  const [buscaTabela, setBuscaTabela] = useState("");
+  const [ordenacao, setOrdenacao] = useState<{ campo: string; asc: boolean }>({ campo: "vencimento", asc: true });
 
   const contas = useMemo(
     () => contasReceberDoFornecedor(fornecedor.codigo),
@@ -78,6 +80,18 @@ function ContasReceberPage() {
       contas.filter((conta) => conta.abatimentoProximoPagamento && conta.status !== "Descontado"),
     [contas],
   );
+
+  const contasTabela = useMemo(() => {
+    const termo = buscaTabela.trim().toLowerCase();
+    const filtradas = contas.filter((conta) => `${conta.documento} ${conta.tipo} ${conta.descricao} ${conta.competencia} ${conta.vencimento} ${conta.origem} ${conta.status}`.toLowerCase().includes(termo));
+    return [...filtradas].sort((a, b) => {
+      const av = ordenacao.campo === "valor" ? a.valor : String((a as any)[ordenacao.campo] ?? "");
+      const bv = ordenacao.campo === "valor" ? b.valor : String((b as any)[ordenacao.campo] ?? "");
+      const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : av.localeCompare(bv, "pt-BR", { numeric: true });
+      return ordenacao.asc ? cmp : -cmp;
+    });
+  }, [contas, buscaTabela, ordenacao]);
+  const ordenar = (campo: string) => setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
 
   const totalProgramado = contasProgramadas.reduce((acc, conta) => acc + conta.valor, 0);
   const totalAberto = contas
@@ -205,19 +219,19 @@ function ContasReceberPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead>Documento</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Competência</TableHead>
-                      <TableHead>Vencimento</TableHead>
-                      <TableHead>Origem</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead><button type="button" onClick={() => ordenar("documento")}>Documento ↕</button></TableHead>
+                      <TableHead><button type="button" onClick={() => ordenar("tipo")}>Tipo ↕</button></TableHead>
+                      <TableHead><div className="flex items-center gap-1"><input value={buscaTabela} onChange={(e) => setBuscaTabela(e.target.value)} placeholder="Descrição / busca" className="h-7 w-full min-w-[150px] rounded-md border bg-background px-2 text-xs" /><button type="button" onClick={() => ordenar("descricao")}>↕</button></div></TableHead>
+                      <TableHead><button type="button" onClick={() => ordenar("competencia")}>Competência ↕</button></TableHead>
+                      <TableHead><button type="button" onClick={() => ordenar("vencimento")}>Vencimento ↕</button></TableHead>
+                      <TableHead><button type="button" onClick={() => ordenar("origem")}>Origem ↕</button></TableHead>
+                      <TableHead className="text-right"><button type="button" onClick={() => ordenar("valor")}>Valor ↕</button></TableHead>
                       <TableHead>Abatimento</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead><button type="button" onClick={() => ordenar("status")}>Status ↕</button></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {contas.map((conta) => (
+                    {contasTabela.map((conta) => (
                       <TableRow key={conta.id}>
                         <TableCell className="font-medium">{conta.documento}</TableCell>
                         <TableCell>

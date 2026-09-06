@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { differenceInCalendarDays } from "date-fns";
 import { BadgeCheck, Calculator, FileText, Landmark } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
@@ -30,6 +30,7 @@ import {
   nomeLoja,
   rotuloModeloEntrega,
 } from "@/lib/mock-data";
+import { fetchContasReceber, type ContaReceberDB } from "@/api";
 
 export const Route = createFileRoute("/_portal/financeiro")({
   head: () => ({
@@ -55,6 +56,11 @@ const hoje = new Date();
 
 function FinanceiroPage() {
   const { registrarAntecipacao, antecipacoes, fornecedor, dadosFornecedorVersao } = usePortal();
+  const [contasReceber, setContasReceber] = useState<ContaReceberDB[]>([]);
+
+  useEffect(() => {
+    fetchContasReceber({ data: fornecedor.codigo }).then(setContasReceber).catch(() => setContasReceber([]));
+  }, [fornecedor.codigo, dadosFornecedorVersao]);
   const cadastro = fornecedor.cadastroFinanceiro;
 
   const titulos = useMemo(
@@ -62,9 +68,13 @@ function FinanceiroPage() {
     [fornecedor.codigo, dadosFornecedorVersao],
   );
   const aVencer = useMemo(() => titulos.filter((f) => f.status === "A vencer"), [titulos]);
+  const debitoVencido = useMemo(() => {
+    const hojeIso = hoje.toISOString().slice(0, 10);
+    return contasReceber.filter((conta) => conta.status !== "Descontado" && conta.vencimento && conta.vencimento < hojeIso).reduce((total, conta) => total + Number(conta.valor || 0), 0);
+  }, [contasReceber]);
 
   const [selecionadas, setSelecionadas] = useState<string[]>([aVencer[0]?.id ?? ""]);
-  const [taxa, setTaxa] = useState(TAXA_ANTECIPACAO_MENSAL * 100);
+
 
   // Configurações do cálculo da Líder Fomento (salvas no localStorage)
   const [fomentoConfig, setFomentoConfig] = useState(() => {
@@ -107,7 +117,7 @@ function FinanceiroPage() {
       .map((f) => {
         const pz = Math.max(
           0,
-          differenceInCalendarDays(new Date(`${f.dataPagamento}T12:00:00`), hoje),
+          differenceInCalendarDays(new Date(`${f.emissao}T12:00:00`), hoje) + 30,
         );
         const diasTotais = pz + Number(fomentoConfig.floatDias);
 
@@ -182,14 +192,16 @@ function FinanceiroPage() {
     const issTotal = itens.reduce((acc, i) => acc + i.iss, 0);
     const iofTotal = itens.reduce((acc, i) => acc + i.iof, 0);
     const impostosDiversosTotal = Number((issTotal + iofTotal).toFixed(2));
-    const liquidoTotal = itens.reduce((acc, i) => acc + i.liquido, 0);
+    const liquidoAntesDebito = itens.reduce((acc, i) => acc + i.liquido, 0);
+    const liquidoTotal = Math.max(0, Number((liquidoAntesDebito - debitoVencido).toFixed(2)));
     const descontoTotal = Number(
       (
         descontoFinanceiro +
         desagioTotal +
         adValoremTotal +
         tarifasTotal +
-        impostosDiversosTotal
+        impostosDiversosTotal +
+        debitoVencido
       ).toFixed(2),
     );
 
@@ -203,12 +215,14 @@ function FinanceiroPage() {
       issTotal,
       iofTotal,
       impostosDiversosTotal,
+      debitoVencido,
+      liquidoAntesDebito,
       descontoTotal,
       liquido: liquidoTotal,
     };
-  }, [aVencer, selecionadas, fomentoConfig]);
+  }, [aVencer, selecionadas, fomentoConfig, debitoVencido]);
 
-  function solicitarFomento() {
+  async function solicitarFomento() {
     if (!cadastro.anticipationEnabled) {
       toast.error("Antecipação não habilitada no cadastro deste fornecedor.");
       return;
@@ -217,15 +231,28 @@ function FinanceiroPage() {
       toast.error("Selecione ao menos um título para antecipar.");
       return;
     }
-    const registro = registrarAntecipacao({
-      faturaIds: simulacaoFomento.itens.map((i) => i.fatura.id),
-      valorBruto: simulacaoFomento.bruto,
-      desconto: simulacaoFomento.descontoTotal,
-      valorLiquido: simulacaoFomento.liquido,
-    });
-    toast.success("Solicitação de antecipação registrada (Líder Fomento)", {
-      description: `Protocolo ${registro.codigoAuditoria} · líquido ${brl(registro.valorLiquido)}`,
-    });
+    try {
+      const registro = await registrarAntecipacao({
+        faturaIds: simulacaoFomento.itens.map((i) => i.fatura.id),
+        valorBruto: simulacaoFomento.bruto,
+        desconto: simulacaoFomento.descontoTotal,
+        valorLiquido: simulacaoFomento.liquido,
+      });
+      
+      if (registro.emailEnviado === false) {
+        toast.warning("Solicitação de antecipação registrada (Líder Fomento), mas houve falha ao enviar o e-mail de notificação.", {
+          description: `Protocolo ${registro.codigoAuditoria} · líquido ${brl(registro.valorLiquido)}. Erro: ${registro.erroEmail || 'Falha SMTP'}`,
+          duration: 8000,
+        });
+      } else {
+        toast.success("Solicitação de antecipação registrada e e-mails enviados com sucesso! (Líder Fomento)", {
+          description: `Protocolo ${registro.codigoAuditoria} · líquido ${brl(registro.valorLiquido)}`,
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Erro ao solicitar antecipação.");
+    }
   }
 
   const resumoTitulos = useMemo(() => {
@@ -235,38 +262,7 @@ function FinanceiroPage() {
     return { brutoAberto, descFinAberto, liquidoAberto, qtdAberto: aVencer.length };
   }, [aVencer]);
 
-  const simulacao = useMemo(() => {
-    const taxaMensal = taxa / 100;
-    const itens = aVencer
-      .filter((f) => selecionadas.includes(f.id))
-      .map((f) => {
-        const dias = Math.max(
-          0,
-          differenceInCalendarDays(new Date(`${f.dataPagamento}T12:00:00`), hoje),
-        );
-        // Antecipação incide sobre o valor líquido (após desconto financeiro do cadastro).
-        const descontoAntecipacao = calcularDescontoAntecipacao(f.valorLiquido, dias, taxaMensal);
-        return {
-          fatura: f,
-          dias,
-          descontoFinanceiro: f.descontoFinanceiro,
-          descontoAntecipacao,
-          liquido: f.valorLiquido - descontoAntecipacao,
-        };
-      });
-    const bruto = itens.reduce((acc, i) => acc + i.fatura.valor, 0);
-    const descontoFinanceiro = itens.reduce((acc, i) => acc + i.descontoFinanceiro, 0);
-    const descontoAntecipacao = itens.reduce((acc, i) => acc + i.descontoAntecipacao, 0);
-    const liquido = itens.reduce((acc, i) => acc + i.liquido, 0);
-    return {
-      itens,
-      bruto,
-      descontoFinanceiro,
-      descontoAntecipacao,
-      descontoTotal: descontoFinanceiro + descontoAntecipacao,
-      liquido,
-    };
-  }, [aVencer, selecionadas, taxa]);
+
 
   function alternar(id: string) {
     setSelecionadas((atual) =>
@@ -274,25 +270,7 @@ function FinanceiroPage() {
     );
   }
 
-  function solicitar() {
-    if (!cadastro.anticipationEnabled) {
-      toast.error("Antecipação não habilitada no cadastro deste fornecedor.");
-      return;
-    }
-    if (simulacao.itens.length === 0) {
-      toast.error("Selecione ao menos um título para antecipar.");
-      return;
-    }
-    const registro = registrarAntecipacao({
-      faturaIds: simulacao.itens.map((i) => i.fatura.id),
-      valorBruto: simulacao.bruto,
-      desconto: simulacao.descontoTotal,
-      valorLiquido: simulacao.liquido,
-    });
-    toast.success("Solicitação de antecipação registrada", {
-      description: `Protocolo ${registro.codigoAuditoria} · líquido ${brl(registro.valorLiquido)}`,
-    });
-  }
+
 
   return (
     <PortalLayout
@@ -497,129 +475,17 @@ function FinanceiroPage() {
           </Card>
 
           <Card className="shadow-panel xl:col-span-2">
-            <Tabs defaultValue="padrao" className="w-full flex flex-col">
+            <div className="w-full flex flex-col">
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Calculator className="size-4 text-primary" /> Simulador de antecipação
-                  </CardTitle>
-                  <TabsList className="grid grid-cols-2 h-8 w-[200px] p-0.5">
-                    <TabsTrigger value="padrao" className="text-[11px] h-7">
-                      Padrão
-                    </TabsTrigger>
-                    <TabsTrigger value="fomento" className="text-[11px] h-7">
-                      Líder Fomento
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calculator className="size-4 text-primary" /> Simulador de antecipação (Líder Fomento)
+                </CardTitle>
                 <CardDescription>
                   Selecione notas na tabela ao lado para calcular o recebimento adiantado.
                 </CardDescription>
               </CardHeader>
 
-              <TabsContent value="padrao" className="mt-0">
-                <CardContent className="space-y-5 pt-2">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">Taxa de antecipação (mês)</span>
-                      <span className="font-semibold text-primary">{percentual(taxa)}</span>
-                    </div>
-                    <Slider
-                      value={[taxa]}
-                      min={0.8}
-                      max={4}
-                      step={0.05}
-                      onValueChange={(v) => setTaxa(v[0] ?? taxa)}
-                      className="pointer-events-auto"
-                      disabled={!cadastro.anticipationEnabled}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Equivalente diário: {percentual(taxa / 30)} · mínimo 5 dias (política
-                      candidata).
-                      {cadastro.descontoFinanceiroPct > 0 &&
-                        ` Desconto financeiro do cadastro (${percentual(cadastro.descontoFinanceiroPct)}) já abatido do valor base.`}
-                    </p>
-                  </div>
 
-                  <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-4 text-sm">
-                    {simulacao.itens.map((item) => (
-                      <div key={item.fatura.id} className="space-y-0.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate font-medium">{item.fatura.numeroNota}</span>
-                          <span className="text-muted-foreground">
-                            pag. {dataBR(item.fatura.dataPagamento)} · {item.dias}{" "}
-                            {item.dias === 1 ? "dia" : "dias"}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                          <span>
-                            {item.descontoFinanceiro > 0
-                              ? `Desc. financeiro -${brl(item.descontoFinanceiro)}`
-                              : "Sem desc. financeiro"}
-                            {" · "}
-                            antecip. -{brl(item.descontoAntecipacao)}
-                          </span>
-                          <span className="font-medium text-foreground">{brl(item.liquido)}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {simulacao.itens.length === 0 && (
-                      <p className="text-center text-muted-foreground">
-                        Nenhum título selecionado.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 text-sm">
-                    <Linha rotulo="Valor bruto (notas)" valor={brl(simulacao.bruto)} />
-                    {simulacao.descontoFinanceiro > 0 ? (
-                      <Linha
-                        rotulo="Desconto financeiro (cadastro)"
-                        valor={`-${brl(simulacao.descontoFinanceiro)}`}
-                        tom="danger"
-                      />
-                    ) : (
-                      <Linha rotulo="Desconto financeiro (cadastro)" valor="—" />
-                    )}
-                    <Linha
-                      rotulo="Desconto de antecipação"
-                      valor={`-${brl(simulacao.descontoAntecipacao)}`}
-                      tom="danger"
-                    />
-                    <div className="flex items-center justify-between border-t border-border pt-3">
-                      <span className="font-semibold">Valor líquido a receber</span>
-                      <span className="text-xl font-semibold text-success">
-                        {brl(simulacao.liquido)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <Button
-                    className="w-full"
-                    onClick={solicitar}
-                    disabled={!cadastro.anticipationEnabled}
-                  >
-                    Solicitar antecipação
-                  </Button>
-
-                  {antecipacoes.length > 0 && (
-                    <div className="space-y-2 border-t border-border pt-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Solicitações registradas
-                      </p>
-                      {antecipacoes.map((a) => (
-                        <div key={a.codigoAuditoria} className="flex items-center gap-2 text-xs">
-                          <BadgeCheck className="size-4 shrink-0 text-success" />
-                          <span className="font-mono">{a.codigoAuditoria}</span>
-                          <span className="ml-auto font-medium">{brl(a.valorLiquido)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </TabsContent>
-
-              <TabsContent value="fomento" className="mt-0">
                 <CardContent className="space-y-5 pt-2">
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
@@ -654,7 +520,7 @@ function FinanceiroPage() {
                         <div className="flex items-center justify-between gap-2 font-medium">
                           <span className="truncate">Nota {item.fatura.numeroNota}</span>
                           <span className="text-muted-foreground font-mono">
-                            PZ: {item.pz}d · total: {item.diasTotais}d
+                            DDE 30d · cálculo: {item.pz}d · total: {item.diasTotais}d
                           </span>
                         </div>
                         <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-muted-foreground font-mono">
@@ -703,6 +569,11 @@ function FinanceiroPage() {
                     <Linha
                       rotulo="(-) Impostos Diversos (ISS + IOF)"
                       valor={`-${brl(simulacaoFomento.impostosDiversosTotal)}`}
+                      tom="danger"
+                    />
+                    <Linha
+                      rotulo="(-) Débito vencido com o Líder"
+                      valor={`-${brl(simulacaoFomento.debitoVencido)}`}
                       tom="danger"
                     />
                     <div className="flex items-center justify-between border-t border-border pt-3">
@@ -921,9 +792,8 @@ function FinanceiroPage() {
                     )}
                   </div>
                 </CardContent>
-              </TabsContent>
-            </Tabs>
-          </Card>
+              </div>
+            </Card>
         </div>
       </div>
     </PortalLayout>

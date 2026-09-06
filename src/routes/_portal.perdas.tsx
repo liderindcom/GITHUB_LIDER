@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { PortalLayout } from "@/components/portal-layout";
+import { TableColumnHeader } from "@/components/table-column-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,10 @@ function PerdasPage() {
   const [mesSelecionado, setMesSelecionado] = useState(mesCorrente);
   const [lojaId, setLojaId] = useState("todas");
   const [busca, setBusca] = useState("");
+  const [buscasRanking, setBuscasRanking] = useState<Record<string, string>>({});
+  const [ordenacaoRanking, setOrdenacaoRanking] = useState<{ campo: "posicao" | "nome" | "share" | "valor" | "quantidade" | "produtos"; direcao: "asc" | "desc" }>({ campo: "valor", direcao: "desc" });
+  const [buscasProdutos, setBuscasProdutos] = useState<Record<string, string>>({});
+  const [ordenacaoProdutos, setOrdenacaoProdutos] = useState<{ campo: "loja" | "sku" | "produtoDescricao" | "quantidade" | "valorTotal"; direcao: "asc" | "desc" }>({ campo: "valorTotal", direcao: "desc" });
 
   const mesesDisponiveis = useMemo(() => {
     const set = new Set<string>([mesCorrente]);
@@ -103,8 +108,14 @@ function PerdasPage() {
         dias: loja.dias.size,
         produtos: loja.produtos.size,
       }))
-      .sort((a, b) => b.valor - a.valor);
-  }, [perdasDoMes]);
+      .filter((loja) => Object.entries(buscasRanking).every(([campo, termo]) => !termo || String(campo === "nome" ? loja.nome : campo === "share" ? loja.share : campo === "valor" ? loja.valor : campo === "quantidade" ? loja.quantidade : campo === "produtos" ? loja.produtos : "").toLowerCase().includes(termo.toLowerCase())))
+      .sort((a, b) => {
+        const av = ordenacaoRanking.campo === "nome" ? a.nome : ordenacaoRanking.campo === "share" ? a.share : ordenacaoRanking.campo === "valor" ? a.valor : ordenacaoRanking.campo === "quantidade" ? a.quantidade : ordenacaoRanking.campo === "produtos" ? a.produtos : 0;
+        const bv = ordenacaoRanking.campo === "nome" ? b.nome : ordenacaoRanking.campo === "share" ? b.share : ordenacaoRanking.campo === "valor" ? b.valor : ordenacaoRanking.campo === "quantidade" ? b.quantidade : ordenacaoRanking.campo === "produtos" ? b.produtos : 0;
+        const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
+        return ordenacaoRanking.direcao === "asc" ? cmp : -cmp;
+      });
+  }, [perdasDoMes, buscasRanking, ordenacaoRanking]);
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -139,8 +150,18 @@ function PerdasPage() {
         atual.valorTotal += p.valorTotal;
       }
     }
-    return Array.from(map.values()).sort((a, b) => b.valorTotal - a.valorTotal);
-  }, [perdasDoMes, lojaId, busca]);
+    return Array.from(map.values())
+      .filter((p) => Object.entries(buscasProdutos).every(([campo, termo]) => !termo || String(campo === "loja" ? nomeLojaPorLocal(p.lojaId) : campo === "sku" ? codigoProdutoComDigito(p.sku) : campo === "produtoDescricao" ? p.produtoDescricao : campo === "quantidade" ? p.quantidade : p.valorTotal).toLowerCase().includes(termo.toLowerCase())))
+      .sort((a, b) => {
+        const av = ordenacaoProdutos.campo === "loja" ? nomeLojaPorLocal(a.lojaId) : ordenacaoProdutos.campo === "sku" ? codigoProdutoComDigito(a.sku) : a[ordenacaoProdutos.campo];
+        const bv = ordenacaoProdutos.campo === "loja" ? nomeLojaPorLocal(b.lojaId) : ordenacaoProdutos.campo === "sku" ? codigoProdutoComDigito(b.sku) : b[ordenacaoProdutos.campo];
+        const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
+        return ordenacaoProdutos.direcao === "asc" ? cmp : -cmp;
+      });
+  }, [perdasDoMes, lojaId, busca, buscasProdutos, ordenacaoProdutos]);
+
+  const alterarOrdenacaoRanking = (campo: typeof ordenacaoRanking.campo) => setOrdenacaoRanking((atual) => ({ campo, direcao: atual.campo === campo && atual.direcao === "asc" ? "desc" : "asc" }));
+  const alterarOrdenacaoProdutos = (campo: typeof ordenacaoProdutos.campo) => setOrdenacaoProdutos((atual) => ({ campo, direcao: atual.campo === campo && atual.direcao === "asc" ? "desc" : "asc" }));
 
   const prejuizoTotal = filtradas.reduce((acc, p) => acc + p.valorTotal, 0);
   const totalQuantidade = filtradas.reduce((acc, p) => acc + p.quantidade, 0);
@@ -252,12 +273,8 @@ function PerdasPage() {
               >
                 <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                   <TableRow className="border-border bg-muted hover:bg-muted">
-                      <TableHead className="text-xs">#</TableHead>
-                      <TableHead className="text-xs">Loja</TableHead>
-                      <TableHead className="text-right text-xs">Share</TableHead>
-                      <TableHead className="text-right text-xs">Perda</TableHead>
-                      <TableHead className="text-right text-xs">Un.</TableHead>
-                      <TableHead className="text-right text-xs">SKUs</TableHead>
+                      <TableHead className="text-xs"><TableColumnHeader title="#" onSort={() => alterarOrdenacaoRanking("posicao")} direction={ordenacaoRanking.campo === "posicao" ? ordenacaoRanking.direcao : null} /></TableHead>
+                      {([["nome", "Loja"], ["share", "Share"], ["valor", "Perda"], ["quantidade", "Un."], ["produtos", "SKUs"]] as Array<[typeof ordenacaoRanking.campo, string]>).map(([campo, titulo]) => <TableHead key={campo} className="text-xs"><TableColumnHeader title={titulo} value={buscasRanking[campo] ?? ""} onChange={(v) => setBuscasRanking((atual) => ({ ...atual, [campo]: v }))} onSort={() => alterarOrdenacaoRanking(campo)} direction={ordenacaoRanking.campo === campo ? ordenacaoRanking.direcao : null} /></TableHead>)}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -382,11 +399,7 @@ function PerdasPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="border-border bg-muted hover:bg-muted">
-                    <TableHead className="text-xs font-semibold">Loja</TableHead>
-                    <TableHead className="text-xs font-semibold">SKU</TableHead>
-                    <TableHead className="text-xs font-semibold">Produto</TableHead>
-                    <TableHead className="text-right text-xs font-semibold">Quantidade</TableHead>
-                    <TableHead className="text-right text-xs font-semibold">Perda (R$)</TableHead>
+                    {([["loja", "Loja"], ["sku", "SKU"], ["produtoDescricao", "Produto"], ["quantidade", "Quantidade"], ["valorTotal", "Perda (R$)"]] as Array<[typeof ordenacaoProdutos.campo, string]>).map(([campo, titulo]) => <TableHead key={campo} className="text-xs font-semibold"><TableColumnHeader title={titulo} value={buscasProdutos[campo] ?? ""} onChange={(v) => setBuscasProdutos((atual) => ({ ...atual, [campo]: v }))} onSort={() => alterarOrdenacaoProdutos(campo)} direction={ordenacaoProdutos.campo === campo ? ordenacaoProdutos.direcao : null} /></TableHead>)}
                   </TableRow>
                 </TableHeader>
                 <TableBody>

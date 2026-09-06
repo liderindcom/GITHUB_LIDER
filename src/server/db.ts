@@ -62,7 +62,11 @@ class PgBridge {
     });
   }
 
-  rpc(mode: string, sql: string, params: unknown[] | TxStep[] = []): {
+  rpc(
+    mode: string,
+    sql: string,
+    params: unknown[] | TxStep[] = [],
+  ): {
     rows: unknown[];
     rowCount: number;
     lastInsertRowid: number;
@@ -154,9 +158,7 @@ function createSqliteDatabase() {
   return new Database(dbPath);
 }
 
-export const db = usePostgres()
-  ? createPgDatabase(resolveDatabaseUrl())
-  : createSqliteDatabase();
+export const db = usePostgres() ? createPgDatabase(resolveDatabaseUrl()) : createSqliteDatabase();
 
 // Auto-run migrations on startup (safe schema setup)
 try {
@@ -167,6 +169,15 @@ try {
 } catch (e) {}
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN acessoDataFim TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN acessoStatus TEXT DEFAULT 'SEM_ACORDO';");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN acordoNumero TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN degustacaoUsada INTEGER DEFAULT 0;");
 } catch (e) {}
 
 try {

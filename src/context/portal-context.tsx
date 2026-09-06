@@ -39,6 +39,8 @@ import {
   fetchProdutosBloqueios,
   fetchVendas,
   fetchTransferenciasCdam,
+  solicitarAntecipacao,
+  fetchAntecipacoes,
   type UsuarioInternoDB,
 } from "@/api";
 import { subMonths, format } from "date-fns";
@@ -51,6 +53,8 @@ export type Antecipacao = {
   valorBruto: number;
   desconto: number;
   valorLiquido: number;
+  emailEnviado?: boolean | undefined;
+  erroEmail?: string | undefined;
 };
 
 export type ContaFornecedorSessao = {
@@ -80,7 +84,7 @@ type PortalState = {
   concluirPrimeiroAcesso: () => void;
   marcarSenhaCorrigida: () => void;
   adicionarAgendamento: (agendamento: Omit<Agendamento, "id" | "status">) => void;
-  registrarAntecipacao: (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => Antecipacao;
+  registrarAntecipacao: (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => Promise<Antecipacao>;
   fornecedor: typeof fornecedor;
   classificacaoDados: string;
   setClassificacaoDados: (val: string) => void;
@@ -311,6 +315,16 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     );
   }, [autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor, carregandoSessao]);
 
+  useEffect(() => {
+    if (codigoFornecedorAtivo) {
+      fetchAntecipacoes({ data: codigoFornecedorAtivo }).then((data) => {
+        setAntecipacoes(data || []);
+      });
+    } else {
+      setAntecipacoes([]);
+    }
+  }, [codigoFornecedorAtivo]);
+
   const entrar = useCallback(
     (
       codigoFornecedor?: string,
@@ -375,16 +389,20 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const registrarAntecipacao = useCallback(
-    (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => {
-      const registro: Antecipacao = {
-        ...dados,
-        codigoAuditoria: `ANT-${Date.now().toString(36).toUpperCase()}`,
-        criadoEm: new Date().toISOString(),
-      };
-      setAntecipacoes((atual) => [registro, ...atual]);
-      return registro;
+    async (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => {
+      const res = await solicitarAntecipacao({
+        data: {
+          fornecedorCodigo: codigoFornecedorAtivo,
+          faturaIds: dados.faturaIds,
+          valorBruto: dados.valorBruto,
+          desconto: dados.desconto,
+          valorLiquido: dados.valorLiquido,
+        },
+      });
+      setAntecipacoes((atual) => [res, ...atual]);
+      return res;
     },
-    [],
+    [codigoFornecedorAtivo],
   );
 
   const value = useMemo<PortalState>(
@@ -402,6 +420,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       entrar,
       sair,
       mudarFornecedorAtivo,
+  solicitarAntecipacao,
+  fetchAntecipacoes,
       concluirPrimeiroAcesso,
       marcarSenhaCorrigida,
       adicionarAgendamento,
@@ -426,6 +446,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       entrar,
       sair,
       mudarFornecedorAtivo,
+  solicitarAntecipacao,
+  fetchAntecipacoes,
       concluirPrimeiroAcesso,
       marcarSenhaCorrigida,
       adicionarAgendamento,

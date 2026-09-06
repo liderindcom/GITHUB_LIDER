@@ -1,15 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { 
-  ShieldCheck, 
-  ShieldAlert, 
-  Plus, 
-  Trash2, 
-  UserPlus, 
-  Users, 
-  UserCheck 
-} from "lucide-react";
+import { ShieldCheck, ShieldAlert, Plus, Trash2, UserPlus, Users, UserCheck, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +25,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { usePortal } from "@/context/portal-context";
-import { fetchUsuariosInternos, createUsuarioInterno, deleteUsuarioInterno, type UsuarioInternoDB } from "@/api";
+import {
+  fetchUsuariosInternos,
+  createUsuarioInterno,
+  deleteUsuarioInterno,
+  type UsuarioInternoDB,
+} from "@/api";
 
 export const Route = createFileRoute("/_portal/admin-usuarios")({
   head: () => ({
@@ -41,7 +38,8 @@ export const Route = createFileRoute("/_portal/admin-usuarios")({
       { title: "Gerenciamento de Usuários Internos | Portal do Fornecedor" },
       {
         name: "description",
-        content: "Painel para cadastro e controle de usuários internos autorizados a liberar dados de fornecedores.",
+        content:
+          "Painel para cadastro e controle de usuários internos autorizados a liberar dados de fornecedores.",
       },
     ],
   }),
@@ -54,12 +52,16 @@ function AdminUsuariosPage() {
   // Route protection
   if (!usuarioInterno || usuarioInterno.role !== "admin") {
     return (
-      <PortalLayout titulo="Acesso Restrito" descricao="Esta área é de uso exclusivo dos administradores do Grupo Líder.">
+      <PortalLayout
+        titulo="Acesso Restrito"
+        descricao="Esta área é de uso exclusivo dos administradores do Grupo Líder."
+      >
         <div className="flex flex-col items-center justify-center p-8 bg-card rounded-lg border border-border shadow-panel">
           <ShieldAlert className="size-12 text-destructive mb-3" />
           <h2 className="text-lg font-bold">Acesso Negado</h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-[340px] text-center">
-            Você não possui as permissões necessárias para acessar este painel. Caso seja um administrador, faça o login correspondente.
+            Você não possui as permissões necessárias para acessar este painel. Caso seja um
+            administrador, faça o login correspondente.
           </p>
         </div>
       </PortalLayout>
@@ -68,7 +70,10 @@ function AdminUsuariosPage() {
 
   const [usuarios, setUsuarios] = useState<UsuarioInternoDB[]>([]);
   const [carregando, setCarregando] = useState(false);
-  
+  const [buscaTabela, setBuscaTabela] = useState("");
+  const [colunaOrdenacao, setColunaOrdenacao] = useState<"username" | "nome" | "role" | null>(null);
+  const [ordemOrdenacao, setOrdemOrdenacao] = useState<"asc" | "desc">("asc");
+
   // Form states
   const [novoUsername, setNovoUsername] = useState("");
   const [novoNome, setNovoNome] = useState("");
@@ -92,6 +97,36 @@ function AdminUsuariosPage() {
     carregarUsuarios();
   }, []);
 
+  const usuariosVisiveis = useMemo(() => {
+    const termo = buscaTabela.trim().toLocaleLowerCase();
+    const filtrados = usuarios.filter((user) =>
+      !termo || [user.username, user.nome, user.role].some((valor) => String(valor).toLocaleLowerCase().includes(termo)),
+    );
+    if (!colunaOrdenacao) return filtrados;
+    return [...filtrados].sort((a, b) => {
+      const resultado = String(a[colunaOrdenacao]).localeCompare(String(b[colunaOrdenacao]), "pt-BR", { numeric: true });
+      return ordemOrdenacao === "asc" ? resultado : -resultado;
+    });
+  }, [usuarios, buscaTabela, colunaOrdenacao, ordemOrdenacao]);
+
+  const ordenarPor = (coluna: "username" | "nome" | "role") => {
+    if (colunaOrdenacao === coluna) setOrdemOrdenacao((atual) => atual === "asc" ? "desc" : "asc");
+    else { setColunaOrdenacao(coluna); setOrdemOrdenacao("asc"); }
+  };
+
+  const indicadorOrdenacao = (coluna: "username" | "nome" | "role") =>
+    colunaOrdenacao !== coluna ? <ArrowUpDown className="size-3 opacity-50" /> :
+      ordemOrdenacao === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />;
+
+  const cabecalhoOrdenavel = (titulo: string, coluna: "username" | "nome" | "role") => (
+    <div className="flex items-center justify-between gap-1">
+      <span>{titulo}</span>
+      <Button type="button" variant="ghost" size="icon" className="size-5" onClick={() => ordenarPor(coluna)} aria-label={`Ordenar por ${titulo}`}>
+        {indicadorOrdenacao(coluna)}
+      </Button>
+    </div>
+  );
+
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novoUsername.trim() || !novoNome.trim() || !novaSenha.trim()) {
@@ -106,7 +141,7 @@ function AdminUsuariosPage() {
           nome: novoNome.trim(),
           senha: novaSenha.trim(),
           role: novoRole,
-        }
+        },
       });
       toast.success("Usuário " + novoUsername + " cadastrado com sucesso!");
       // Reset form
@@ -137,13 +172,15 @@ function AdminUsuariosPage() {
       return;
     }
 
-    if (!confirm("Tem certeza que deseja excluir o usuário administrativo " + usernameToDelete + "?")) {
+    if (
+      !confirm("Tem certeza que deseja excluir o usuário administrativo " + usernameToDelete + "?")
+    ) {
       return;
     }
 
     try {
       await deleteUsuarioInterno({
-        data: usernameToDelete
+        data: usernameToDelete,
       });
       toast.success("Usuário " + usernameToDelete + " removido com sucesso.");
       carregarUsuarios();
@@ -160,7 +197,6 @@ function AdminUsuariosPage() {
     >
       <div className="space-y-6">
         <div className="grid gap-6 md:grid-cols-3">
-          
           {/* Cadastro de Novo Usuário */}
           <Card className="shadow-panel md:col-span-1">
             <CardHeader>
@@ -174,7 +210,9 @@ function AdminUsuariosPage() {
             <CardContent>
               <form onSubmit={handleCreateUser} className="space-y-4">
                 <div className="space-y-1">
-                  <Label htmlFor="username" className="text-xs font-semibold">Username (login)</Label>
+                  <Label htmlFor="username" className="text-xs font-semibold">
+                    Username (login)
+                  </Label>
                   <Input
                     id="username"
                     placeholder="Ex: joao.silva"
@@ -186,7 +224,9 @@ function AdminUsuariosPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="nome" className="text-xs font-semibold">Nome Completo</Label>
+                  <Label htmlFor="nome" className="text-xs font-semibold">
+                    Nome Completo
+                  </Label>
                   <Input
                     id="nome"
                     placeholder="Ex: João da Silva"
@@ -198,7 +238,9 @@ function AdminUsuariosPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="senha" className="text-xs font-semibold">Senha Inicial</Label>
+                  <Label htmlFor="senha" className="text-xs font-semibold">
+                    Senha Inicial
+                  </Label>
                   <Input
                     id="senha"
                     type="password"
@@ -217,13 +259,24 @@ function AdminUsuariosPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin" className="text-xs">Administrador (Total)</SelectItem>
-                      <SelectItem value="colaborador" className="text-xs">Colaborador (Leitura/Escrita)</SelectItem>
+                      <SelectItem value="admin" className="text-xs">
+                        Administrador (Total)
+                      </SelectItem>
+                      <SelectItem value="colaborador" className="text-xs">
+                        Colaborador (Leitura/Escrita)
+                      </SelectItem>
+                      <SelectItem value="comprador" className="text-xs">
+                        Comprador (ativação e contratos)
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <Button type="submit" size="sm" className="w-full h-9 text-xs font-semibold flex items-center justify-center gap-1.5 mt-2">
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="w-full h-9 text-xs font-semibold flex items-center justify-center gap-1.5 mt-2"
+                >
                   <Plus className="size-3.5" /> Cadastrar Colaborador
                 </Button>
               </form>
@@ -245,37 +298,61 @@ function AdminUsuariosPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead>Username</TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead className="text-center">Role</TableHead>
+                      <TableHead>
+                        <div className="space-y-1">
+                          {cabecalhoOrdenavel("Username", "username")}
+                          <Input value={buscaTabela} onChange={(e) => setBuscaTabela(e.target.value)} placeholder="Buscar..." className="h-6 px-1.5 text-[10px]" />
+                        </div>
+                      </TableHead>
+                      <TableHead>{cabecalhoOrdenavel("Nome", "nome")}</TableHead>
+                      <TableHead className="text-center">{cabecalhoOrdenavel("Role", "role")}</TableHead>
                       <TableHead className="w-[100px] text-center">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {carregando ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-6 text-muted-foreground text-xs">
+                        <TableCell
+                          colSpan={4}
+                          className="text-center py-6 text-muted-foreground text-xs"
+                        >
                           Carregando equipe...
                         </TableCell>
                       </TableRow>
                     ) : usuarios.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-6 text-muted-foreground text-xs">
-                          Nenhum usuário interno cadastrado.
+                        <TableCell
+                          colSpan={4}
+                          className="text-center py-6 text-muted-foreground text-xs"
+                        >
+                          Nenhum usuário interno cadastrado para o filtro atual.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      usuarios.map((user) => (
-                        <TableRow key={user.username} className="hover:bg-muted/40 transition-colors">
-                          <TableCell className="font-mono text-xs font-semibold">{user.username}</TableCell>
+                      usuariosVisiveis.map((user) => (
+                        <TableRow
+                          key={user.username}
+                          className="hover:bg-muted/40 transition-colors"
+                        >
+                          <TableCell className="font-mono text-xs font-semibold">
+                            {user.username}
+                          </TableCell>
                           <TableCell className="font-medium text-xs">{user.nome}</TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline" className={"text-[10px] px-1.5 h-5 " + (
-                              user.role === "admin" 
-                                ? "text-success bg-success-soft border-success/30 font-bold" 
-                                : "text-primary bg-primary/10 border-primary/30"
-                            )}>
-                              {user.role === "admin" ? "Administrador" : "Colaborador"}
+                            <Badge
+                              variant="outline"
+                              className={
+                                "text-[10px] px-1.5 h-5 " +
+                                (user.role === "admin"
+                                  ? "text-success bg-success-soft border-success/30 font-bold"
+                                  : "text-primary bg-primary/10 border-primary/30")
+                              }
+                            >
+                              {user.role === "admin"
+                                ? "Administrador"
+                                : user.role === "comprador"
+                                  ? "Comprador"
+                                  : "Colaborador"}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-center">
@@ -298,7 +375,6 @@ function AdminUsuariosPage() {
               </div>
             </CardContent>
           </Card>
-          
         </div>
       </div>
     </PortalLayout>

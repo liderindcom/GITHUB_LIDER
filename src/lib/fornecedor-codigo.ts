@@ -36,10 +36,11 @@ export function normalizarCodigoFornecedor(code: string | null | undefined): str
     return `${base}${dv}`;
   }
   const n = soDigitos(raw);
-  if (n.length >= 5) {
+  if (n.length >= 6) {
     const base = n.slice(0, -1);
     const dv = n.slice(-1);
-    if (digitoVerificadorFornecedor(base) === dv) return base;
+    const EXCLUSIONS = ["101354", "200069"];
+    if (digitoVerificadorFornecedor(base) === dv && !EXCLUSIONS.includes(n)) return base;
   }
   return n;
 }

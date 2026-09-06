@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle2, TrendingDown, TrendingUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -14,6 +14,7 @@ import {
 
 import { fetchVendasAnual, type VendasAnualDB } from "@/api";
 import { PortalLayout } from "@/components/portal-layout";
+import { TableColumnHeader } from "@/components/table-column-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePortal } from "@/context/portal-context";
@@ -52,6 +53,25 @@ const corDelta = (valor: number | null) => {
 function precoMedio(valor: number, volume: number) {
   if (!volume) return 0;
   return valor / volume;
+}
+
+type Direcao = "asc" | "desc" | null;
+
+function ordenar<T>(linhas: T[], busca: string, texto: (linha: T) => string, direcao: Direcao, valor: (linha: T) => string | number) {
+  const filtradas = linhas.filter((linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()));
+  if (!direcao) return filtradas;
+  return [...filtradas].sort((a, b) => {
+    const esquerda = valor(a);
+    const direita = valor(b);
+    const comparacao = typeof esquerda === "number" && typeof direita === "number"
+      ? esquerda - direita
+      : String(esquerda).localeCompare(String(direita), "pt-BR", { numeric: true, sensitivity: "base" });
+    return direcao === "asc" ? comparacao : -comparacao;
+  });
+}
+
+function alternarDirecao(atual: Direcao): Direcao {
+  return atual === null ? "asc" : atual === "asc" ? "desc" : null;
 }
 
 const codigoItemComDigito = (item: {
@@ -112,6 +132,12 @@ function VendasAnualPage() {
   const { codigoFornecedorAtivo, dadosFornecedorVersao, fornecedor } = usePortal();
   const [dados, setDados] = useState<VendasAnualDB | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [buscaMes, setBuscaMes] = useState("");
+  const [buscaSecao, setBuscaSecao] = useState("");
+  const [buscaItem, setBuscaItem] = useState("");
+  const [ordemMes, setOrdemMes] = useState<Direcao>(null);
+  const [ordemSecao, setOrdemSecao] = useState<Direcao>(null);
+  const [ordemItem, setOrdemItem] = useState<Direcao>(null);
 
   useEffect(() => {
     let ativo = true;
@@ -130,6 +156,9 @@ function VendasAnualPage() {
   }, [codigoFornecedorAtivo, dadosFornecedorVersao]);
 
   const abaixo = (dados?.fornecedor?.pontos ?? 0) < 0;
+  const mesesTabela = useMemo(() => ordenar(dados?.meses ?? [], buscaMes, (m) => m.nome, ordemMes, (m) => m.nome), [dados?.meses, buscaMes, ordemMes]);
+  const secoesTabela = useMemo(() => ordenar(dados?.secoes ?? [], buscaSecao, (s) => s.secao, ordemSecao, (s) => s.secao), [dados?.secoes, buscaSecao, ordemSecao]);
+  const itensTabela = useMemo(() => ordenar(dados?.itens ?? [], buscaItem, (i) => `${codigoItemComDigito(i)} ${i.descricao} ${i.secao}`, ordemItem, (i) => i.descricao), [dados?.itens, buscaItem, ordemItem]);
   const redeAbaixo = (dados?.rede?.pontos ?? 0) < 0;
 
   return (
@@ -156,15 +185,15 @@ function VendasAnualPage() {
             <Card className="border-border bg-card shadow-panel lg:col-span-1">
               <CardHeader className="pb-2">
                 <span className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
-                  Farol {dados.corte.dia}/{String(dados.corte.mes).padStart(2, "0")}/{dados.corte.anoAtual}
+                  Farol {dados.segmento} · {dados.corte.dia}/{String(dados.corte.mes).padStart(2, "0")}/{dados.corte.anoAtual}
                 </span>
                 <CardTitle className="font-mono text-4xl font-bold text-primary">
                   {percentual(dados.farolPct)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-xs text-muted-foreground">
-                Até esta data, no ano passado, o supermercado já tinha feito {percentual(dados.farolPct)} da
-                venda anual de {dados.corte.anoBase}. Referência única da rede.
+                Até esta data, no ano passado, a rede {dados.segmento} já tinha feito {percentual(dados.farolPct)} da
+                venda anual de {dados.corte.anoBase}. Esta é a referência do segmento.
               </CardContent>
             </Card>
 
@@ -215,7 +244,7 @@ function VendasAnualPage() {
             >
               <CardHeader className="pb-2">
                 <span className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
-                  Supermercado
+                  {dados.segmento}
                 </span>
                 <CardTitle className="font-mono text-3xl font-bold">
                   {pctOuTraco(dados.rede.realizadoPct)}
@@ -226,7 +255,7 @@ function VendasAnualPage() {
                   {pontos(dados.rede.pontos)} contra o farol
                 </p>
                 <p className="text-muted-foreground">
-                  YTD {brl(dados.rede.ytdAtual)} · anual {dados.corte.anoBase} {brl(dados.rede.anualBase)}
+                  YTD {brl(dados.rede.ytdAtual)} · anual {dados.corte.anoBase} {brl(dados.rede.anualBase)} · rede {dados.segmento}
                 </p>
                 {redeAbaixo && dados.rede.pontos !== null && (
                   <p className="flex items-center gap-1 font-bold text-destructive">
@@ -293,9 +322,9 @@ function VendasAnualPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider">
-                      <TableHead>Mês</TableHead>
-                      <TableHead className="text-right">Peso {dados.corte.anoBase}</TableHead>
-                      <TableHead className="text-right">Farol acum.</TableHead>
+                      <TableHead><TableColumnHeader title="Mês" value={buscaMes} onChange={setBuscaMes} onSort={() => setOrdemMes(alternarDirecao(ordemMes))} direction={ordemMes} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title={`Peso ${dados.corte.anoBase}`} onSort={() => setOrdemMes(alternarDirecao(ordemMes))} direction={ordemMes} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Farol acum." onSort={() => setOrdemMes(alternarDirecao(ordemMes))} direction={ordemMes} /></TableHead>
                       <TableHead className="text-right">Forn. {dados.corte.anoBase}</TableHead>
                       <TableHead className="text-right">Forn. {dados.corte.anoAtual}</TableHead>
                       <TableHead className="text-right">Vol. {dados.corte.anoBase}</TableHead>
@@ -306,7 +335,7 @@ function VendasAnualPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dados.meses.map((m) => {
+                    {mesesTabela.map((m) => {
                       const cres = m.fornValorBase > 0 ? (m.fornValorAtual / m.fornValorBase - 1) * 100 : null;
                       return (
                         <TableRow key={m.mes} className={`font-mono text-xs ${m.aberto ? "bg-primary/5" : ""}`}>
@@ -345,8 +374,8 @@ function VendasAnualPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider">
-                      <TableHead>Seção</TableHead>
-                      <TableHead className="text-right">YTD {dados.corte.anoBase}</TableHead>
+                      <TableHead><TableColumnHeader title="Seção" value={buscaSecao} onChange={setBuscaSecao} onSort={() => setOrdemSecao(alternarDirecao(ordemSecao))} direction={ordemSecao} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title={`YTD ${dados.corte.anoBase}`} onSort={() => setOrdemSecao(alternarDirecao(ordemSecao))} direction={ordemSecao} /></TableHead>
                       <TableHead className="text-right">YTD {dados.corte.anoAtual}</TableHead>
                       <TableHead className="text-right">% valor</TableHead>
                       <TableHead className="text-right">Vol. {dados.corte.anoBase}</TableHead>
@@ -355,14 +384,14 @@ function VendasAnualPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dados.secoes.length === 0 ? (
+                    {secoesTabela.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                           Sem venda deste fornecedor no período.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      dados.secoes.map((s) => (
+                      secoesTabela.map((s) => (
                         <TableRow key={s.secao} className="font-mono text-xs">
                           <TableCell className="font-sans font-medium">{s.secao}</TableCell>
                           <TableCell className="text-right">{brl(s.valorBaseYtd)}</TableCell>
@@ -402,9 +431,9 @@ function VendasAnualPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider">
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Descrição</TableHead>
-                      <TableHead>Seção</TableHead>
+                      <TableHead><TableColumnHeader title="SKU" value={buscaItem} onChange={setBuscaItem} onSort={() => setOrdemItem(alternarDirecao(ordemItem))} direction={ordemItem} /></TableHead>
+                      <TableHead><TableColumnHeader title="Descrição" onSort={() => setOrdemItem(alternarDirecao(ordemItem))} direction={ordemItem} /></TableHead>
+                      <TableHead><TableColumnHeader title="Seção" onSort={() => setOrdemItem(alternarDirecao(ordemItem))} direction={ordemItem} /></TableHead>
                       <TableHead className="text-right">Anual {dados.corte.anoBase}</TableHead>
                       <TableHead className="text-right">YTD {dados.corte.anoAtual}</TableHead>
                       <TableHead className="text-right">% valor</TableHead>
@@ -412,14 +441,14 @@ function VendasAnualPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dados.itens.length === 0 ? (
+                    {itensTabela.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                           Sem itens com venda no período.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      dados.itens.map((item) => (
+                      itensTabela.map((item) => (
                         <TableRow key={item.sku} className="font-mono text-xs">
                           <TableCell className="font-bold text-primary">{codigoItemComDigito(item)}</TableCell>
                           <TableCell className="max-w-[280px] truncate font-sans">{item.descricao}</TableCell>
