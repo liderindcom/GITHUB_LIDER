@@ -118,7 +118,7 @@ export const fetchCatalogoComercial = createServerFn({ method: "GET" })
     return db
       .prepare(
         `SELECT *, dadosfichaliderjson AS "dadosFichaLiderJson" FROM catalogo_comercial_fornecedor
-     WHERE fornecedorCodigo = ? AND status <> 'ARQUIVADO'
+     WHERE fornecedorCodigo = ? AND status <> 'ARQUIVADO' AND origem = 'FORNECEDOR_IMPORTACAO'
      ORDER BY atualizadoEm DESC`,
       )
       .all(fornecedorCodigo) as CatalogoComercialDB[];
@@ -131,53 +131,8 @@ type CatalogoComercialInput = Omit<
 
 export const salvarCatalogoComercial = createServerFn({ method: "POST" })
   .validator((data: CatalogoComercialInput) => data)
-  .handler(async ({ data }) => {
-    ensureCatalogoComercial();
-    const sessao = exigirSessaoFornecedor();
-    const fornecedorCodigo = codigoFornecedorEfetivo(normalizarCodigoFornecedor(sessao.codigo));
-    liberarEspacoCatalogo(fornecedorCodigo, 1);
-    const agora = new Date().toISOString();
-    const id = randomUUID();
-    const status = data.status === "PUBLICADO" ? "PUBLICADO" : "RASCUNHO";
-    db.prepare(
-      `INSERT INTO catalogo_comercial_fornecedor
-       (id, fornecedorCodigo, codigoFornecedor, descricao, marca, categoria, subcategoria,
-        skuReferencia, imagemUrl, fichaTecnica, variacoesJson, dadosFichaLiderJson, precoSugerido,
-        precoValidadeInicio, precoValidadeFim, estoqueDisponivel, prazoEntregaDias,
-        pedidoMinimo, colecao, estacao, evento, status, criadoEm, atualizadoEm,
-        publicadoEm, origem)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      id,
-      fornecedorCodigo,
-      data.codigoFornecedor || null,
-      data.descricao.trim(),
-      data.marca || null,
-      data.categoria || null,
-      data.subcategoria || null,
-      data.skuReferencia || null,
-      data.imagemUrl || null,
-      data.fichaTecnica || null,
-      data.variacoesJson || null,
-      data.dadosFichaLiderJson || null,
-      data.precoSugerido ?? null,
-      data.precoValidadeInicio || null,
-      data.precoValidadeFim || null,
-      data.estoqueDisponivel ?? null,
-      data.prazoEntregaDias ?? null,
-      data.pedidoMinimo ?? null,
-      data.colecao || null,
-      data.estacao || null,
-      data.evento || null,
-      status,
-      agora,
-      agora,
-      status === "PUBLICADO" ? agora : null,
-      "FORNECEDOR",
-    );
-    return db
-      .prepare("SELECT * FROM catalogo_comercial_fornecedor WHERE id = ?")
-      .get(id) as CatalogoComercialDB;
+  .handler(async () => {
+    throw new Error("Cadastro manual desativado. Envie o produto pela planilha.");
   });
 
 export const importarCatalogoComercial = createServerFn({ method: "POST" })

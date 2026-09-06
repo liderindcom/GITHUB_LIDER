@@ -1,23 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
-import {
-  Download,
-  FileSpreadsheet,
-  ImagePlus,
-  ImageOff,
-  PackagePlus,
-  Save,
-  Send,
-  Sparkles,
-  Upload,
-} from "lucide-react";
+import { Download, FileSpreadsheet, ImagePlus, ImageOff, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   fetchCatalogoComercial,
   importarCatalogoComercial,
-  salvarCatalogoComercial,
   type CatalogoComercialDB,
   type CatalogoComercialImportInput,
 } from "@/catalogo-api";
@@ -26,8 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { usePortal } from "@/context/portal-context";
 
 export const Route = createFileRoute("/_portal/catalogo-comercial")({
@@ -43,42 +30,10 @@ export const Route = createFileRoute("/_portal/catalogo-comercial")({
   component: CatalogoComercialPage,
 });
 
-type Formulario = Omit<
-  CatalogoComercialDB,
-  "id" | "fornecedorCodigo" | "status" | "criadoEm" | "atualizadoEm" | "publicadoEm"
-> &
-  Pick<CatalogoComercialDB, "status">;
-
-const vazio: Formulario = {
-  codigoFornecedor: "",
-  descricao: "",
-  marca: "",
-  categoria: "",
-  subcategoria: "",
-  skuReferencia: "",
-  imagemUrl: "",
-  fichaTecnica: "",
-  variacoesJson: "",
-  precoSugerido: null,
-  precoValidadeInicio: "",
-  precoValidadeFim: "",
-  estoqueDisponivel: null,
-  prazoEntregaDias: null,
-  pedidoMinimo: null,
-  colecao: "",
-  estacao: "",
-  evento: "",
-  dadosFichaLiderJson: null,
-  origem: "FORNECEDOR",
-  status: "RASCUNHO",
-};
-
 function CatalogoComercialPage() {
   const { fornecedor } = usePortal();
   const [itens, setItens] = useState<CatalogoComercialDB[]>([]);
-  const [form, setForm] = useState<Formulario>(vazio);
   const [carregando, setCarregando] = useState(true);
-  const [salvando, setSalvando] = useState(false);
   const [arquivoImportacao, setArquivoImportacao] = useState("");
   const [previewImportacao, setPreviewImportacao] = useState<CatalogoComercialImportInput[]>([]);
   const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
@@ -173,39 +128,6 @@ function CatalogoComercialPage() {
       toast.error(error instanceof Error ? error.message : "Não foi possível importar a ficha.");
     } finally {
       setImportando(false);
-    }
-  };
-
-  const alterar = (campo: keyof Formulario, valor: string) => {
-    const camposNumericos: Array<keyof Formulario> = [
-      "precoSugerido",
-      "estoqueDisponivel",
-      "prazoEntregaDias",
-      "pedidoMinimo",
-    ];
-    const valorFinal = camposNumericos.includes(campo)
-      ? valor === ""
-        ? null
-        : Number(valor)
-      : valor;
-    setForm((atual) => ({ ...atual, [campo]: valorFinal }));
-  };
-
-  const salvar = async (status: "RASCUNHO" | "PUBLICADO") => {
-    if (!form.descricao.trim()) {
-      toast.error("Informe a descrição do produto ou coleção.");
-      return;
-    }
-    setSalvando(true);
-    try {
-      const salvo = await salvarCatalogoComercial({ data: { ...form, status } });
-      setItens((atual) => [salvo, ...atual]);
-      setForm(vazio);
-      toast.success(status === "PUBLICADO" ? "Produto enviado ao Grupo Líder." : "Rascunho salvo.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o produto.");
-    } finally {
-      setSalvando(false);
     }
   };
 
@@ -347,121 +269,18 @@ function CatalogoComercialPage() {
           <Card className="border-primary/20 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <PackagePlus className="size-5 text-primary" /> Cadastro de Produto Novo
+                <FileSpreadsheet className="size-5 text-primary" /> Cadastro de Produto Novo
               </CardTitle>
               <CardDescription>
-                Preencha os dados do produto novo ou use a importação da ficha técnica do Líder para
-                cadastrar vários itens como rascunho.
+                Esta tela mostra exclusivamente os produtos enviados pelo fornecedor através da
+                planilha.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Campo
-                  label="Descrição comercial *"
-                  value={form.descricao}
-                  onChange={(v) => alterar("descricao", v)}
-                  placeholder="Ex.: Coleção primavera — vestido midi"
-                />
-                <Campo
-                  label="Marca"
-                  value={form.marca ?? ""}
-                  onChange={(v) => alterar("marca", v)}
-                  placeholder="Marca ou linha"
-                />
-                <Campo
-                  label="Categoria"
-                  value={form.categoria ?? ""}
-                  onChange={(v) => alterar("categoria", v)}
-                  placeholder="Moda, pet, farma..."
-                />
-                <Campo
-                  label="Subcategoria"
-                  value={form.subcategoria ?? ""}
-                  onChange={(v) => alterar("subcategoria", v)}
-                  placeholder="Ex.: vestidos"
-                />
-                <Campo
-                  label="Código / referência do fornecedor"
-                  value={form.codigoFornecedor ?? ""}
-                  onChange={(v) => alterar("codigoFornecedor", v)}
-                />
-                <Campo
-                  label="SKU RMS relacionado (se houver)"
-                  value={form.skuReferencia ?? ""}
-                  onChange={(v) => alterar("skuReferencia", v)}
-                />
-                <Campo
-                  label="Coleção"
-                  value={form.colecao ?? ""}
-                  onChange={(v) => alterar("colecao", v)}
-                  placeholder="Ex.: Primavera 2027"
-                />
-                <Campo
-                  label="Estação ou evento"
-                  value={form.estacao ?? ""}
-                  onChange={(v) => alterar("estacao", v)}
-                  placeholder="Ex.: Verão, Natal, Círio"
-                />
-                <Campo
-                  label="Preço sugerido"
-                  value={form.precoSugerido?.toString() ?? ""}
-                  onChange={(v) => alterar("precoSugerido", v)}
-                  inputMode="decimal"
-                />
-                <Campo
-                  label="Pedido mínimo"
-                  value={form.pedidoMinimo?.toString() ?? ""}
-                  onChange={(v) => alterar("pedidoMinimo", v)}
-                  inputMode="numeric"
-                />
-                <Campo
-                  label="Estoque disponível"
-                  value={form.estoqueDisponivel?.toString() ?? ""}
-                  onChange={(v) => alterar("estoqueDisponivel", v)}
-                  inputMode="numeric"
-                />
-                <Campo
-                  label="Prazo de entrega (dias)"
-                  value={form.prazoEntregaDias?.toString() ?? ""}
-                  onChange={(v) => alterar("prazoEntregaDias", v)}
-                  inputMode="numeric"
-                />
-                <Campo
-                  label="Imagem principal (URL)"
-                  value={form.imagemUrl ?? ""}
-                  onChange={(v) => alterar("imagemUrl", v)}
-                  placeholder="https://..."
-                />
-                <Campo
-                  label="Evento ou oportunidade"
-                  value={form.evento ?? ""}
-                  onChange={(v) => alterar("evento", v)}
-                  placeholder="Ex.: Dia das Mães"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Ficha técnica, variações e informações comerciais</Label>
-                <Textarea
-                  value={form.fichaTecnica ?? ""}
-                  onChange={(e) => alterar("fichaTecnica", e.target.value)}
-                  placeholder="Materiais, cores, tamanhos, voltagem, composição, diferenciais e condições."
-                  rows={5}
-                />
-              </div>
-              <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => void salvar("RASCUNHO")}
-                  disabled={salvando}
-                >
-                  <Save className="mr-2 size-4" />
-                  Salvar rascunho
-                </Button>
-                <Button onClick={() => void salvar("PUBLICADO")} disabled={salvando}>
-                  <Send className="mr-2 size-4" />
-                  Enviar ao Grupo Líder
-                </Button>
-              </div>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Para cadastrar um produto novo, baixe o modelo acima, preencha uma linha por item e
+                importe a planilha. Antes da confirmação, revise os dados e as fotos na prévia.
+              </p>
             </CardContent>
           </Card>
 
@@ -473,20 +292,20 @@ function CatalogoComercialPage() {
             </CardHeader>
             <CardContent className="space-y-4 text-sm text-muted-foreground">
               <p>
-                <strong className="text-foreground">1. Apresentação:</strong> o fornecedor cadastra
-                o produto, a coleção e as condições comerciais.
+                <strong className="text-foreground">1. Envio:</strong> o fornecedor preenche e envia
+                a planilha com os produtos novos.
               </p>
               <p>
-                <strong className="text-foreground">2. Avaliação:</strong> o comprador compara a
-                oportunidade com lojas, categorias, preço, margem e tendências.
+                <strong className="text-foreground">2. Conferência:</strong> a tela exibe cada item
+                importado, seus dados e sua foto para revisão.
               </p>
               <p>
-                <strong className="text-foreground">3. Decisão:</strong> o Atlas pode sugerir teste,
-                negociação ou inclusão no mix, sempre com confirmação humana.
+                <strong className="text-foreground">3. Avaliação:</strong> o Atlas pode sugerir
+                teste, negociação ou inclusão no mix, sempre com confirmação humana.
               </p>
               <p>
-                <strong className="text-foreground">4. Aprendizado:</strong> o resultado da compra
-                ou teste retorna para melhorar as próximas recomendações.
+                <strong className="text-foreground">4. Decisão:</strong> a oportunidade segue para
+                avaliação do Grupo Líder.
               </p>
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
                 As imagens são armazenadas inicialmente como URL. O upload gerenciado será uma etapa
@@ -506,28 +325,44 @@ function CatalogoComercialPage() {
           <CardContent>
             {itens.length === 0 && !carregando ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                Seu catálogo ainda está vazio. Apresente a próxima oportunidade ao Grupo Líder.
+                Nenhum produto foi importado. Envie uma planilha para iniciar o cadastro.
               </p>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {itens.map((item) => (
-                  <div key={item.id} className="rounded-2xl border p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold">{item.descricao}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {[item.marca, item.categoria, item.colecao].filter(Boolean).join(" · ") ||
-                            "Sem classificação informada"}
-                        </p>
-                      </div>
-                      <Badge variant={item.status === "PUBLICADO" ? "default" : "secondary"}>
-                        {item.status === "PUBLICADO" ? "Enviado" : "Rascunho"}
-                      </Badge>
+                  <article key={item.id} className="overflow-hidden rounded-2xl border">
+                    <div className="flex h-36 items-center justify-center bg-muted/40">
+                      {item.imagemUrl ? (
+                        <img
+                          src={item.imagemUrl}
+                          alt={item.descricao}
+                          className="h-full w-full object-contain"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 text-xs text-muted-foreground">
+                          <ImageOff className="size-8 opacity-50" />
+                          Sem imagem importada
+                        </div>
+                      )}
                     </div>
-                    <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">
-                      {item.fichaTecnica || "Sem ficha técnica informada."}
-                    </p>
-                  </div>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold">{item.descricao}</p>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {item.codigoFornecedor || "Sem código"}
+                          </p>
+                        </div>
+                        <Badge variant={item.status === "PUBLICADO" ? "default" : "secondary"}>
+                          {item.status === "PUBLICADO" ? "Enviado" : "Rascunho"}
+                        </Badge>
+                      </div>
+                      <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">
+                        {item.fichaTecnica || "Sem ficha técnica informada."}
+                      </p>
+                    </div>
+                  </article>
                 ))}
               </div>
             )}
@@ -535,32 +370,6 @@ function CatalogoComercialPage() {
         </Card>
       </div>
     </PortalLayout>
-  );
-}
-
-function Campo({
-  label,
-  value,
-  onChange,
-  placeholder,
-  inputMode,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  inputMode?: "decimal" | "numeric";
-}) {
-  return (
-    <div className="space-y-2">
-      <Label>{label}</Label>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        inputMode={inputMode}
-      />
-    </div>
   );
 }
 
