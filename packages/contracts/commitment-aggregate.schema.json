@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/commitment-aggregate.schema.json",
+  "title": "Commitment aggregate by supplier and horizon (candidate, internal buyer only)",
+  "description": "Agregado de compromissos a pagar por fornecedor e horizonte, derivado exclusivamente do cache documentado do portal (contas_receber populada assincronamente de RMS.AA1RTITU). Nao expoe reserva, saldo ou custo de capital.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "generatedAt",
+    "homologationStatus",
+    "supplierCode",
+    "horizon",
+    "internalOnly",
+    "financialBasis",
+    "sourceName",
+    "sourceCutId",
+    "ruleVersion",
+    "permission",
+    "rows",
+    "totals",
+    "writesToErp",
+    "disclaimer"
+  ],
+  "properties": {
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "homologationStatus": {
+      "type": "string",
+      "enum": ["candidato", "aguarda_aceite", "restrito", "bloqueado"]
+    },
+    "supplierCode": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Codigo RMS sem digito verificador, igual a fornecedorCodigo do cache contas_receber."
+    },
+    "horizon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["horizonId", "horizonDate", "buckets"],
+      "properties": {
+        "horizonId": { "type": "string", "minLength": 1 },
+        "horizonDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "buckets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bucketId", "dueFrom", "dueTo"],
+            "properties": {
+              "bucketId": { "type": "string", "minLength": 1 },
+              "dueFrom": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+              "dueTo": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+            }
+          }
+        }
+      }
+    },
+    "internalOnly": {
+      "type": "boolean",
+      "const": true,
+      "description": "Exposto apenas para comprador interno autorizado; nunca para fornecedor ou AppCom."
+    },
+    "financialBasis": {
+      "type": "string",
+      "enum": ["sem_base_financeira", "base_candidata"]
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "fonte_ausente",
+        "corte_ausente",
+        "regra_ausente",
+        "permissao_ausente",
+        "permissao_negada",
+        "base_nao_autorizada",
+        "base_candidata"
+      ]
+    },
+    "sourceName": { "type": ["string", "null"] },
+    "sourceCutId": { "type": ["string", "null"] },
+    "ruleVersion": { "type": ["string", "null"] },
+    "permission": { "type": ["string", "null"] },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bucketId",
+          "dueFrom",
+          "dueTo",
+          "statusProgramadoAmount",
+          "statusAbertoAmount",
+          "totalAmount",
+          "rowCount"
+        ],
+        "properties": {
+          "bucketId": { "type": "string", "minLength": 1 },
+          "dueFrom": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "dueTo": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "statusProgramadoAmount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+          "statusAbertoAmount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+          "totalAmount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+          "rowCount": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statusProgramadoAmount", "statusAbertoAmount", "totalAmount", "rowCount"],
+      "properties": {
+        "statusProgramadoAmount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "statusAbertoAmount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "totalAmount": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" },
+        "rowCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "writesToErp": {
+      "type": "boolean",
+      "const": false,
+      "description": "Agregado candidato nao escreve em ERP financeiro."
+    },
+    "disclaimer": {
+      "type": "string",
+      "const": "Agregado de compromissos a pagar apenas. Sem reserva financeira, saldo ou custo de capital. Interno para comprador autorizado; nunca exposto a fornecedor ou AppCom."
+    }
+  }
+}
