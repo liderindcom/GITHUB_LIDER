@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/financial-policy.schema.json",
+  "title": "Financial policy version (candidate, versioned contract)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "homologationStatus",
+    "effectiveFrom",
+    "previousVersion",
+    "parameters",
+    "writesToErp"
+  ],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "previousVersion": { "type": ["string", "null"], "minLength": 1 },
+    "homologationStatus": {
+      "type": "string",
+      "enum": ["candidato", "aguarda_aceite", "restrito", "bloqueado"]
+    },
+    "effectiveFrom": { "type": "string", "format": "date-time" },
+    "rationale": { "type": "string" },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseRateMonthly",
+        "minDays",
+        "spreadFixed",
+        "iofRate",
+        "quoteTtlSeconds",
+        "minTitleAmount",
+        "maxRequestAmount",
+        "maxTitlesPerRequest"
+      ],
+      "properties": {
+        "baseRateMonthly": { "type": "number", "minimum": 0 },
+        "minDays": { "type": "integer", "minimum": 0 },
+        "spreadFixed": { "type": "number", "minimum": 0 },
+        "iofRate": { "type": "number", "minimum": 0 },
+        "quoteTtlSeconds": { "type": "integer", "minimum": 60 },
+        "minTitleAmount": { "type": "number", "minimum": 0 },
+        "maxRequestAmount": { "type": "number", "minimum": 0 },
+        "maxTitlesPerRequest": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "writesToErp": {
+      "type": "boolean",
+      "const": false,
+      "description": "Politica candidata nao escreve em ERP financeiro."
+    }
+  }
+}

@@ -31,6 +31,9 @@ SCHEMA_FILES = [
     "receivable-title.schema.json",
     "anticipation-quote.schema.json",
     "anticipation-request.schema.json",
+    "financial-policy.schema.json",
+    "negotiable-package.schema.json",
+    "evidence-envelope.schema.json",
 ]
 
 EXAMPLE_TO_SCHEMA = {

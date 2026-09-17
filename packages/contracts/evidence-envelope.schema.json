@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/evidence-envelope.schema.json",
+  "title": "Evidence envelope (candidate, source/cut/rule/permission)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelopeId",
+    "entityType",
+    "entityId",
+    "sourceName",
+    "sourceCutId",
+    "ruleVersion",
+    "permission",
+    "evidenceHash",
+    "homologationStatus",
+    "createdAt"
+  ],
+  "properties": {
+    "envelopeId": { "type": "string", "format": "uuid" },
+    "entityType": {
+      "type": "string",
+      "enum": [
+        "financial_policy",
+        "negotiable_package",
+        "anticipation_quote",
+        "anticipation_request"
+      ]
+    },
+    "entityId": { "type": "string", "minLength": 1 },
+    "sourceName": { "type": ["string", "null"] },
+    "sourceCutId": { "type": ["string", "null"] },
+    "ruleVersion": { "type": ["string", "null"] },
+    "permission": { "type": ["string", "null"] },
+    "evidenceHash": { "type": ["string", "null"] },
+    "homologationStatus": {
+      "type": "string",
+      "enum": ["candidato", "aguarda_aceite", "restrito", "bloqueado"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  }
+}

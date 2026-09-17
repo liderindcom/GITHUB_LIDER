@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lider.local/portal-fornecedor/schemas/negotiable-package.schema.json",
+  "title": "Negotiable package (candidate, consultive motor)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "packageId",
+    "supplierId",
+    "status",
+    "financialBasis",
+    "automaticEmission",
+    "automaticBlock",
+    "writesToErp",
+    "createdAt",
+    "updatedAt",
+    "lines",
+    "totals",
+    "evidenceEnvelope"
+  ],
+  "properties": {
+    "packageId": { "type": "string", "format": "uuid" },
+    "supplierId": { "type": "string", "format": "uuid" },
+    "policyVersion": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": [
+        "rascunho",
+        "cotado",
+        "solicitado",
+        "em_analise",
+        "aprovado",
+        "recusado",
+        "cancelado",
+        "expirado",
+        "liquidado_parcial",
+        "liquidado"
+      ],
+      "description": "Estados consultivos. Nao existem estados de emissao ou bloqueio automatico."
+    },
+    "financialBasis": {
+      "type": "string",
+      "enum": ["sem_base_financeira", "base_candidata"]
+    },
+    "automaticEmission": {
+      "type": "boolean",
+      "const": false,
+      "description": "Emissao financeira automatica proibida."
+    },
+    "automaticBlock": {
+      "type": "boolean",
+      "const": false,
+      "description": "Bloqueio automatico proibido."
+    },
+    "writesToErp": {
+      "type": "boolean",
+      "const": false,
+      "description": "Pacote negociável permanece no portal; liquidacao ERP e processo externo."
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["titleId", "amountOpen"],
+        "properties": {
+          "titleId": { "type": "string", "format": "uuid" },
+          "documentNumber": { "type": "string" },
+          "dueDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "amountOpen": { "type": "string", "pattern": "^-?\\d+\\.\\d{2}$" }
+        }
+      }
+    },
+    "totals": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["gross", "discount", "net", "titleCount"],
+      "properties": {
+        "gross": { "type": ["string", "null"], "pattern": "^-?\\d+\\.\\d{2}$" },
+        "discount": { "type": ["string", "null"], "pattern": "^-?\\d+\\.\\d{2}$" },
+        "net": { "type": ["string", "null"], "pattern": "^-?\\d+\\.\\d{2}$" },
+        "titleCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "evidenceEnvelope": { "$ref": "evidence-envelope.schema.json" },
+    "disclaimer": { "type": "string" }
+  }
+}
