@@ -35,6 +35,7 @@ SCHEMA_FILES = [
     "negotiable-package.schema.json",
     "evidence-envelope.schema.json",
     "commitment-aggregate.schema.json",
+    "operational-flow-projection.schema.json",
 ]
 
 EXAMPLE_TO_SCHEMA = {
