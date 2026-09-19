@@ -193,6 +193,19 @@ try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN degustacaoUsada INTEGER DEFAULT 0;");
 } catch (e) {}
 
+// Portão de entrada: um fornecedor novo só pode ser liberado após a carga RMS completa.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fornecedor_carga_completude (
+      fornecedor_codigo TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      verificado_em TEXT NOT NULL,
+      detalhes_json TEXT NOT NULL,
+      erro TEXT
+    );
+  `);
+} catch (e) {}
+
 // Perdas físicas canônicas: lote RMS 520 separado da tabela histórica legada.
 // A carga só ativa o lote após conferir a quantidade integral de registros.
 try {

@@ -86,6 +86,9 @@ export type FornecedorDB = {
   acessoStatus?: "SEM_ACORDO" | "DEGUSTACAO" | "ATIVO_COM_ACORDO" | "EXPIRADO" | null;
   acordoNumero?: string | null;
   degustacaoUsada?: number | null;
+  cargaStatus?: "COMPLETA" | "FALHA" | null;
+  cargaVerificadaEm?: string | null;
+  cargaErro?: string | null;
 };
 
 export type ProdutoDB = {
@@ -347,6 +350,29 @@ function vigenciaAcessoOk(row: {
   const hoje = new Date();
   const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
   return hojeIso >= inicio && hojeIso <= fim;
+}
+
+function exigirCargaCompletaParaLiberar(codigo: string) {
+  const carga = db
+    .prepare("SELECT status FROM fornecedor_carga_completude WHERE fornecedor_codigo = ?")
+    .get(codigo) as { status?: string } | undefined;
+  if (carga && carga.status !== "COMPLETA") {
+    throw new Error(
+      "A carga RMS deste fornecedor não está completa. Corrija e atualize os dados antes de liberar o acesso.",
+    );
+  }
+}
+
+function extrairCompletudeRms(stdout: string) {
+  const linha = stdout.split("\n").find((item) => item.startsWith("COMPLETUDE_JSON="));
+  if (!linha) throw new Error("O RMS não devolveu a confirmação de completude da carga.");
+  const carga = JSON.parse(linha.slice("COMPLETUDE_JSON=".length)) as {
+    completa?: boolean;
+    fornecedor?: string;
+  };
+  if (!carga.completa)
+    throw new Error("A carga RMS terminou com divergência e o fornecedor foi mantido bloqueado.");
+  return carga;
 }
 
 function buscarFornecedorPorLogin(ident: string): FornecedorDB | undefined {
@@ -1641,8 +1667,7 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 
     ensureFornecedoresColumns();
     ensureFillrateMetaColumn();
-    let query =
-      "SELECT codigo, nome, cnpj, acessoLiberado, metaFillRatePct, isentoCobranca, taxaAcessoPct, acessoDataInicio, acessoDataFim, acessoStatus, acordoNumero, degustacaoUsada FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
+    let query = `SELECT f.codigo, f.nome, f.cnpj, f.acessoLiberado, f.metaFillRatePct, f.isentoCobranca, f.taxaAcessoPct, f.acessoDataInicio, f.acessoDataFim, f.acessoStatus, f.acordoNumero, f.degustacaoUsada, c.status AS "cargaStatus", c.verificado_em AS "cargaVerificadaEm", c.erro AS "cargaErro" FROM fornecedores f LEFT JOIN fornecedor_carga_completude c ON c.fornecedor_codigo = f.codigo WHERE (f.codigo LIKE ? OR f.nome LIKE ? OR f.cnpj LIKE ?)`;
     const params: Array<string | number> = [cleanSearch, cleanSearch, cleanSearch];
 
     query += " ORDER BY codigo LIMIT ? OFFSET ?";
@@ -1685,6 +1710,7 @@ export const updateSupplierAccess = createServerFn({ method: "POST" })
           "A degustação já foi utilizada ou expirou. Valide o acordo assinado antes de liberar o acesso.",
         );
       }
+      exigirCargaCompletaParaLiberar(codigoNorm);
       db.prepare("UPDATE fornecedores SET acessoLiberado = 1 WHERE codigo = ?").run(codigoNorm);
     }
     return { success: true };
@@ -1696,59 +1722,54 @@ export const includeSupplier = createServerFn({ method: "POST" })
     exigirInterno();
     const codigo = resolverCodigoFornecedorDados(data.codigo);
     if (!codigo) throw new Error("Informe o código RMS do fornecedor.");
-    const nomeNovo = String(data.nome ?? "").trim();
-    const cnpjNovo = String(data.cnpj ?? "").trim();
     ensureFornecedoresColumns();
+    const existente = db
+      .prepare("SELECT codigo, acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?")
+      .get(codigo) as
+      { codigo: string; acessoStatus?: string; degustacaoUsada?: number } | undefined;
+    if (existente?.acessoStatus === "ATIVO_COM_ACORDO") {
+      throw new Error("Fornecedor já possui acordo de acesso ativo.");
+    }
+    if (Number(existente?.degustacaoUsada) === 1) {
+      throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
+    }
+
+    try {
+      const cmd =
+        "LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo " +
+        codigo +
+        " --json";
+      const { stdout, stderr } = await execAsync(cmd);
+      console.log("Carga RMS de novo fornecedor:", stdout, stderr);
+      extrairCompletudeRms(stdout);
+    } catch (err) {
+      console.error("Carga RMS incompleta para novo fornecedor:", err);
+      throw new Error(
+        "Não foi possível liberar o fornecedor: a carga RMS não foi confirmada como completa. Ele permanece bloqueado para reprocessamento.",
+      );
+    }
+
+    const fornecedor = db
+      .prepare("SELECT nome, cnpj FROM fornecedores WHERE codigo = ?")
+      .get(codigo) as { nome?: string; cnpj?: string } | undefined;
+    if (!fornecedor) throw new Error("O RMS não retornou o cadastro do fornecedor solicitado.");
+    exigirCargaCompletaParaLiberar(codigo);
     const hoje = new Date();
     const inicio = hoje.toISOString().slice(0, 10);
     hoje.setUTCDate(hoje.getUTCDate() + 30);
     const fim = hoje.toISOString().slice(0, 10);
-    const existente = db
-      .prepare(
-        "SELECT codigo, nome, cnpj, acessoLiberado, acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?",
-      )
-      .get(codigo) as
-      | {
-          codigo: string;
-          nome?: string;
-          cnpj?: string;
-          acessoLiberado?: number;
-          acessoStatus?: string;
-          degustacaoUsada?: number;
-        }
-      | undefined;
-    if (existente) {
-      if (existente.acessoStatus === "ATIVO_COM_ACORDO")
-        throw new Error("Fornecedor já possui acordo de acesso ativo.");
-      if (Number(existente.degustacaoUsada) === 1)
-        throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
-      db.prepare(
-        "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
-      ).run(inicio, fim, codigo);
-      return {
-        success: true,
-        created: false,
-        codigo,
-        status: "DEGUSTACAO",
-        acessoDataInicio: inicio,
-        acessoDataFim: fim,
-        fornecedorNome: existente.nome || `Fornecedor ${codigo}`,
-        fornecedorCnpj: existente.cnpj || "",
-      };
-    }
-    ensureFillrateMetaColumn();
     db.prepare(
-      "INSERT INTO fornecedores (codigo, nome, cnpj, acessoLiberado, metaFillRatePct, acessoDataInicio, acessoDataFim, acessoStatus, degustacaoUsada) VALUES (?, ?, ?, 1, ?, ?, ?, 'DEGUSTACAO', 1)",
-    ).run(codigo, nomeNovo, cnpjNovo, FILLRATE_META_PADRAO, inicio, fim);
+      "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
+    ).run(inicio, fim, codigo);
     return {
       success: true,
-      created: true,
+      created: !existente,
       codigo,
       status: "DEGUSTACAO",
       acessoDataInicio: inicio,
       acessoDataFim: fim,
-      fornecedorNome: nomeNovo,
-      fornecedorCnpj: cnpjNovo,
+      fornecedorNome: fornecedor.nome || "Fornecedor " + codigo,
+      fornecedorCnpj: fornecedor.cnpj || "",
     };
   });
 export { DESCONTO_ACESSO_PORTAL_PCT };
@@ -2133,6 +2154,7 @@ export const registrarAcordoAcessoPortal = createServerFn({ method: "POST" })
       throw new Error("Acordo não encontrado no sistema de cobrança do Líder.");
     }
 
+    exigirCargaCompletaParaLiberar(codigo);
     ensureAcordosAcessoPortal();
     db.prepare(
       "UPDATE fornecedores SET acessoLiberado = 1, acessoStatus = 'ATIVO_COM_ACORDO', acordoNumero = ?, acessoDataFim = NULL WHERE codigo = ?",
@@ -3929,13 +3951,22 @@ export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
     if (!codigo) throw new Error("Código de fornecedor inválido.");
 
     try {
-      const cmd = `LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo ${codigo}`;
+      const cmd =
+        "LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo " +
+        codigo +
+        " --json";
       const { stdout, stderr } = await execAsync(cmd);
       console.log("Atualização RMS imediata:", stdout, stderr);
-      return { success: true, message: "Atualização no RMS realizada com sucesso!" };
+      const carga = extrairCompletudeRms(stdout);
+      return {
+        success: true,
+        message: "Carga RMS completa para " + (carga.fornecedor || codigo) + ".",
+      };
     } catch (err) {
-      console.error("Erro ao sincronizar fornecedor imediatamente:", err);
-      throw new Error("Erro de execução no script de sincronização do RMS.");
+      console.error("Erro ou divergência ao sincronizar fornecedor imediatamente:", err);
+      throw new Error(
+        "A carga RMS não foi confirmada como completa. O fornecedor permanece bloqueado até o reprocessamento.",
+      );
     }
   });
 

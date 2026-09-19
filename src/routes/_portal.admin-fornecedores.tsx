@@ -116,7 +116,7 @@ function AdminFornecedoresPage() {
     const alvo = (search.trim() || codigoNovo.trim()).replace(/\D/g, "");
     const codigoA = String(a.codigo ?? "").replace(/\D/g, "");
     const codigoB = String(b.codigo ?? "").replace(/\D/g, "");
-    const prioridade = (codigo: string) => codigo === alvo ? 0 : codigo.startsWith(alvo) ? 1 : 2;
+    const prioridade = (codigo: string) => (codigo === alvo ? 0 : codigo.startsWith(alvo) ? 1 : 2);
     if (!colunaOrdenacao) return prioridade(codigoA) - prioridade(codigoB);
     const valorA = String(a[colunaOrdenacao] ?? "").toLocaleLowerCase();
     const valorB = String(b[colunaOrdenacao] ?? "").toLocaleLowerCase();
@@ -134,13 +134,25 @@ function AdminFornecedoresPage() {
   };
 
   const indicadorOrdenacao = (coluna: string) =>
-    colunaOrdenacao !== coluna ? <ArrowUpDown className="size-3 opacity-50" /> :
-      ordemOrdenacao === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />;
+    colunaOrdenacao !== coluna ? (
+      <ArrowUpDown className="size-3 opacity-50" />
+    ) : ordemOrdenacao === "asc" ? (
+      <ArrowUp className="size-3" />
+    ) : (
+      <ArrowDown className="size-3" />
+    );
 
   const cabecalhoOrdenavel = (titulo: string, coluna: string) => (
     <div className="flex items-center justify-between gap-1">
       <span>{titulo}</span>
-      <Button type="button" variant="ghost" size="icon" className="size-5" onClick={() => ordenarPor(coluna)} aria-label={`Ordenar por ${titulo}`}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-5"
+        onClick={() => ordenarPor(coluna)}
+        aria-label={`Ordenar por ${titulo}`}
+      >
         {indicadorOrdenacao(coluna)}
       </Button>
     </div>
@@ -156,12 +168,24 @@ function AdminFornecedoresPage() {
     try {
       const taxa = taxaAcessoPct !== undefined ? taxaAcessoPct : 1.0;
       await updateSupplierAccessConfig({
-        data: { codigo, isentoCobranca: isento, acessoDataInicio: inicio, acessoDataFim: fim, taxaAcessoPct: taxa },
+        data: {
+          codigo,
+          isentoCobranca: isento,
+          acessoDataInicio: inicio,
+          acessoDataFim: fim,
+          taxaAcessoPct: taxa,
+        },
       });
       setFornecedores((prev) =>
         prev.map((f) =>
           f.codigo === codigo
-            ? { ...f, isentoCobranca: isento, acessoDataInicio: inicio, acessoDataFim: fim, taxaAcessoPct: taxa }
+            ? {
+                ...f,
+                isentoCobranca: isento,
+                acessoDataInicio: inicio,
+                acessoDataFim: fim,
+                taxaAcessoPct: taxa,
+              }
             : f,
         ),
       );
@@ -281,7 +305,9 @@ function AdminFornecedoresPage() {
     try {
       const resultado = await includeSupplier({ data: { codigo } });
       const codigoExibicao = formatarCodigoFornecedorComDigito(resultado.codigo);
-      toast.success(`Fornecedor ${codigoExibicao} ativado para degustação de 30 dias.`);
+      toast.success(
+        `Carga RMS completa. Fornecedor ${codigoExibicao} ativado para degustação de 30 dias.`,
+      );
       setCodigoNovo("");
       setPage(0);
       await carregarFornecedores(search, 0);
@@ -398,8 +424,9 @@ function AdminFornecedoresPage() {
                   Código RMS com dígito
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Informe apenas o código RMS. Nome e CNPJ serão preenchidos pelo cadastro RMS quando
-                  o cache for sincronizado. Os primeiros 30 dias de degustação não serão cobrados.
+                  Informe apenas o código RMS. Nome e CNPJ serão preenchidos pelo cadastro RMS
+                  quando o cache for sincronizado. Os primeiros 30 dias de degustação não serão
+                  cobrados.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -451,18 +478,36 @@ function AdminFornecedoresPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[100px]">{cabecalhoOrdenavel("Código RMS", "codigo")}</TableHead>
+                      <TableHead className="w-[100px]">
+                        {cabecalhoOrdenavel("Código RMS", "codigo")}
+                      </TableHead>
                       <TableHead className="w-[180px]">
                         <div className="space-y-1">
                           {cabecalhoOrdenavel("Fornecedor", "nome")}
-                          <Input value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Buscar..." className="h-6 px-1.5 text-[10px]" />
+                          <Input
+                            value={search}
+                            onChange={(e) => handleSearchChange(e.target.value)}
+                            placeholder="Buscar..."
+                            className="h-6 px-1.5 text-[10px]"
+                          />
                         </div>
                       </TableHead>
-                      <TableHead className="w-[150px] text-center">{cabecalhoOrdenavel("Acordo / status", "acessoStatus")}</TableHead>
-                      <TableHead className="w-[130px] text-center">{cabecalhoOrdenavel("Cobrança", "isentoCobranca")}</TableHead>
-                      <TableHead className="w-[240px] text-center">{cabecalhoOrdenavel("Vigência Acesso", "acessoDataFim")}</TableHead>
-                      <TableHead className="w-[110px] text-center">{cabecalhoOrdenavel("Meta Fill", "metaFillRatePct")}</TableHead>
-                      <TableHead className="w-[100px] text-center">{cabecalhoOrdenavel("Acesso", "acessoLiberado")}</TableHead>
+                      <TableHead className="w-[150px] text-center">
+                        {cabecalhoOrdenavel("Acordo / status", "acessoStatus")}
+                      </TableHead>
+                      <TableHead className="w-[125px] text-center">Carga RMS</TableHead>
+                      <TableHead className="w-[130px] text-center">
+                        {cabecalhoOrdenavel("Cobrança", "isentoCobranca")}
+                      </TableHead>
+                      <TableHead className="w-[240px] text-center">
+                        {cabecalhoOrdenavel("Vigência Acesso", "acessoDataFim")}
+                      </TableHead>
+                      <TableHead className="w-[110px] text-center">
+                        {cabecalhoOrdenavel("Meta Fill", "metaFillRatePct")}
+                      </TableHead>
+                      <TableHead className="w-[100px] text-center">
+                        {cabecalhoOrdenavel("Acesso", "acessoLiberado")}
+                      </TableHead>
                       <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -470,7 +515,7 @@ function AdminFornecedoresPage() {
                     {carregando && fornecedores.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={9}
                           className="h-32 text-center text-sm text-muted-foreground"
                         >
                           Carregando fornecedores...
@@ -490,6 +535,7 @@ function AdminFornecedoresPage() {
                         const ativo = f.acessoLiberado === 1;
                         const isento = f.isentoCobranca === 1;
                         const meta = Number(f.metaFillRatePct ?? FILLRATE_META_PADRAO);
+                        const cargaCompleta = f.cargaStatus === "COMPLETA";
                         return (
                           <TableRow key={f.codigo}>
                             <TableCell className="font-mono text-xs font-semibold">
@@ -543,6 +589,28 @@ function AdminFornecedoresPage() {
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
+                              <span
+                                className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                  cargaCompleta
+                                    ? "bg-emerald-500/10 text-emerald-600"
+                                    : f.cargaStatus === "FALHA"
+                                      ? "bg-amber-500/10 text-amber-700"
+                                      : "bg-muted text-muted-foreground"
+                                }`}
+                                title={
+                                  f.cargaErro ||
+                                  f.cargaVerificadaEm ||
+                                  "Fornecedor anterior ao portão de carga"
+                                }
+                              >
+                                {cargaCompleta
+                                  ? "COMPLETA"
+                                  : f.cargaStatus === "FALHA"
+                                    ? "PENDENTE"
+                                    : "LEGADO"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
                               <div className="flex justify-center">
                                 <select
                                   value={isento ? "isento" : String(f.taxaAcessoPct ?? 1.0)}
@@ -553,7 +621,9 @@ function AdminFornecedoresPage() {
                                       isentoSelecionado ? 1 : 0,
                                       f.acessoDataInicio || null,
                                       f.acessoDataFim || null,
-                                      isentoSelecionado ? f.taxaAcessoPct ?? 1.0 : parseFloat(e.target.value),
+                                      isentoSelecionado
+                                        ? (f.taxaAcessoPct ?? 1.0)
+                                        : parseFloat(e.target.value),
                                     );
                                   }}
                                   className="h-7 rounded border border-border bg-background px-2 text-[10px] font-mono font-bold"
@@ -655,13 +725,15 @@ function AdminFornecedoresPage() {
                                       atualizandoCodigo === f.codigo ? "animate-spin" : ""
                                     }`}
                                   />
-                                  Atualizar RMS
+                                  Validar carga RMS
                                 </Button>
                                 <Button
                                   variant={ativo ? "destructive" : "default"}
                                   size="sm"
                                   className="h-7 text-[10px] font-bold"
-                                  onClick={() => handleToggleAccess(f.codigo, f.acessoLiberado || 0)}
+                                  onClick={() =>
+                                    handleToggleAccess(f.codigo, f.acessoLiberado || 0)
+                                  }
                                 >
                                   {ativo ? "Bloquear" : "Liberar"}
                                 </Button>
@@ -693,8 +765,8 @@ function AdminFornecedoresPage() {
                   Taxa da multa
                 </p>
                 <p className="max-w-xl text-xs text-muted-foreground">
-                  Valor único da rede. A meta é pacto individual e fica na coluna de cada fornecedor.
-                  Os dois valores só aparecem no Fill Rate como espelho do cálculo.
+                  Valor único da rede. A meta é pacto individual e fica na coluna de cada
+                  fornecedor. Os dois valores só aparecem no Fill Rate como espelho do cálculo.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -732,22 +804,37 @@ function AdminFornecedoresPage() {
             <CardContent>
               <div className="rounded-lg border border-border bg-muted/20 p-4 font-mono text-[11px] leading-relaxed text-muted-foreground max-h-[350px] overflow-y-auto space-y-2">
                 <div className="border-b border-border/40 pb-1">
-                  <span className="text-emerald-500 font-bold">[2026-09-15 14:32:00]</span> Fornecedor <strong className="text-foreground">708558 (GDC)</strong> atualizado do RMS com sucesso por <span className="text-primary font-semibold">admin</span>.
+                  <span className="text-emerald-500 font-bold">[2026-09-15 14:32:00]</span>{" "}
+                  Fornecedor <strong className="text-foreground">708558 (GDC)</strong> atualizado do
+                  RMS com sucesso por <span className="text-primary font-semibold">admin</span>.
                 </div>
                 <div className="border-b border-border/40 pb-1">
-                  <span className="text-emerald-500 font-bold">[2026-09-15 11:22:15]</span> Fornecedor <strong className="text-foreground">104913 (GDC Matriz)</strong> vinculado ao comercial <strong className="text-foreground">708558</strong> por <span className="text-primary font-semibold">admin</span>.
+                  <span className="text-emerald-500 font-bold">[2026-09-15 11:22:15]</span>{" "}
+                  Fornecedor <strong className="text-foreground">104913 (GDC Matriz)</strong>{" "}
+                  vinculado ao comercial <strong className="text-foreground">708558</strong> por{" "}
+                  <span className="text-primary font-semibold">admin</span>.
                 </div>
                 <div className="border-b border-border/40 pb-1">
-                  <span className="text-emerald-500 font-bold">[2026-09-14 17:31:05]</span> Taxa de multa global de Fill Rate ajustada para <strong className="text-foreground">{taxaMulta}%</strong> por <span className="text-primary font-semibold">admin</span>.
+                  <span className="text-emerald-500 font-bold">[2026-09-14 17:31:05]</span> Taxa de
+                  multa global de Fill Rate ajustada para{" "}
+                  <strong className="text-foreground">{taxaMulta}%</strong> por{" "}
+                  <span className="text-primary font-semibold">admin</span>.
                 </div>
                 <div className="border-b border-border/40 pb-1">
-                  <span className="text-emerald-500 font-bold">[2026-09-14 10:05:42]</span> Fornecedor <strong className="text-foreground">Constrular (FOR-001)</strong> ativado para degustação por <span className="text-primary font-semibold">Marina Costa</span>.
+                  <span className="text-emerald-500 font-bold">[2026-09-14 10:05:42]</span>{" "}
+                  Fornecedor <strong className="text-foreground">Constrular (FOR-001)</strong>{" "}
+                  ativado para degustação por{" "}
+                  <span className="text-primary font-semibold">Marina Costa</span>.
                 </div>
                 <div className="border-b border-border/40 pb-1">
-                  <span className="text-emerald-500 font-bold">[2026-09-12 09:15:30]</span> Fornecedor <strong className="text-foreground">Casa Forte (FOR-002)</strong> teve acesso bloqueado por <span className="text-primary font-semibold">admin</span>.
+                  <span className="text-emerald-500 font-bold">[2026-09-12 09:15:30]</span>{" "}
+                  Fornecedor <strong className="text-foreground">Casa Forte (FOR-002)</strong> teve
+                  acesso bloqueado por <span className="text-primary font-semibold">admin</span>.
                 </div>
                 <div className="pb-1">
-                  <span className="text-emerald-500 font-bold">[2026-09-10 16:04:23]</span> Daemon <strong className="text-foreground">maoadc-bico-watcher</strong> inicializado com sucesso e operando.
+                  <span className="text-emerald-500 font-bold">[2026-09-10 16:04:23]</span> Daemon{" "}
+                  <strong className="text-foreground">maoadc-bico-watcher</strong> inicializado com
+                  sucesso e operando.
                 </div>
               </div>
             </CardContent>
