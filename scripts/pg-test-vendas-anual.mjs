@@ -48,7 +48,7 @@ const nomeSecaoSql = `COALESCE(
       ), ''),
       'Sem seção'
     )`;
-const filtroForn = `(vm.fornecedorCodigo = ? OR vm.fornecedorCodigo LIKE ? || '_')`;
+const filtroForn = 'vm.fornecedorCodigo = ?';
 
 const tests = [
   ["max", "SELECT MAX(anoMes) AS ate FROM vendas_mensal", []],
@@ -65,7 +65,7 @@ const tests = [
      FROM vendas_mensal vm ${joinProdutoRms}
      WHERE ${filtroForn} AND (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
      GROUP BY vm.anoMes`,
-    ["704894", "704894", "2025-%", "2026-%"],
+    ["704894", "2025-%", "2026-%"],
   ],
   [
     "secao",
@@ -76,7 +76,7 @@ const tests = [
      GROUP BY 1
      HAVING SUM(vm.valor) > 0
      LIMIT 3`,
-    ["2025-%", "704894", "704894", "2025-%", "2026-%"],
+    ["2025-%", "704894", "2025-%", "2026-%"],
   ],
   [
     "item",
@@ -89,7 +89,7 @@ const tests = [
      GROUP BY 1, 2, 3
      HAVING SUM(vm.valor) > 0
      LIMIT 3`,
-    ["2025-%", "704894", "704894", "2025-%", "2026-%"],
+    ["2025-%", "704894", "2025-%", "2026-%"],
   ],
 ];
 

@@ -37,14 +37,16 @@ def database_url() -> str:
 
 
 def connect_portal():
-    url = database_url()
-    if url:
-        import psycopg
-        from psycopg.rows import dict_row
-
-        conn = psycopg.connect(url, row_factory=dict_row)
+    env = _load_env()
+    if (env.get("PORTAL_DB_ENGINE") or "").lower() == "sqlite":
+        conn = sqlite3.connect(str(SQLITE_PATH), timeout=180)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
         return conn
-    conn = sqlite3.connect(str(SQLITE_PATH), timeout=180)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    url = env.get("DATABASE_URL") or ""
+    if not url:
+        raise RuntimeError("Portal exige DATABASE_URL PostgreSQL; SQLite só pode ser ativado explicitamente com PORTAL_DB_ENGINE=sqlite.")
+    import psycopg
+    from psycopg.rows import dict_row
+
+    return psycopg.connect(url, row_factory=dict_row)

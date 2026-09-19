@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { LoginScreen } from "@/components/login-screen";
+
+type SiteMode = "portal" | "appcom";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -19,5 +22,24 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
-  component: LoginScreen,
+  component: RootLanding,
 });
+
+function RootLanding() {
+  // O hostname define o produto. Mantemos o primeiro render neutro para não
+  // causar diferença de hidratação entre o servidor e o navegador.
+  const [site, setSite] = useState<SiteMode | null>(null);
+  useEffect(() => {
+    const host = window.location.hostname.toLowerCase();
+    setSite(host === "appcom.intelider.com.br" ? "appcom" : "portal");
+  }, []);
+
+  if (!site) {
+    return <main aria-busy="true" style={{ minHeight: "100vh", background: "#fff" }} />;
+  }
+
+  if (site === "appcom") {
+    return <Navigate to="/comunicacao" replace />;
+  }
+  return <LoginScreen />;
+}

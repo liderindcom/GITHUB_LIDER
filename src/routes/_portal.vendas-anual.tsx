@@ -129,7 +129,7 @@ function GraficoLinha({
 }
 
 function VendasAnualPage() {
-  const { codigoFornecedorAtivo, dadosFornecedorVersao, fornecedor } = usePortal();
+  const { codigoFornecedorAtivo, dadosFornecedorVersao, fornecedor, filtroMercadologico } = usePortal();
   const [dados, setDados] = useState<VendasAnualDB | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [buscaMes, setBuscaMes] = useState("");
@@ -138,11 +138,18 @@ function VendasAnualPage() {
   const [ordemMes, setOrdemMes] = useState<Direcao>(null);
   const [ordemSecao, setOrdemSecao] = useState<Direcao>(null);
   const [ordemItem, setOrdemItem] = useState<Direcao>(null);
+  const [tipoGrafico, setTipoGrafico] = useState<"valor" | "volume" | "preco">("valor");
 
   useEffect(() => {
     let ativo = true;
     setErro(null);
-    fetchVendasAnual({ data: codigoFornecedorAtivo })
+    const payload: { fornecedorCodigo: string; segmento?: string } = {
+      fornecedorCodigo: codigoFornecedorAtivo,
+    };
+    if (filtroMercadologico.segmento && filtroMercadologico.segmento !== "__todos__") {
+      payload.segmento = filtroMercadologico.segmento;
+    }
+    fetchVendasAnual({ data: payload })
       .then((payload) => {
         if (ativo) setDados(payload);
       })
@@ -267,47 +274,88 @@ function VendasAnualPage() {
           </div>
 
           <Card className="border-border bg-card shadow-panel">
-            <CardHeader className="pb-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
               <CardTitle className="text-sm font-bold uppercase tracking-wider">
-                Vendas, volume e preço médio · {dados.corte.anoBase} × {dados.corte.anoAtual}
+                Desempenho de Vendas Anual
               </CardTitle>
+              <div className="flex gap-1.5 rounded-lg border border-primary/20 bg-muted/50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setTipoGrafico("valor")}
+                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all ${
+                    tipoGrafico === "valor"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Valor (R$)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoGrafico("volume")}
+                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all ${
+                    tipoGrafico === "volume"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Volume
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoGrafico("preco")}
+                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all ${
+                    tipoGrafico === "preco"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  Preço Médio
+                </button>
+              </div>
             </CardHeader>
-            <CardContent className="grid gap-6">
-              <GraficoLinha
-                titulo="Vendas (R$)"
-                anoBase={dados.corte.anoBase}
-                anoAtual={dados.corte.anoAtual}
-                formatar={(v) => brl(v)}
-                formatarEixo={eixoCompacto}
-                data={dados.meses.map((m) => ({
-                  nome: m.nome.slice(0, 3),
-                  base: m.fornValorBase,
-                  atual: m.fornValorAtual,
-                }))}
-              />
-              <GraficoLinha
-                titulo="Volume"
-                anoBase={dados.corte.anoBase}
-                anoAtual={dados.corte.anoAtual}
-                formatar={(v) => numero(Math.round(v))}
-                formatarEixo={eixoCompacto}
-                data={dados.meses.map((m) => ({
-                  nome: m.nome.slice(0, 3),
-                  base: m.fornVolumeBase,
-                  atual: m.fornVolumeAtual,
-                }))}
-              />
-              <GraficoLinha
-                titulo="Preço médio"
-                anoBase={dados.corte.anoBase}
-                anoAtual={dados.corte.anoAtual}
-                formatar={(v) => brl(v)}
-                data={dados.meses.map((m) => ({
-                  nome: m.nome.slice(0, 3),
-                  base: precoMedio(m.fornValorBase, m.fornVolumeBase),
-                  atual: precoMedio(m.fornValorAtual, m.fornVolumeAtual),
-                }))}
-              />
+            <CardContent className="pt-2">
+              {tipoGrafico === "valor" && (
+                <GraficoLinha
+                  titulo="Vendas (R$)"
+                  anoBase={dados.corte.anoBase}
+                  anoAtual={dados.corte.anoAtual}
+                  formatar={(v) => brl(v)}
+                  formatarEixo={eixoCompacto}
+                  data={dados.meses.map((m) => ({
+                    nome: m.nome.slice(0, 3),
+                    base: m.fornValorBase,
+                    atual: m.fornValorAtual,
+                  }))}
+                />
+              )}
+              {tipoGrafico === "volume" && (
+                <GraficoLinha
+                  titulo="Volume"
+                  anoBase={dados.corte.anoBase}
+                  anoAtual={dados.corte.anoAtual}
+                  formatar={(v) => numero(Math.round(v))}
+                  formatarEixo={eixoCompacto}
+                  data={dados.meses.map((m) => ({
+                    nome: m.nome.slice(0, 3),
+                    base: m.fornVolumeBase,
+                    atual: m.fornVolumeAtual,
+                  }))}
+                />
+              )}
+              {tipoGrafico === "preco" && (
+                <GraficoLinha
+                  titulo="Preço médio"
+                  anoBase={dados.corte.anoBase}
+                  anoAtual={dados.corte.anoAtual}
+                  formatar={(v) => brl(v)}
+                  data={dados.meses.map((m) => ({
+                    nome: m.nome.slice(0, 3),
+                    base: precoMedio(m.fornValorBase, m.fornVolumeBase),
+                    atual: precoMedio(m.fornValorAtual, m.fornVolumeAtual),
+                  }))}
+                />
+              )}
             </CardContent>
           </Card>
 

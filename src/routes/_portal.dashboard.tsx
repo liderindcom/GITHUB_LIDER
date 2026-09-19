@@ -34,6 +34,7 @@ import {
   nomeLoja,
   nomeLojaPorLocal,
   produtoPorSku,
+  produtos,
   statusEstoque,
 } from "@/lib/mock-data";
 import { mesFechadoIso, rotuloMesAno } from "@/lib/pedidos-janela";
@@ -212,6 +213,43 @@ function Dashboard() {
   const lojasComEstoque = new Set(estoque.map((e) => e.lojaId)).size;
   const skusEmRisco = new Set(rupturas.map((r) => r.sku)).size;
   const lojasEmRisco = new Set(rupturas.map((r) => r.lojaId)).size;
+  const rupturasPorSku = useMemo(() => {
+    const porSku = new Map<string, { sku: string; descricao: string; lojas: number }>();
+    rupturas
+      .filter((linha) => statusEstoque(linha) === "Ruptura")
+      .forEach((linha) => {
+        const atual = porSku.get(linha.sku);
+        if (atual) {
+          atual.lojas += 1;
+          return;
+        }
+        porSku.set(linha.sku, {
+          sku: linha.sku,
+          descricao: produtoPorSku(linha.sku).descricao,
+          lojas: 1,
+        });
+      });
+    return Array.from(porSku.values()).sort((a, b) => b.lojas - a.lojas || a.descricao.localeCompare(b.descricao));
+  }, [dadosFornecedorVersao, fornecedor.codigo]);
+  const produtosComRuptura = rupturasPorSku;
+  const lojasEmRuptura = new Set(
+    rupturas.filter((linha) => statusEstoque(linha) === "Ruptura").map((linha) => linha.lojaId),
+  ).size;
+  const topStars = useMemo(
+    () =>
+      produtos
+        .filter((produto) => produto.classeTopStar === "Aa")
+        .map((produto) => ({
+          sku: produto.sku,
+          descricao: produto.descricao,
+          emRuptura: rupturas.some(
+            (linha) => linha.sku === produto.sku && statusEstoque(linha) === "Ruptura",
+          ),
+        }))
+        .sort((a, b) => Number(b.emRuptura) - Number(a.emRuptura) || a.descricao.localeCompare(b.descricao)),
+    [dadosFornecedorVersao, fornecedor.codigo],
+  );
+
   const sugestoesCompra = useMemo(() => {
     void dadosFornecedorVersao;
     return calcularSugestoesCompraCdam("30").filter((linha) => linha.sugestaoCompra > 0);
@@ -409,32 +447,67 @@ function Dashboard() {
           </div>
         </Painel>
 
-        {/* Métricas compactas */}
+        {/* Indicadores operacionais */}
         <div className="grid gap-4 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-1">
           <Painel>
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Pedido do Líder
-            </p>
-            <p className="mt-1 font-display text-3xl font-bold">{brl(pedidoAno)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Entregue {brl(entregueAno)} · faltou {brl(perdaAno)}
-            </p>
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/estoque" })}
+              className="w-full text-left"
+            >
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Produtos com ruptura
+              </p>
+              <p className="mt-1 font-display text-3xl font-bold text-danger">
+                {produtosComRuptura.length}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {lojasEmRuptura} loja{lojasEmRuptura === 1 ? "" : "s"} afetada{lojasEmRuptura === 1 ? "" : "s"}
+              </p>
+              <div className="mt-3 space-y-1.5">
+                {produtosComRuptura.slice(0, 3).map((item) => (
+                  <div key={item.sku} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0 truncate font-medium">{item.descricao}</span>
+                    <span className="shrink-0 text-danger">{item.lojas} loja{item.lojas === 1 ? "" : "s"}</span>
+                  </div>
+                ))}
+                {!produtosComRuptura.length ? (
+                  <p className="text-xs text-success">Nenhum SKU em ruptura na base atual.</p>
+                ) : null}
+              </div>
+            </button>
           </Painel>
           <Painel>
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Mix em loja
-            </p>
-            <p className="mt-1 font-display text-3xl font-bold">{skusMonitorados}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              SKUs em {numero(lojasComEstoque)} loja{lojasComEstoque === 1 ? "" : "s"}
-              {skusEmRisco > 0 ? (
-                <span className="text-danger"> · {skusEmRisco} em risco de ruptura</span>
-              ) : null}
-            </p>
+            <button
+              type="button"
+              onClick={() => navigate({ to: "/itens" })}
+              className="w-full text-left"
+            >
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Top Star do fornecedor
+              </p>
+              <p className="mt-1 font-display text-3xl font-bold">{topStars.length}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                itens estrategicos classificados como Aa
+              </p>
+              <div className="mt-3 space-y-1.5">
+                {topStars.slice(0, 3).map((item) => (
+                  <div key={item.sku} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0 truncate font-medium">Top Star - {item.descricao}</span>
+                    <span className={item.emRuptura ? "shrink-0 text-danger" : "shrink-0 text-success"}>
+                      {item.emRuptura ? "Ruptura" : "Monitorar"}
+                    </span>
+                  </div>
+                ))}
+                {!topStars.length ? (
+                  <p className="text-xs text-muted-foreground">Nenhum Top Star classificado para este fornecedor.</p>
+                ) : null}
+              </div>
+            </button>
           </Painel>
         </div>
 
-        {/* Posições críticas */}
+        {/* Posicoes criticas */}
         <Painel className="lg:col-span-2">
           <div className="flex items-center gap-2">
             <Package className="size-4 text-primary" />

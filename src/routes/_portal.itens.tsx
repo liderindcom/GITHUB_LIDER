@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { PortalLayout } from "@/components/portal-layout";
+import { EstoqueMixTabs } from "@/components/estoque-mix-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,7 +57,7 @@ import { TableColumnHeader } from "@/components/table-column-header";
 export const Route = createFileRoute("/_portal/itens")({
   head: () => ({
     meta: [
-      { title: "Meus Itens e Cobertura | Portal do Fornecedor" },
+      { title: "Itens e Cobertura | Portal do Fornecedor" },
       {
         name: "description",
         content: "Acompanhe todos os seus itens, venda média, classificação, pedidos em aberto, pendências e cobertura de estoque.",
@@ -312,6 +313,7 @@ function ItensPage() {
       titulo="Meus Itens e Cobertura"
       descricao="Painel consolidado de rastreamento de SKUs: venda média, classificação, pedidos em aberto, pendências documentais e cobertura de estoque."
     >
+      <EstoqueMixTabs />
       <div className="space-y-4">
         {/* KPI Cards */}
         <div className="grid gap-3 md:grid-cols-4">

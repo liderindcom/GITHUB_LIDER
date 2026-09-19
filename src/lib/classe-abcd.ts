@@ -78,14 +78,26 @@ function combinarClasses(
 }
 
 export function classificarCurvaAbcd(itens: ItemCurvaAbcd[]): Map<string, ResultadoCurvaAbcd> {
-  const classeValor = classificarDimensao(itens, (item) => item.grupo, (item) => item.valor);
-  const classeVolume = classificarDimensao(itens, (item) => item.grupo, (item) => item.volume);
+  const classeValor = classificarDimensao(
+    itens,
+    (item) => item.grupo,
+    (item) => item.valor,
+  );
+  const classeVolume = classificarDimensao(
+    itens,
+    (item) => item.grupoQuantidade ?? item.grupo,
+    (item) => item.volume,
+  );
   return combinarClasses(classeValor, classeVolume);
 }
 
 /** Top Star: valor por subgrupo e quantidade consolidada no grupo. */
 export function classificarCurvaTopStar(itens: ItemCurvaAbcd[]): Map<string, ResultadoCurvaAbcd> {
-  const classeValor = classificarDimensao(itens, (item) => item.grupo, (item) => item.valor);
+  const classeValor = classificarDimensao(
+    itens,
+    (item) => item.grupo,
+    (item) => item.valor,
+  );
   const classeVolume = classificarDimensao(
     itens,
     (item) => item.grupoQuantidade ?? item.grupo,

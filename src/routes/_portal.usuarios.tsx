@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { UserPlus, Users } from "lucide-react";
+import { MessageCircle, QrCode, UserPlus, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePortal } from "@/context/portal-context";
 import {
   excluirUsuarioFornecedor,
@@ -36,6 +37,8 @@ type Vaga = {
   nome: string;
   email: string;
   senha: string;
+  ativo?: number;
+  precisaTrocarSenha?: boolean;
 };
 
 const vagaVazia = (): Vaga => ({ nome: "", email: "", senha: "" });
@@ -71,7 +74,14 @@ function UsuariosFornecedorPage() {
       Array.from({ length: USUARIOS_FORNECEDOR_MAX }, (_, i) => {
         const u = usuarios[i];
         if (!u) return vagaVazia();
-        return { id: u.id, nome: u.nome, email: u.email, senha: "" };
+        return {
+          id: u.id,
+          nome: u.nome,
+          email: u.email,
+          senha: "",
+          ativo: u.ativo,
+          precisaTrocarSenha: Boolean(u.precisaTrocarSenha),
+        };
       }),
     );
   }, [usuarios]);
@@ -79,9 +89,7 @@ function UsuariosFornecedorPage() {
   const ocupadas = usuarios.length;
 
   const atualizarVaga = (indice: number, campo: keyof Vaga, valor: string) => {
-    setVagas((prev) =>
-      prev.map((vaga, i) => (i === indice ? { ...vaga, [campo]: valor } : vaga)),
-    );
+    setVagas((prev) => prev.map((vaga, i) => (i === indice ? { ...vaga, [campo]: valor } : vaga)));
   };
 
   const handleSalvar = async (indice: number) => {
@@ -135,107 +143,175 @@ function UsuariosFornecedorPage() {
     () => `${ocupadas} de ${USUARIOS_FORNECEDOR_MAX} vagas preenchidas`,
     [ocupadas],
   );
+  const appComUrl = useMemo(() => {
+    if (typeof window === "undefined") return "/comunicacao";
+    return window.location.origin + "/comunicacao";
+  }, []);
+  const qrCodeUrl = useMemo(() => {
+    return (
+      "https://quickchart.io/qr?size=280&margin=2&text=" +
+      encodeURIComponent(appComUrl) +
+      "&v=appcom-pwa-v5"
+    );
+  }, [appComUrl]);
 
   return (
     <PortalLayout
       titulo="Usuários da empresa"
       descricao={`Até ${USUARIOS_FORNECEDOR_MAX} pessoas da sua empresa. Elas consultam o portal; a única alteração permitida é preencher a tabela de preço.`}
     >
-      <div className="space-y-4">
-        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          O fornecedor não altera pedido, estoque, logística nem financeiro. A tabela de preço
-          vira proposta e só entra no sistema depois que o Grupo Líder aprovar. Se alguém
-          esqueceu a senha, grave uma nova senha na vaga dessa pessoa — não há recuperação na
-          tela de login.
-        </p>
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">{resumo}</p>
-          <Badge variant="outline" className="font-mono text-[11px]">
-            {ocupadas}/{USUARIOS_FORNECEDOR_MAX}
-          </Badge>
-        </div>
+      <Tabs defaultValue="usuarios" className="space-y-4">
+        <TabsList className="grid w-full max-w-sm grid-cols-2">
+          <TabsTrigger value="usuarios">Usuários</TabsTrigger>
+          <TabsTrigger value="appcom">AppCom Lider</TabsTrigger>
+        </TabsList>
+        <TabsContent value="usuarios" className="space-y-4">
+          <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Para corrigir o acesso de alguém como a Lorena, edite nome/e-mail e informe uma nova
+            senha temporária. Ao salvar, o acesso será reativado e a pessoa deverá trocar essa senha
+            no primeiro login.
+            <br />O fornecedor não altera pedido, estoque, logística nem financeiro. A tabela de
+            preço vira proposta e só entra no sistema depois que o Grupo Líder aprovar. Se alguém
+            esqueceu a senha, grave uma nova senha na vaga dessa pessoa — não há recuperação na tela
+            de login.
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">{resumo}</p>
+            <Badge variant="outline" className="font-mono text-[11px]">
+              {ocupadas}/{USUARIOS_FORNECEDOR_MAX}
+            </Badge>
+          </div>
 
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {vagas.map((vaga, indice) => {
-            const preenchida = Boolean(vaga.id);
-            return (
-              <Card key={vaga.id ?? `vaga-${indice}`} className="shadow-panel">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center justify-between gap-2 text-base">
-                    <span className="flex items-center gap-2">
-                      {preenchida ? (
-                        <Users className="size-4 text-primary" />
-                      ) : (
-                        <UserPlus className="size-4 text-muted-foreground" />
-                      )}
-                      Vaga {indice + 1}
-                    </span>
-                    <Badge variant={preenchida ? "default" : "outline"} className="text-[10px]">
-                      {preenchida ? "Ativo" : "Livre"}
-                    </Badge>
-                  </CardTitle>
-                  <CardDescription>
-                    {preenchida
-                      ? "Altere o cadastro ou defina uma nova senha."
-                      : "Preencha nome, e-mail e senha inicial."}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Nome</Label>
-                    <Input
-                      value={vaga.nome}
-                      onChange={(e) => atualizarVaga(indice, "nome", e.target.value)}
-                      placeholder="Nome completo"
-                      disabled={carregando}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">E-mail (login)</Label>
-                    <Input
-                      type="email"
-                      value={vaga.email}
-                      onChange={(e) => atualizarVaga(indice, "email", e.target.value)}
-                      placeholder="nome@empresa.com"
-                      disabled={carregando}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">{preenchida ? "Nova senha (opcional)" : "Senha inicial"}</Label>
-                    <Input
-                      type="password"
-                      value={vaga.senha}
-                      onChange={(e) => atualizarVaga(indice, "senha", e.target.value)}
-                      placeholder={preenchida ? "Deixe em branco para manter" : "Mínimo 8 caracteres"}
-                      disabled={carregando}
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      disabled={carregando || salvando === indice}
-                      onClick={() => void handleSalvar(indice)}
-                    >
-                      {preenchida ? "Salvar" : "Cadastrar"}
-                    </Button>
-                    {preenchida ? (
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {vagas.map((vaga, indice) => {
+              const preenchida = Boolean(vaga.id);
+              return (
+                <Card key={vaga.id ?? `vaga-${indice}`} className="shadow-panel">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between gap-2 text-base">
+                      <span className="flex items-center gap-2">
+                        {preenchida ? (
+                          <Users className="size-4 text-primary" />
+                        ) : (
+                          <UserPlus className="size-4 text-muted-foreground" />
+                        )}
+                        Vaga {indice + 1}
+                      </span>
+                      <Badge
+                        variant={
+                          preenchida ? (vaga.ativo === 1 ? "default" : "destructive") : "outline"
+                        }
+                        className="text-[10px]"
+                      >
+                        {preenchida ? (vaga.ativo === 1 ? "Ativo" : "Inativo") : "Livre"}
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription>
+                      {preenchida
+                        ? "Altere o cadastro ou defina uma nova senha temporária para reativar o acesso."
+                        : "Preencha nome, e-mail e senha inicial."}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Nome</Label>
+                      <Input
+                        value={vaga.nome}
+                        onChange={(e) => atualizarVaga(indice, "nome", e.target.value)}
+                        placeholder="Nome completo"
+                        disabled={carregando}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">E-mail (login)</Label>
+                      <Input
+                        type="email"
+                        value={vaga.email}
+                        onChange={(e) => atualizarVaga(indice, "email", e.target.value)}
+                        placeholder="nome@empresa.com"
+                        disabled={carregando}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        {preenchida ? "Nova senha (opcional)" : "Senha inicial"}
+                      </Label>
+                      <Input
+                        type="password"
+                        value={vaga.senha}
+                        onChange={(e) => atualizarVaga(indice, "senha", e.target.value)}
+                        placeholder={
+                          preenchida ? "Nova senha temporária (mín. 8)" : "Mínimo 8 caracteres"
+                        }
+                        disabled={carregando}
+                      />
+                    </div>
+                    <div className="flex gap-2 pt-1">
                       <Button
                         size="sm"
-                        variant="destructive"
+                        className="flex-1"
                         disabled={carregando || salvando === indice}
-                        onClick={() => void handleExcluir(indice)}
+                        onClick={() => void handleSalvar(indice)}
                       >
-                        Remover
+                        {preenchida ? "Salvar" : "Cadastrar"}
                       </Button>
-                    ) : null}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
+                      {preenchida ? (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={carregando || salvando === indice}
+                          onClick={() => void handleExcluir(indice)}
+                        >
+                          Remover
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+        <TabsContent value="appcom" className="space-y-4">
+          <Card className="shadow-panel">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="size-5 text-primary" />
+                AppCom Lider
+              </CardTitle>
+              <CardDescription>
+                Comunicador da sua empresa com o Grupo Líder. Os mesmos usuários cadastrados nesta
+                página acessam o AppCom; não existe outro cadastro ou senha.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-5 sm:grid-cols-[1fr_auto] sm:items-center">
+              <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Use o AppCom para acompanhar casos do Atlas, responder propostas e negociar com o
+                comprador. Cada conversa fica vinculada ao contexto comercial e às decisões.
+                <div className="mt-4">
+                  <Button asChild>
+                    <a href={appComUrl} target="_blank" rel="noreferrer">
+                      <MessageCircle className="size-4" />
+                      Abrir AppCom Lider
+                    </a>
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-background p-3 text-center">
+                <QrCode className="size-4 text-primary" />
+                <img
+                  src={qrCodeUrl}
+                  alt="QR Code para instalar o AppCom Lider no celular"
+                  className="size-36 rounded bg-white p-1"
+                />
+                <p className="max-w-36 text-xs leading-relaxed text-muted-foreground">
+                  Escaneie para instalar somente o AppCom Lider no celular.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </PortalLayout>
   );
 }

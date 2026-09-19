@@ -1,7 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ShieldCheck, ShieldAlert, Plus, Trash2, UserPlus, Users, UserCheck, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  ShieldCheck,
+  ShieldAlert,
+  Plus,
+  Trash2,
+  UserPlus,
+  Users,
+  UserCheck,
+  KeyRound,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
 
 import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +41,7 @@ import {
   fetchUsuariosInternos,
   createUsuarioInterno,
   deleteUsuarioInterno,
+  alterarSenhaUsuarioInterno,
   type UsuarioInternoDB,
 } from "@/api";
 
@@ -49,28 +62,13 @@ export const Route = createFileRoute("/_portal/admin-usuarios")({
 function AdminUsuariosPage() {
   const { usuarioInterno } = usePortal();
 
-  // Route protection
-  if (!usuarioInterno || usuarioInterno.role !== "admin") {
-    return (
-      <PortalLayout
-        titulo="Acesso Restrito"
-        descricao="Esta área é de uso exclusivo dos administradores do Grupo Líder."
-      >
-        <div className="flex flex-col items-center justify-center p-8 bg-card rounded-lg border border-border shadow-panel">
-          <ShieldAlert className="size-12 text-destructive mb-3" />
-          <h2 className="text-lg font-bold">Acesso Negado</h2>
-          <p className="text-xs text-muted-foreground mt-1 max-w-[340px] text-center">
-            Você não possui as permissões necessárias para acessar este painel. Caso seja um
-            administrador, faça o login correspondente.
-          </p>
-        </div>
-      </PortalLayout>
-    );
-  }
+  const usuarioInternoAtual = usuarioInterno;
 
   const [usuarios, setUsuarios] = useState<UsuarioInternoDB[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [buscaTabela, setBuscaTabela] = useState("");
+  const buscaTabelaRef = useRef<HTMLInputElement>(null);
+  const [buscaAtiva, setBuscaAtiva] = useState(false);
   const [colunaOrdenacao, setColunaOrdenacao] = useState<"username" | "nome" | "role" | null>(null);
   const [ordemOrdenacao, setOrdemOrdenacao] = useState<"asc" | "desc">("asc");
 
@@ -79,6 +77,8 @@ function AdminUsuariosPage() {
   const [novoNome, setNovoNome] = useState("");
   const [novaSenha, setNovoSenha] = useState("");
   const [novoRole, setNovoRole] = useState("admin");
+  const [senhasNovas, setSenhasNovas] = useState<Record<string, string>>({});
+  const [salvandoSenha, setSalvandoSenha] = useState<string | null>(null);
 
   const carregarUsuarios = async () => {
     setCarregando(true);
@@ -94,34 +94,72 @@ function AdminUsuariosPage() {
   };
 
   useEffect(() => {
+    if (!usuarioInternoAtual || usuarioInternoAtual.role !== "admin") return;
     carregarUsuarios();
+  }, [usuarioInternoAtual]);
+
+  useEffect(() => {
+    const limparBuscaRestaurada = () => {
+      const campo = buscaTabelaRef.current;
+      if (campo?.value.trim().toLocaleLowerCase() === "lider") {
+        campo.value = "";
+        setBuscaTabela("");
+      }
+    };
+    limparBuscaRestaurada();
+    const timers = [0, 250, 1000].map((tempo) => window.setTimeout(limparBuscaRestaurada, tempo));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, []);
 
   const usuariosVisiveis = useMemo(() => {
     const termo = buscaTabela.trim().toLocaleLowerCase();
-    const filtrados = usuarios.filter((user) =>
-      !termo || [user.username, user.nome, user.role].some((valor) => String(valor).toLocaleLowerCase().includes(termo)),
+    const filtrados = usuarios.filter(
+      (user) =>
+        !termo ||
+        [user.username, user.nome, user.role].some((valor) =>
+          String(valor).toLocaleLowerCase().includes(termo),
+        ),
     );
     if (!colunaOrdenacao) return filtrados;
     return [...filtrados].sort((a, b) => {
-      const resultado = String(a[colunaOrdenacao]).localeCompare(String(b[colunaOrdenacao]), "pt-BR", { numeric: true });
+      const resultado = String(a[colunaOrdenacao]).localeCompare(
+        String(b[colunaOrdenacao]),
+        "pt-BR",
+        { numeric: true },
+      );
       return ordemOrdenacao === "asc" ? resultado : -resultado;
     });
   }, [usuarios, buscaTabela, colunaOrdenacao, ordemOrdenacao]);
 
   const ordenarPor = (coluna: "username" | "nome" | "role") => {
-    if (colunaOrdenacao === coluna) setOrdemOrdenacao((atual) => atual === "asc" ? "desc" : "asc");
-    else { setColunaOrdenacao(coluna); setOrdemOrdenacao("asc"); }
+    if (colunaOrdenacao === coluna)
+      setOrdemOrdenacao((atual) => (atual === "asc" ? "desc" : "asc"));
+    else {
+      setColunaOrdenacao(coluna);
+      setOrdemOrdenacao("asc");
+    }
   };
 
   const indicadorOrdenacao = (coluna: "username" | "nome" | "role") =>
-    colunaOrdenacao !== coluna ? <ArrowUpDown className="size-3 opacity-50" /> :
-      ordemOrdenacao === "asc" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />;
+    colunaOrdenacao !== coluna ? (
+      <ArrowUpDown className="size-3 opacity-50" />
+    ) : ordemOrdenacao === "asc" ? (
+      <ArrowUp className="size-3" />
+    ) : (
+      <ArrowDown className="size-3" />
+    );
 
   const cabecalhoOrdenavel = (titulo: string, coluna: "username" | "nome" | "role") => (
     <div className="flex items-center justify-between gap-1">
       <span>{titulo}</span>
-      <Button type="button" variant="ghost" size="icon" className="size-5" onClick={() => ordenarPor(coluna)} aria-label={`Ordenar por ${titulo}`}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-5"
+        onClick={() => ordenarPor(coluna)}
+        aria-label={`Ordenar por ${titulo}`}
+      >
         {indicadorOrdenacao(coluna)}
       </Button>
     </div>
@@ -162,8 +200,27 @@ function AdminUsuariosPage() {
     }
   };
 
+  const handleAlterarSenha = async (username: string) => {
+    const novaSenha = String(senhasNovas[username] ?? "");
+    if (novaSenha.length < 8) {
+      toast.error("A nova senha precisa ter no mínimo 8 caracteres.");
+      return;
+    }
+    setSalvandoSenha(username);
+    try {
+      await alterarSenhaUsuarioInterno({ data: { username, novaSenha } });
+      setSenhasNovas((prev) => ({ ...prev, [username]: "" }));
+      toast.success("Senha de " + username + " alterada.");
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Não foi possível alterar a senha.");
+    } finally {
+      setSalvandoSenha(null);
+    }
+  };
+
   const handleDeleteUser = async (usernameToDelete: string) => {
-    if (usernameToDelete === usuarioInterno.username) {
+    if (usernameToDelete === usuarioInternoAtual?.username) {
       toast.error("Você não pode excluir o seu próprio usuário enquanto está logado!");
       return;
     }
@@ -190,10 +247,28 @@ function AdminUsuariosPage() {
     }
   };
 
+  if (!usuarioInternoAtual || usuarioInternoAtual.role !== "admin") {
+    return (
+      <PortalLayout
+        titulo="Acesso Restrito"
+        descricao="Esta área é de uso exclusivo dos administradores do Grupo Líder."
+      >
+        <div className="flex flex-col items-center justify-center p-8 bg-card rounded-lg border border-border shadow-panel">
+          <ShieldAlert className="size-12 text-destructive mb-3" />
+          <h2 className="text-lg font-bold">Acesso Negado</h2>
+          <p className="text-xs text-muted-foreground mt-1 max-w-[340px] text-center">
+            Você não possui as permissões necessárias para acessar este painel. Caso seja um
+            administrador, faça o login correspondente.
+          </p>
+        </div>
+      </PortalLayout>
+    );
+  }
+
   return (
     <PortalLayout
       titulo="Usuários Administrativos"
-      descricao="Gerencie a equipe interna autorizada a liberar e bloquear acessos de fornecedores."
+      descricao="Gerencie a equipe interna autorizada a liberar e bloquear acessos de fornecedores. Administradores podem redefinir a senha de cada usuário."
     >
       <div className="space-y-6">
         <div className="grid gap-6 md:grid-cols-3">
@@ -301,11 +376,29 @@ function AdminUsuariosPage() {
                       <TableHead>
                         <div className="space-y-1">
                           {cabecalhoOrdenavel("Username", "username")}
-                          <Input value={buscaTabela} onChange={(e) => setBuscaTabela(e.target.value)} placeholder="Buscar..." className="h-6 px-1.5 text-[10px]" />
+                          <Input
+                            ref={buscaTabelaRef}
+                            value={buscaTabela}
+                            readOnly={!buscaAtiva}
+                            onChange={(e) => setBuscaTabela(e.target.value)}
+                            placeholder="Buscar..."
+                            className="h-6 px-1.5 text-[10px]"
+                            name="busca-equipe-cadastrada"
+                            autoComplete="new-password"
+                            onFocus={(e) => {
+                              setBuscaAtiva(true);
+                              if (e.currentTarget.value.trim().toLocaleLowerCase() === "lider") {
+                                e.currentTarget.value = "";
+                                setBuscaTabela("");
+                              }
+                            }}
+                          />
                         </div>
                       </TableHead>
                       <TableHead>{cabecalhoOrdenavel("Nome", "nome")}</TableHead>
-                      <TableHead className="text-center">{cabecalhoOrdenavel("Role", "role")}</TableHead>
+                      <TableHead className="text-center">
+                        {cabecalhoOrdenavel("Role", "role")}
+                      </TableHead>
                       <TableHead className="w-[100px] text-center">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -355,17 +448,43 @@ function AdminUsuariosPage() {
                                   : "Colaborador"}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-center">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 p-0"
-                              onClick={() => handleDeleteUser(user.username)}
-                              disabled={user.username === usuarioInterno.username}
-                              title="Remover Colaborador"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Input
+                                type="password"
+                                value={senhasNovas[user.username] ?? ""}
+                                onChange={(e) =>
+                                  setSenhasNovas((prev) => ({
+                                    ...prev,
+                                    [user.username]: e.target.value,
+                                  }))
+                                }
+                                placeholder="Nova senha"
+                                className="h-8 w-32 text-[11px]"
+                                aria-label={"Nova senha de " + user.username}
+                                disabled={salvandoSenha === user.username}
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 px-2"
+                                onClick={() => void handleAlterarSenha(user.username)}
+                                disabled={salvandoSenha === user.username}
+                                title="Alterar senha"
+                              >
+                                <KeyRound className="size-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 p-0"
+                                onClick={() => handleDeleteUser(user.username)}
+                                disabled={user.username === usuarioInternoAtual?.username}
+                                title="Remover Colaborador"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))

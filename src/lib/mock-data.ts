@@ -1,10 +1,6 @@
-import { addDays, format, subMonths } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { addDays, format } from "date-fns";
 import { lojaForaDoPortalFornecedor } from "@/lib/lojas-excluidas-portal";
-import {
-  DEMO_FORNECEDOR_CODIGO,
-  normalizarCodigoFornecedor,
-} from "@/lib/fornecedor-codigo";
+import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
 import {
   getFiltroMercadologico,
   produtoPassaFiltro,
@@ -15,7 +11,7 @@ import {
   rotuloSubgrupo,
 } from "@/lib/filtro-mercadologico";
 
-export { DEMO_FORNECEDOR_CODIGO, normalizarCodigoFornecedor };
+export { normalizarCodigoFornecedor };
 
 export { lojaForaDoPortalFornecedor };
 
@@ -77,89 +73,15 @@ export type FornecedorType = {
   fornecedorComercialNome?: string | null;
   cadastroFinanceiro: CadastroFinanceiro;
   isentoCobranca?: number;
+  taxaAcessoPct?: number;
   acessoDataInicio?: string | null;
   acessoDataFim?: string | null;
 };
 
-export const fornecedores: FornecedorType[] = [
-  {
-    codigo: "4050",
-    nome: "Nestlé Brasil S/A",
-    cnpj: "60.409.075/0001-52",
-    cnpjSenhaInicial: "60409075000152",
-    destinatario: "Grupo Líder",
-    modeloEntrega: "somente_cdam" as ModeloEntregaFornecedor,
-    agendaRecebimentoCdam: 28,
-    filialEntregaPadrao: "201",
-    cadastroFinanceiro: {
-      prazoPagamentoDias: 28,
-      prazoTipo: "DDE",
-      descontoFinanceiroPct: 1.5,
-      descontoFinanceiroAteDias: null,
-      condicaoPagamentoLabel: "28 ddl · desconto financeiro 1,5%",
-      anticipationEnabled: true,
-    },
-  },
-  {
-    codigo: "704894",
-    nome: "BTD DISTRIBUIDORA E COMERCIO LTDA",
-    cnpj: "05.123.456/0001-99",
-    cnpjSenhaInicial: "05123456000199",
-    destinatario: "Grupo Líder",
-    modeloEntrega: "somente_cdam" as ModeloEntregaFornecedor,
-    agendaRecebimentoCdam: 520,
-    filialEntregaPadrao: "201",
-    cadastroFinanceiro: {
-      prazoPagamentoDias: 30,
-      prazoTipo: "DDE",
-      descontoFinanceiroPct: 2.0,
-      descontoFinanceiroAteDias: null,
-      condicaoPagamentoLabel: "30 ddl · desconto financeiro 2,0%",
-      anticipationEnabled: true,
-    },
-  },
-  {
-    codigo: "25167",
-    nome: "BTM DIST DE ALIMENTOS LTDA",
-    cnpj: "31.709.365/0001-13",
-    cnpjSenhaInicial: "31709365000113",
-    destinatario: "Grupo Líder",
-    modeloEntrega: "somente_cdam" as ModeloEntregaFornecedor,
-    agendaRecebimentoCdam: 35,
-    filialEntregaPadrao: "201",
-    cadastroFinanceiro: {
-      prazoPagamentoDias: 35,
-      prazoTipo: "DDE",
-      descontoFinanceiroPct: 0.0,
-      descontoFinanceiroAteDias: null,
-      condicaoPagamentoLabel: "35 ddl",
-      anticipationEnabled: true,
-    },
-  },
-  {
-    codigo: "13003",
-    nome: "LATICINIOS TIROLEZ LTDA",
-    cnpj: "55.885.321/0011-84",
-    cnpjSenhaInicial: "55885321001184",
-    destinatario: "Grupo Líder",
-    modeloEntrega: "somente_cdam" as ModeloEntregaFornecedor,
-    agendaRecebimentoCdam: null,
-    filialEntregaPadrao: "2011",
-    cadastroFinanceiro: {
-      prazoPagamentoDias: 30,
-      prazoTipo: "DDE",
-      descontoFinanceiroPct: 3.0,
-      descontoFinanceiroAteDias: null,
-      condicaoPagamentoLabel: "DDE 1P 30 DIAS C/3% DESC FC",
-      anticipationEnabled: true,
-    },
-  },
-];
-
 export const getActiveSupplierCode = (): string => {
-  if (typeof window === "undefined") return DEMO_FORNECEDOR_CODIGO;
+  if (typeof window === "undefined") return "";
   return normalizarCodigoFornecedor(
-    window.sessionStorage.getItem("portal-lider-sessao-fornecedor") || DEMO_FORNECEDOR_CODIGO,
+    window.sessionStorage.getItem("portal-lider-sessao-fornecedor") || "",
   );
 };
 
@@ -246,13 +168,31 @@ export const globalDbCache: {
   transferenciasCdam: null,
 };
 
+export const clearActiveSupplierContext = () => {
+  if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem("portal-lider-sessao-fornecedor");
+  }
+  globalDbCache.fornecedor = null;
+  globalDbCache.produtos = null;
+  globalDbCache.vendas = null;
+  globalDbCache.perdas = null;
+  globalDbCache.estoque = null;
+  globalDbCache.vendasMensais = null;
+  globalDbCache.bloqueios = null;
+  globalDbCache.pedidos = null;
+  globalDbCache.faturas = null;
+  globalDbCache.contasReceber = null;
+  globalDbCache.nfePendentes = null;
+  globalDbCache.docas = null;
+  globalDbCache.conciliacao = null;
+  globalDbCache.transferenciasCdam = null;
+};
 export const fornecedor = new Proxy({} as FornecedorType, {
   get(target, prop) {
     if (globalDbCache.fornecedor) {
       return Reflect.get(globalDbCache.fornecedor, prop);
     }
-    const code = getActiveSupplierCode();
-    const active = fornecedores.find((f) => f.codigo === code) || fornecedores[0] || {} as FornecedorType;
+    const active = {} as FornecedorType;
     return Reflect.get(active, prop);
   },
 }) as unknown as FornecedorType;
@@ -333,9 +273,15 @@ for (const loja of lojas) {
   lojaPorLocal.set(loja.idLocal, loja);
 }
 
-const normalizarIdLoja = (id: string) => String(id ?? "").trim().replace(/^0+(?=\d)/, "");
+const normalizarIdLoja = (id: string) =>
+  String(id ?? "")
+    .trim()
+    .replace(/^0+(?=\d)/, "");
 
-export const lojaPorCodigo = (id: string, modo: "numero" | "local" = "numero"): Loja | undefined => {
+export const lojaPorCodigo = (
+  id: string,
+  modo: "numero" | "local" = "numero",
+): Loja | undefined => {
   const cru = String(id ?? "").trim();
   const normal = normalizarIdLoja(cru);
   if (modo === "local") return lojaPorLocal.get(cru) ?? lojaPorLocal.get(normal);
@@ -345,7 +291,11 @@ export const lojaPorCodigo = (id: string, modo: "numero" | "local" = "numero"): 
 export const normalizarParaFilial = (id: string): string => {
   const cru = String(id ?? "").trim();
   const normal = cru.replace(/^0+(?=\d)/, "");
-  const loja = lojaPorLocal.get(cru) || lojaPorLocal.get(normal) || lojaPorNumero.get(cru) || lojaPorNumero.get(normal);
+  const loja =
+    lojaPorLocal.get(cru) ||
+    lojaPorLocal.get(normal) ||
+    lojaPorNumero.get(cru) ||
+    lojaPorNumero.get(normal);
   return loja ? loja.id : normal;
 };
 
@@ -487,7 +437,9 @@ export const referenciaComercial = (produto: {
 }) => {
   const referencia = produto.referencia?.trim();
   if (referencia) return referencia;
-  return produto.familia ? `${produto.familia} · ${produto.categoria ?? ""}`.trim() : (produto.categoria ?? "");
+  return produto.familia
+    ? `${produto.familia} · ${produto.categoria ?? ""}`.trim()
+    : (produto.categoria ?? "");
 };
 
 export const descricaoComercial = (produto: {
@@ -497,174 +449,6 @@ export const descricaoComercial = (produto: {
   const marketing = produto.descricaoMarketing?.trim();
   return marketing || produto.descricao;
 };
-
-const all_produtos: Produto[] = [
-  {
-    sku: "10010",
-    codigoProdutoRms: "1314520",
-    digitoProdutoRms: "1",
-    descricao: "Nescau Chocolate Pó 400g",
-    categoria: "Achocolatados",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "13",
-    secao: "Mercearia Doce",
-    grupoCodigo: "1",
-    grupo: "Achocolatados",
-    subgrupoCodigo: "1",
-    subgrupo: "Achocolatado em pó",
-    familia: "Café da manhã",
-    papelMercadologico: "Destino",
-    precoTabela: 12.9,
-    cmvUnit: 9.1,
-    compradorCodigo: "13",
-    compradorNome: "Comprador Mercearia Doce",
-    embalagemCompra: 12,
-    tipoEmbalagemCompra: "CX",
-  },
-  {
-    sku: "10020",
-    codigoProdutoRms: "1141500",
-    digitoProdutoRms: "3",
-    descricao: "Leite Condensado Moça Lata 395g",
-    categoria: "Leites",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "6",
-    secao: "Mercearia Doce",
-    grupoCodigo: "6",
-    grupo: "Leites culinários",
-    subgrupoCodigo: "2",
-    subgrupo: "Leite condensado",
-    familia: "Sobremesas",
-    papelMercadologico: "Rotina",
-    precoTabela: 8.49,
-    cmvUnit: 6.35,
-    compradorCodigo: "13",
-    compradorNome: "Comprador Mercearia Doce",
-    embalagemCompra: 24,
-    tipoEmbalagemCompra: "CX",
-  },
-  {
-    sku: "10030",
-    codigoProdutoRms: "3461877",
-    digitoProdutoRms: "5",
-    descricao: "Biscoito Passatempo Recheado Chocolate 130g",
-    categoria: "Biscoitos",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "4",
-    secao: "Biscoitos e snacks",
-    grupoCodigo: "10",
-    grupo: "Biscoitos recheados",
-    subgrupoCodigo: "1",
-    subgrupo: "Chocolate",
-    familia: "Lanche infantil",
-    papelMercadologico: "Conveniência",
-    precoTabela: 4.29,
-    cmvUnit: 3.2,
-    compradorCodigo: "4",
-    compradorNome: "Comprador Biscoitos",
-    embalagemCompra: 30,
-    tipoEmbalagemCompra: "PCT",
-  },
-  {
-    sku: "4244",
-    codigoProdutoRms: "4244",
-    digitoProdutoRms: "0",
-    descricao: "BTD ITEM COD 4244 - Azeite Extravirgem 500ml",
-    categoria: "Azeites",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "8",
-    secao: "Mercearia Salgada",
-    grupoCodigo: "3",
-    grupo: "Óleos e Azeites",
-    subgrupoCodigo: "1",
-    subgrupo: "Azeite de Oliva",
-    familia: "Temperos",
-    papelMercadologico: "Destino",
-    precoTabela: 25.54,
-    cmvUnit: 18.2,
-    fornecedorCodigo: "704894",
-    compradorCodigo: "32",
-    compradorNome: "ORIMAR RODRIGUES",
-    embalagemCompra: 12,
-    tipoEmbalagemCompra: "CX",
-  },
-  {
-    sku: "1017",
-    codigoProdutoRms: "1017",
-    digitoProdutoRms: "4",
-    descricao: "BTD ITEM COD 1017 - Café Torrado e Moído 500g",
-    categoria: "Cafés",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "13",
-    secao: "Mercearia Doce",
-    grupoCodigo: "2",
-    grupo: "Cafés",
-    subgrupoCodigo: "1",
-    subgrupo: "Café em pó",
-    familia: "Café da manhã",
-    papelMercadologico: "Rotina",
-    precoTabela: 33.46,
-    cmvUnit: 24.1,
-    fornecedorCodigo: "704894",
-    compradorCodigo: "51",
-    compradorNome: "LEONARDO SILVA",
-    embalagemCompra: 20,
-    tipoEmbalagemCompra: "PCT",
-  },
-  {
-    sku: "3213",
-    codigoProdutoRms: "3213",
-    digitoProdutoRms: "2",
-    descricao: "BTD ITEM COD 3213 - Arroz Parboilizado T1 5kg",
-    categoria: "Arroz",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "12",
-    secao: "Mercearia Salgada",
-    grupoCodigo: "1",
-    grupo: "Cereais",
-    subgrupoCodigo: "1",
-    subgrupo: "Arroz",
-    familia: "Alimentação Básica",
-    papelMercadologico: "Destino",
-    precoTabela: 31.93,
-    cmvUnit: 22.8,
-    fornecedorCodigo: "704894",
-    compradorCodigo: "49",
-    compradorNome: "IZABEL GOMES",
-    embalagemCompra: 6,
-    tipoEmbalagemCompra: "PCT",
-  },
-  {
-    sku: "37",
-    codigoProdutoRms: "37",
-    digitoProdutoRms: "5",
-    descricao: "BTD ITEM COD 37 - Feijão Preto 1kg",
-    categoria: "Grãos",
-    departamentoCodigo: "100",
-    departamento: "Mercearia",
-    secaoCodigo: "12",
-    secao: "Mercearia Salgada",
-    grupoCodigo: "1",
-    grupo: "Cereais",
-    subgrupoCodigo: "2",
-    subgrupo: "Feijão",
-    familia: "Alimentação Básica",
-    papelMercadologico: "Rotina",
-    precoTabela: 32.51,
-    cmvUnit: 23.4,
-    fornecedorCodigo: "704894",
-    compradorCodigo: "49",
-    compradorNome: "IZABEL GOMES",
-    embalagemCompra: 30,
-    tipoEmbalagemCompra: "PCT",
-  },
-];
 
 const createDynamicArrayProxy = <T>(getSource: () => T[]): T[] => {
   return new Proxy([], {
@@ -692,10 +476,7 @@ const createDynamicArrayProxy = <T>(getSource: () => T[]): T[] => {
 };
 
 export const produtosTodosDoFornecedor = (): Produto[] => {
-  if (globalDbCache.produtos) return globalDbCache.produtos;
-  return all_produtos.filter(
-    (p) => (p.fornecedorCodigo ?? "4050") === getActiveSupplierCode(),
-  );
+  return globalDbCache.produtos ?? [];
 };
 
 export const produtos = createDynamicArrayProxy(() => {
@@ -807,396 +588,11 @@ export type Pedido = {
   itens: PedidoItem[];
 };
 
-const hoje = new Date();
-const d = (offset: number) => format(addDays(hoje, offset), "yyyy-MM-dd");
-
-const all_pedidos: Pedido[] = [
-  {
-    numero: "PC-884210",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra:
-        "Pedido emitido diretamente ao fornecedor; a entrada fiscal ocorre por agenda de compra/recebimento.",
-    },
-    emissao: d(-6),
-    entregaPrevista: d(3),
-    lojaId: "01",
-    status: "Aberto",
-    itens: [
-      { sku: "10010", quantidadePedida: 480, quantidadeFaturada: 0, precoUnitario: 12.4 },
-      { sku: "10020", quantidadePedida: 720, quantidadeFaturada: 0, precoUnitario: 8.1 },
-    ],
-  },
-  {
-    numero: "PC-884198",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra:
-        "Pedido faturado pelo fornecedor contra filial/loja; deve alimentar recebimento e financeiro do fornecedor.",
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-4),
-    entradaCdam: d(-5),
-    lojaId: "05",
-    status: "Entregue",
-    itens: [
-      { sku: "10010", quantidadePedida: 600, quantidadeFaturada: 600, precoUnitario: 12.25 },
-      { sku: "10030", quantidadePedida: 1200, quantidadeFaturada: 1200, precoUnitario: 4.05 },
-    ],
-  },
-  {
-    numero: "PC-884176",
-    destino: "CDAM",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "CDAM - Deposito Central",
-    agenda: {
-      contexto: "Transferencia/CDAM",
-      agendaEntrada: "66",
-      agendaParidade: "65 / 148",
-      regra:
-        "Pedido abastece o deposito central; depois pode gerar transito/transferencia para lojas, sem tratar como venda direta da loja.",
-    },
-    emissao: d(-21),
-    entregaPrevista: d(-2),
-    entradaCdam: d(-10),
-    lojaId: "12",
-    status: "Entregue",
-    itens: [
-      { sku: "10020", quantidadePedida: 960, quantidadeFaturada: 360, precoUnitario: 8.2 },
-      { sku: "10030", quantidadePedida: 840, quantidadeFaturada: 0, precoUnitario: 4.12 },
-    ],
-  },
-  {
-    numero: "PC-884166",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "CDAM - Deposito Central",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido direto ao fornecedor com entrega fisica registrada no CDAM.",
-    },
-    emissao: d(-24),
-    entregaPrevista: d(-14),
-    entradaCdam: d(-16),
-    lojaId: "13",
-    status: "Entregue",
-    itens: [
-      { sku: "10010", quantidadePedida: 520, quantidadeFaturada: 500, precoUnitario: 12.18 },
-      { sku: "10020", quantidadePedida: 480, quantidadeFaturada: 480, precoUnitario: 8.05 },
-    ],
-  },
-  {
-    numero: "PC-884155",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "CDAM - Deposito Central",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra:
-        "Pedido direto ao fornecedor com entrada no deposito central para abastecimento posterior.",
-    },
-    emissao: d(-31),
-    entregaPrevista: d(-21),
-    entradaCdam: d(-23),
-    lojaId: "13",
-    status: "Entregue",
-    itens: [
-      { sku: "10030", quantidadePedida: 1800, quantidadeFaturada: 1720, precoUnitario: 4.01 },
-    ],
-  },
-  {
-    numero: "PC-884149",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "CDAM - Deposito Central",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido direto ao fornecedor entregue no CDAM e elegivel para SLA logistico.",
-    },
-    emissao: d(-38),
-    entregaPrevista: d(-29),
-    entradaCdam: d(-30),
-    lojaId: "13",
-    status: "Entregue",
-    itens: [{ sku: "10020", quantidadePedida: 900, quantidadeFaturada: 900, precoUnitario: 8.08 }],
-  },
-  {
-    numero: "PC-884140",
-    destino: "CDAM",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "CDAM - Deposito Central",
-    agenda: {
-      contexto: "Transferencia/CDAM",
-      agendaEntrada: "66",
-      agendaParidade: "65 / 148",
-      regra:
-        "Pedido cancelado para o deposito central; manter separado dos pedidos diretos ao fornecedor para nao contaminar reposicao loja.",
-    },
-    emissao: d(-30),
-    entregaPrevista: d(-18),
-    lojaId: "01",
-    status: "Cancelado",
-    itens: [{ sku: "10010", quantidadePedida: 240, quantidadeFaturada: 0, precoUnitario: 12.6 }],
-  },
-  // Pedidos BTD Distribuidora (704894)
-  {
-    numero: "PC-990010",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido emitido diretamente ao fornecedor BTD.",
-    },
-    emissao: d(-5),
-    entregaPrevista: d(2),
-    lojaId: "01",
-    status: "Aberto",
-    itens: [
-      { sku: "4244", quantidadePedida: 500, quantidadeFaturada: 0, precoUnitario: 25.54 },
-      { sku: "1017", quantidadePedida: 300, quantidadeFaturada: 0, precoUnitario: 33.46 },
-    ],
-  },
-  {
-    numero: "PC-990020",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "CDAM - Deposito Central",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado por BTD.",
-    },
-    emissao: d(-12),
-    entregaPrevista: d(-2),
-    entradaCdam: d(-3),
-    lojaId: "12",
-    status: "Entregue",
-    itens: [
-      { sku: "3213", quantidadePedida: 1000, quantidadeFaturada: 1000, precoUnitario: 31.93 },
-      { sku: "37", quantidadePedida: 1500, quantidadeFaturada: 1450, precoUnitario: 32.51 },
-    ],
-  },
-  {
-    numero: "PC-1123713",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Consul."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "35",
-    status: "Entregue",
-    itens: [
-      { sku: "3184972", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 1649.0 }
-    ]
-  },
-  {
-    numero: "PC-1126056",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Panasonic."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "35",
-    status: "Entregue",
-    itens: [
-      { sku: "3127566", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 4189.0 }
-    ]
-  },
-  {
-    numero: "PC-1126062",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Esmaltec."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "35",
-    status: "Entregue",
-    itens: [
-      { sku: "3041877", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 979.0 }
-    ]
-  },
-  {
-    numero: "PC-1124390",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Panasonic e Consul."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "35",
-    status: "Entregue",
-    itens: [
-      { sku: "3033157", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 1599.0 },
-      { sku: "3072750", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 2959.0 }
-    ]
-  },
-  {
-    numero: "PC-1123557",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido em aberto pendente de faturamento pela Dako."
-    },
-    emissao: d(-6),
-    entregaPrevista: d(4),
-    lojaId: "35",
-    status: "Aberto",
-    itens: [
-      { sku: "3187843", quantidadePedida: 1, quantidadeFaturada: 0, precoUnitario: 1989.0 }
-    ]
-  },
-  {
-    numero: "PC-1123560",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido em aberto pendente de faturamento pela Atlas."
-    },
-    emissao: d(-6),
-    entregaPrevista: d(4),
-    lojaId: "35",
-    status: "Aberto",
-    itens: [
-      { sku: "3151113", quantidadePedida: 1, quantidadeFaturada: 0, precoUnitario: 1439.0 }
-    ]
-  },
-  {
-    numero: "PC-1124470",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Panasonic."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "78",
-    status: "Entregue",
-    itens: [
-      { sku: "3072752", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 2669.0 }
-    ]
-  },
-  {
-    numero: "PC-1126818",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Brastemp."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "35",
-    status: "Entregue",
-    itens: [
-      { sku: "219992", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 1099.0 }
-    ]
-  },
-  {
-    numero: "PC-1124432",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido entregue e faturado pela Clarice."
-    },
-    emissao: d(-14),
-    entregaPrevista: d(-10),
-    lojaId: "60",
-    status: "Entregue",
-    itens: [
-      { sku: "3245593", quantidadePedida: 1, quantidadeFaturada: 1, precoUnitario: 569.0 }
-    ]
-  },
-  {
-    numero: "PC-1124172",
-    destino: "Fornecedor",
-    origemOperacional: "Compras Grupo Lider",
-    destinoOperacional: "Fornecedor direto",
-    agenda: {
-      contexto: "Compras/Recebimento",
-      agendaEntrada: "Recebimento de NF-e",
-      agendaParidade: "Conforme origem fiscal da compra",
-      regra: "Pedido em aberto pendente de faturamento pela Clarice."
-    },
-    emissao: d(-6),
-    entregaPrevista: d(4),
-    lojaId: "60",
-    status: "Aberto",
-    itens: [
-      { sku: "3245593", quantidadePedida: 1, quantidadeFaturada: 0, precoUnitario: 569.0 }
-    ]
-  }
-];
-
 export const pedidos = createDynamicArrayProxy(() => {
   const activeSkus = new Set(produtos.map((p) => p.sku));
   const fonte = globalDbCache.pedidos
     ? globalDbCache.pedidos.filter((p) => !lojaForaDoPortalFornecedor(p.lojaId))
-    : all_pedidos.map((p) => ({
-        ...p,
-        numero: p.numero.startsWith("PC-") ? p.numero.substring(3) : p.numero,
-      }));
+    : [];
   return fonte
     .map((p) => ({
       ...p,
@@ -1272,51 +668,11 @@ export type VendaItem = {
   valorUnitario: number;
 };
 
-function gerarVendas(): VendaItem[] {
-  const rows: VendaItem[] = [];
-  for (let dia = 89; dia >= 0; dia--) {
-    for (const loja of lojas) {
-      for (const produto of all_produtos) {
-        const base = produto.sku === "10030" ? 46 : produto.sku === "10020" ? 28 : 19;
-        const variacao = ((dia * 7 + Number(loja.id) * 13 + Number(produto.sku)) % 17) - 6;
-        const quantidade = Math.max(3, base + variacao);
-        const ajuste = ((dia + Number(loja.id)) % 5) * 0.07;
-        rows.push({
-          data: d(-dia),
-          lojaId: loja.id,
-          sku: produto.sku,
-          quantidade,
-          valorUnitario: Number((produto.precoTabela + ajuste).toFixed(2)),
-        });
-      }
-    }
-  }
-  return rows;
-}
-
-const all_vendas: VendaItem[] = gerarVendas();
-
 export const vendas = createDynamicArrayProxy(() => {
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  const fonte = globalDbCache.vendas
-    ? globalDbCache.vendas
-    : all_vendas.filter((v) => activeSkus.has(v.sku));
+  const fonte = globalDbCache.vendas ? globalDbCache.vendas : [];
   return fonte.filter((v) => activeSkus.has(v.sku) && !lojaForaDoPortalFornecedor(v.lojaId));
 });
-
-const all_vendasMensais = (code: string) => {
-  const faturamento = code === "704894" ? 2070000 : 418000;
-  const volume = code === "704894" ? 150000 : 31500;
-  return Array.from({ length: 12 }, (_, i) => {
-    const mes = subMonths(hoje, 11 - i);
-    const fator = 1 + i * 0.08;
-    return {
-      mes: format(mes, "MMM/yy", { locale: ptBR }),
-      faturamento: Number((faturamento * fator).toFixed(2)),
-      volume: Math.round(volume * fator),
-    };
-  });
-};
 
 export const vendasMensais = new Proxy([], {
   get(target, prop) {
@@ -1328,7 +684,7 @@ export const vendasMensais = new Proxy([], {
       }
       return value;
     }
-    const list = all_vendasMensais(getActiveSupplierCode());
+    const list = globalDbCache.vendasMensais ?? [];
     const value = Reflect.get(list, prop);
     if (typeof value === "function") {
       return value.bind(list);
@@ -1340,7 +696,7 @@ export const vendasMensais = new Proxy([], {
       const list = globalDbCache.vendasMensais;
       return Reflect.getOwnPropertyDescriptor(list, prop);
     }
-    const list = all_vendasMensais(getActiveSupplierCode());
+    const list = globalDbCache.vendasMensais ?? [];
     return Reflect.getOwnPropertyDescriptor(list, prop);
   },
   ownKeys() {
@@ -1348,7 +704,7 @@ export const vendasMensais = new Proxy([], {
       const list = globalDbCache.vendasMensais;
       return Reflect.ownKeys(list);
     }
-    const list = all_vendasMensais(getActiveSupplierCode());
+    const list = globalDbCache.vendasMensais ?? [];
     return Reflect.ownKeys(list);
   },
 }) as VendaMensal[];
@@ -1360,37 +716,9 @@ export type EstoqueLinha = {
   estoqueAtual: number;
 };
 
-const all_estoque: EstoqueLinha[] = [
-  // Nestlé
-  { sku: "10010", lojaId: "01", estoqueMinimo: 120, estoqueAtual: 0 },
-  { sku: "10010", lojaId: "05", estoqueMinimo: 120, estoqueAtual: 96 },
-  { sku: "10010", lojaId: "12", estoqueMinimo: 100, estoqueAtual: 340 },
-  { sku: "10020", lojaId: "01", estoqueMinimo: 180, estoqueAtual: 420 },
-  { sku: "10020", lojaId: "05", estoqueMinimo: 180, estoqueAtual: 150 },
-  { sku: "10020", lojaId: "12", estoqueMinimo: 160, estoqueAtual: 0 },
-  { sku: "10030", lojaId: "01", estoqueMinimo: 240, estoqueAtual: 610 },
-  { sku: "10030", lojaId: "05", estoqueMinimo: 240, estoqueAtual: 238 },
-  { sku: "10030", lojaId: "12", estoqueMinimo: 220, estoqueAtual: 705 },
-  // BTD
-  { sku: "4244", lojaId: "01", estoqueMinimo: 200, estoqueAtual: 180 },
-  { sku: "4244", lojaId: "05", estoqueMinimo: 200, estoqueAtual: 0 },
-  { sku: "4244", lojaId: "12", estoqueMinimo: 200, estoqueAtual: 350 },
-  { sku: "1017", lojaId: "01", estoqueMinimo: 150, estoqueAtual: 140 },
-  { sku: "1017", lojaId: "05", estoqueMinimo: 150, estoqueAtual: 200 },
-  { sku: "1017", lojaId: "12", estoqueMinimo: 150, estoqueAtual: 0 },
-  { sku: "3213", lojaId: "01", estoqueMinimo: 300, estoqueAtual: 400 },
-  { sku: "3213", lojaId: "05", estoqueMinimo: 300, estoqueAtual: 50 },
-  { sku: "3213", lojaId: "12", estoqueMinimo: 300, estoqueAtual: 600 },
-  { sku: "37", lojaId: "01", estoqueMinimo: 250, estoqueAtual: 100 },
-  { sku: "37", lojaId: "05", estoqueMinimo: 250, estoqueAtual: 500 },
-  { sku: "37", lojaId: "12", estoqueMinimo: 250, estoqueAtual: 0 },
-];
-
 export const estoque = createDynamicArrayProxy(() => {
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  const fonte = globalDbCache.estoque
-    ? globalDbCache.estoque
-    : all_estoque.filter((e) => activeSkus.has(e.sku));
+  const fonte = globalDbCache.estoque ? globalDbCache.estoque : [];
   return fonte.filter((e) => activeSkus.has(e.sku) && !lojaForaDoPortalFornecedor(e.lojaId));
 });
 
@@ -1435,7 +763,7 @@ export const statusEstoque = (linha: EstoqueLinha): StatusEstoque => {
 
   if (linha.estoqueAtual < mediaDiaria) return "Ruptura";
   if (linha.estoqueAtual <= minimo) return "Atenção";
-  
+
   const cobertura = coberturaDias(linha.estoqueAtual, mediaMensal);
   if (cobertura !== null && cobertura > COBERTURA_EXCESSIVA_DIAS) return "Excesso";
   return "Confortável";
@@ -1471,7 +799,9 @@ export const mapaVendaMediaMensal = (): Map<string, number> => {
   }
 
   const janela = JANELA_VENDA_ESTOQUE_DIAS;
-  const limiteDataISO = new Date(new Date(maxData + "T12:00:00").getTime() - janela * 24 * 60 * 60 * 1000)
+  const limiteDataISO = new Date(
+    new Date(maxData + "T12:00:00").getTime() - janela * 24 * 60 * 60 * 1000,
+  )
     .toISOString()
     .slice(0, 10);
   const fatorMensal = 30 / janela;
@@ -1480,7 +810,10 @@ export const mapaVendaMediaMensal = (): Map<string, number> => {
     const v = fonte[i];
     if (v.data >= limiteDataISO && v.data <= maxData) {
       const filId = normalizarParaFilial(v.lojaId);
-      map.set(v.sku + "_" + filId, (map.get(v.sku + "_" + filId) || 0) + v.quantidade * fatorMensal);
+      map.set(
+        v.sku + "_" + filId,
+        (map.get(v.sku + "_" + filId) || 0) + v.quantidade * fatorMensal,
+      );
     }
   }
 
@@ -1509,10 +842,7 @@ export type DirecaoNota = "fornecedor_para_lider" | "outra";
 
 /** Natureza operacional do documento no RMS (não misturar com transferência loja). */
 export type NaturezaDocumento =
-  | "recebimento_fornecedor_cdam"
-  | "recebimento_fornecedor_loja"
-  | "transferencia_interna"
-  | "outra";
+  "recebimento_fornecedor_cdam" | "recebimento_fornecedor_loja" | "transferencia_interna" | "outra";
 
 export type Fatura = {
   id: string;
@@ -1570,158 +900,6 @@ export const calcularDescontoFinanceiro = (
   return arredondar2(valor * (cadastro.descontoFinanceiroPct / 100));
 };
 
-type FaturaInput = {
-  id: string;
-  numeroNota: string;
-  emissao: string;
-  valor: number;
-  status: "A vencer" | "Pago";
-  lojaId: string;
-  fornecedorCodigo?: string;
-  direcao?: DirecaoNota;
-  destinatario?: string;
-  agendaRms?: number;
-  natureza?: NaturezaDocumento;
-};
-
-const montarFatura = (input: FaturaInput): Fatura => {
-  const cadastro = fornecedor.cadastroFinanceiro;
-  const descontoFinanceiro = calcularDescontoFinanceiro(input.valor, cadastro);
-  return {
-    id: input.id,
-    numeroNota: input.numeroNota,
-    emissao: input.emissao,
-    dataPagamento:
-      calcularDataPagamento(
-        input.emissao,
-        cadastro.prazoPagamentoDias,
-        cadastro.prazoTipo,
-      ) ?? "",
-    valor: input.valor,
-    descontoFinanceiro,
-    valorLiquido: arredondar2(input.valor - descontoFinanceiro),
-    status: input.status,
-    lojaId: input.lojaId,
-    fornecedorCodigo: input.fornecedorCodigo ?? fornecedor.codigo,
-    direcao: input.direcao ?? "fornecedor_para_lider",
-    destinatario: input.destinatario ?? fornecedor.destinatario,
-    agendaRms: input.agendaRms ?? agendasRms.recebimentoFornecedorCdam,
-    natureza: input.natureza ?? "recebimento_fornecedor_cdam",
-  };
-};
-
-/**
- * Base bruta (simula ETL).
- * Nestlé entrega só no CDAM/depósito — notas válidas usam filial 201 + agenda 28.
- * Inclui deliberadamente ruído (outro fornecedor, transferência, loja) para o filtro provar exclusão.
- */
-const faturasBrutas: FaturaInput[] = [
-  {
-    id: "FAT-9001",
-    numeroNota: "NF 118420",
-    emissao: d(-8),
-    valor: 124500,
-    status: "A vencer",
-    lojaId: "201",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  {
-    id: "FAT-9002",
-    numeroNota: "NF 118455",
-    emissao: d(-5),
-    valor: 86300.5,
-    status: "A vencer",
-    lojaId: "201",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  {
-    id: "FAT-9003",
-    numeroNota: "NF 118477",
-    emissao: d(-3),
-    valor: 152980.75,
-    status: "A vencer",
-    lojaId: "201",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  {
-    id: "FAT-9004",
-    numeroNota: "NF 118501",
-    emissao: d(-1),
-    valor: 64210.3,
-    status: "A vencer",
-    lojaId: "201",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  {
-    id: "FAT-8971",
-    numeroNota: "NF 118330",
-    emissao: d(-40),
-    valor: 98750,
-    status: "Pago",
-    lojaId: "201",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  {
-    id: "FAT-8962",
-    numeroNota: "NF 118298",
-    emissao: d(-52),
-    valor: 111230.4,
-    status: "Pago",
-    lojaId: "201",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  // Outro fornecedor — não deve aparecer
-  {
-    id: "FAT-OUTRO-1",
-    numeroNota: "NF 990001",
-    emissao: d(-4),
-    valor: 50000,
-    status: "A vencer",
-    lojaId: "201",
-    fornecedorCodigo: "9999",
-    direcao: "fornecedor_para_lider",
-    destinatario: "Grupo Líder",
-    agendaRms: agendasRms.recebimentoFornecedorCdam,
-    natureza: "recebimento_fornecedor_cdam",
-  },
-  // Transferência interna CD→loja (agendas 65/66/148) — NÃO é nota do fornecedor
-  {
-    id: "FAT-TRF-1",
-    numeroNota: "TRF 660012",
-    emissao: d(-2),
-    valor: 22000,
-    status: "A vencer",
-    lojaId: "01",
-    fornecedorCodigo: "4050",
-    direcao: "fornecedor_para_lider",
-    destinatario: "Grupo Líder",
-    agendaRms: agendasRms.transferenciaEntrada,
-    natureza: "transferencia_interna",
-  },
-  // Nota indevida em loja (não deve aparecer para fornecedor somente_cdam)
-  {
-    id: "FAT-LOJA-1",
-    numeroNota: "NF 770001",
-    emissao: d(-3),
-    valor: 15000,
-    status: "A vencer",
-    lojaId: "05",
-    fornecedorCodigo: "4050",
-    direcao: "fornecedor_para_lider",
-    destinatario: "Grupo Líder",
-    agendaRms: agendasRms.entradaNfGenericaOuDev,
-    natureza: "outra",
-  },
-];
-
-export const faturas: Fatura[] = faturasBrutas.map(montarFatura);
-
 const agendasTransferencia = new Set<number>([
   agendasRms.transferenciaSaida,
   agendasRms.transferenciaEntrada,
@@ -1741,20 +919,7 @@ export const faturasDoFornecedor = (codigoFornecedor: string = fornecedor.codigo
       (f) => f.fornecedorCodigo === code && !agendasTransferencia.has(f.agendaRms),
     );
   }
-  const activeForn = fornecedor;
-
-  return faturas.filter((f) => {
-    if (f.fornecedorCodigo !== code) return false;
-    if (f.direcao !== "fornecedor_para_lider") return false;
-    if (f.destinatario !== activeForn.destinatario) return false;
-    if (f.natureza !== "recebimento_fornecedor_cdam") return false;
-    if (agendasTransferencia.has(f.agendaRms)) return false;
-    if (activeForn.modeloEntrega === "somente_cdam") {
-      const filial = lojaPorCodigo(f.lojaId) ?? lojaPorCodigo(f.lojaId, "local");
-      if (filial?.tipo !== "D") return false;
-    }
-    return true;
-  });
+  return [];
 };
 
 export type ContaReceberStatus = "Aberto" | "Programado" | "Em análise" | "Descontado";
@@ -1776,104 +941,6 @@ export type ContaReceberFornecedor = {
   fornecedorCodigo: string;
 };
 
-export const contasReceberFornecedor: ContaReceberFornecedor[] = [
-  {
-    id: "CR-240801",
-    documento: "ACORDO 08/2026",
-    tipo: "Acordo comercial",
-    descricao: "Acordo de exposição em tabloide e ponta de gôndola",
-    emissao: d(-9),
-    competencia: "08/2026",
-    vencimento: d(20),
-    valor: 18500,
-    status: "Programado",
-    abatimentoProximoPagamento: true,
-    proximoPagamentoId: "FAT-9001",
-    origem: "Comercial",
-    observacao: "Abatimento autorizado para o próximo pagamento aberto.",
-    fornecedorCodigo: fornecedor.codigo,
-  },
-  {
-    id: "CR-240802",
-    documento: "DEV 430118",
-    tipo: "Devolução",
-    descricao: "Devolução de mercadoria recebida no CDAM",
-    emissao: d(-7),
-    competencia: "08/2026",
-    vencimento: d(12),
-    valor: 7260.4,
-    status: "Programado",
-    abatimentoProximoPagamento: true,
-    proximoPagamentoId: "FAT-9001",
-    origem: "Logística CDAM",
-    observacao: "Devolução vinculada ao recebimento no depósito.",
-    fornecedorCodigo: fornecedor.codigo,
-  },
-  {
-    id: "CR-240803",
-    documento: "AVARIA 7721",
-    tipo: "Avaria",
-    descricao: "Avaria operacional identificada na conferência",
-    emissao: d(-5),
-    competencia: "08/2026",
-    vencimento: d(14),
-    valor: 2180.75,
-    status: "Aberto",
-    abatimentoProximoPagamento: true,
-    proximoPagamentoId: "FAT-9001",
-    origem: "Conferência",
-    observacao: "Pendente de aceite documental, previsto para desconto.",
-    fornecedorCodigo: fornecedor.codigo,
-  },
-  {
-    id: "CR-240804",
-    documento: "BONIF 08/2026",
-    tipo: "Bonificação",
-    descricao: "Bonificação comercial por campanha sell-out",
-    emissao: d(-3),
-    competencia: "08/2026",
-    vencimento: d(25),
-    valor: 12400,
-    status: "Em análise",
-    abatimentoProximoPagamento: false,
-    origem: "Trade marketing",
-    observacao: "Aguardando validação comercial antes de programar abatimento.",
-    fornecedorCodigo: fornecedor.codigo,
-  },
-  {
-    id: "CR-240721",
-    documento: "VERBA 07/2026",
-    tipo: "Verba comercial",
-    descricao: "Verba de aniversário Líder liquidada no pagamento anterior",
-    emissao: d(-28),
-    competencia: "07/2026",
-    vencimento: d(-4),
-    valor: 9800,
-    status: "Descontado",
-    abatimentoProximoPagamento: false,
-    proximoPagamentoId: "FAT-8971",
-    origem: "Comercial",
-    observacao: "Baixado por desconto em pagamento já liquidado.",
-    fornecedorCodigo: fornecedor.codigo,
-  },
-  {
-    id: "CR-OUTRO-1",
-    documento: "ACORDO OUTRO",
-    tipo: "Acordo comercial",
-    descricao: "Registro de outro fornecedor para provar filtro do portal",
-    emissao: d(-4),
-    competencia: "08/2026",
-    vencimento: d(18),
-    valor: 5000,
-    status: "Programado",
-    abatimentoProximoPagamento: true,
-    proximoPagamentoId: "FAT-OUTRO-1",
-    origem: "Comercial",
-    observacao: "Não deve aparecer para o fornecedor autenticado.",
-    fornecedorCodigo: "9999",
-  },
-];
-
 export const contasReceberDoFornecedor = (
   codigoFornecedor: string = fornecedor.codigo,
 ): ContaReceberFornecedor[] => {
@@ -1881,14 +948,13 @@ export const contasReceberDoFornecedor = (
   const hoje = new Date();
   const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
   const aberta = (conta: ContaReceberFornecedor) =>
-    conta.status !== "Descontado" &&
-    (!conta.vencimento || conta.vencimento >= hojeIso);
+    conta.status !== "Descontado" && (!conta.vencimento || conta.vencimento >= hojeIso);
   if (globalDbCache.contasReceber) {
     return globalDbCache.contasReceber.filter(
       (conta) => conta.fornecedorCodigo === code && aberta(conta),
     );
   }
-  return contasReceberFornecedor.filter((conta) => conta.fornecedorCodigo === code && aberta(conta));
+  return [];
 };
 
 /** Taxa mensal candidata de antecipação (motor separado do desconto financeiro do cadastro). */
@@ -1919,38 +985,6 @@ export type Agendamento = {
 
 export const horariosDisponiveis = ["07:00", "08:30", "10:00", "11:30", "13:30", "15:00", "16:30"];
 
-export const agendamentos: Agendamento[] = [
-  {
-    id: "AG-2201",
-    chaveNfe: "15250860409075000152550010001184200019584127",
-    lojaId: "01",
-    data: d(2),
-    horario: "08:30",
-    status: "Confirmado",
-  },
-  {
-    id: "AG-2202",
-    chaveNfe: "15250860409075000152550010001184550019584231",
-    lojaId: "05",
-    data: d(5),
-    horario: "13:30",
-    status: "Confirmado",
-  },
-];
-
-export const notasAguardandoAgendamento = [
-  {
-    numeroNota: "NF 118477",
-    chaveNfe: "15250860409075000152550010001184770019584399",
-    lojaId: "12",
-  },
-  {
-    numeroNota: "NF 118501",
-    chaveNfe: "15250860409075000152550010001185010019584512",
-    lojaId: "01",
-  },
-];
-
 export type Perda = {
   fornecedorCodigo: string;
   lojaId: string;
@@ -1964,135 +998,9 @@ export type Perda = {
   ocorrencias: number;
 };
 
-const all_perdas: Perda[] = [
-  // Dados Reais coletados do Fornecedor 704894 (BTD)
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "2011",
-    lojaNome: "Loja 2011 - Lider Augusto Montenegro",
-    sku: "4244",
-    produtoDescricao: "BTD ITEM COD 4244 - Azeite Extravirgem 500ml",
-    quantidade: 1589.48,
-    valorUnitario: 25.54,
-    valorTotal: 40598.12,
-    data: "2026-08-01",
-    ocorrencias: 19,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "337",
-    lojaNome: "Loja 337 - Lider Castanhal",
-    sku: "1017",
-    produtoDescricao: "BTD ITEM COD 1017 - Café Torrado e Moído 500g",
-    quantidade: 389.61,
-    valorUnitario: 33.46,
-    valorTotal: 13036.14,
-    data: "2026-08-02",
-    ocorrencias: 146,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "183",
-    lojaNome: "Loja 183 - Lider Marabá",
-    sku: "3213",
-    produtoDescricao: "BTD ITEM COD 3213 - Arroz Parboilizado T1 5kg",
-    quantidade: 286.28,
-    valorUnitario: 31.93,
-    valorTotal: 9142.88,
-    data: "2026-08-03",
-    ocorrencias: 21,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "426",
-    lojaNome: "Loja 426 - Lider Cidade Nova",
-    sku: "37",
-    produtoDescricao: "BTD ITEM COD 37 - Feijão Preto 1kg",
-    quantidade: 235.64,
-    valorUnitario: 32.51,
-    valorTotal: 7661.52,
-    data: "2026-08-04",
-    ocorrencias: 39,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "175",
-    lojaNome: "Loja 175 - Lider Icoaraci",
-    sku: "4244",
-    produtoDescricao: "BTD ITEM COD 4244 - Azeite Extravirgem 500ml",
-    quantidade: 51.64,
-    valorUnitario: 36.29,
-    valorTotal: 1873.98,
-    data: "2026-08-05",
-    ocorrencias: 56,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "400",
-    lojaNome: "Loja 400 - Lider Ananindeua",
-    sku: "1017",
-    produtoDescricao: "BTD ITEM COD 1017 - Café Torrado e Moído 500g",
-    quantidade: 25.05,
-    valorUnitario: 32.09,
-    valorTotal: 803.84,
-    data: "2026-08-05",
-    ocorrencias: 16,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "116",
-    lojaNome: "Loja 116 - Lider Reduto",
-    sku: "3213",
-    produtoDescricao: "BTD ITEM COD 3213 - Arroz Parboilizado T1 5kg",
-    quantidade: 22.2,
-    valorUnitario: 35.11,
-    valorTotal: 779.54,
-    data: "2026-08-04",
-    ocorrencias: 20,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "248",
-    lojaNome: "Loja 248 - Lider Pedreira",
-    sku: "37",
-    produtoDescricao: "BTD ITEM COD 37 - Feijão Preto 1kg",
-    quantidade: 21.94,
-    valorUnitario: 32.68,
-    valorTotal: 717.03,
-    data: "2026-08-03",
-    ocorrencias: 20,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "280",
-    lojaNome: "Loja 280 - Lider Guamá",
-    sku: "4244",
-    produtoDescricao: "BTD ITEM COD 4244 - Azeite Extravirgem 500ml",
-    quantidade: 17.62,
-    valorUnitario: 29.29,
-    valorTotal: 516.18,
-    data: "2026-08-02",
-    ocorrencias: 3,
-  },
-  {
-    fornecedorCodigo: "704894",
-    lojaId: "78",
-    lojaNome: "Loja 78 - Lider Canudos",
-    sku: "1017",
-    produtoDescricao: "BTD ITEM COD 1017 - Café Torrado e Moído 500g",
-    quantidade: 10.31,
-    valorUnitario: 32.51,
-    valorTotal: 335.22,
-    data: "2026-08-01",
-    ocorrencias: 7,
-  },
-];
-
 export const perdas = createDynamicArrayProxy(() => {
   const activeSkus = new Set(produtos.map((p) => p.sku));
-  const fonte = globalDbCache.perdas
-    ? globalDbCache.perdas
-    : all_perdas.filter((p) => p.fornecedorCodigo === getActiveSupplierCode());
+  const fonte = globalDbCache.perdas ?? [];
   return fonte.filter((p) => activeSkus.has(p.sku) && !lojaForaDoPortalFornecedor(p.lojaId));
 });
 
@@ -2103,184 +1011,3 @@ export const obterBloqueioProdutoLoja = (sku: string, lojaId: string): number =>
   }
   return 0;
 };
-
-
-export type RebaixaMock = {
-  id: string;
-  sku: string;
-  descricao: string;
-  lojaId: string;
-  lojaNome: string;
-  precoVendaAnterior: number;
-  precoVendaOferta: number;
-  descontoPercentual: number;
-  dataInicio: string;
-  dataFim: string;
-  tipoRebaixa: string;
-  quantidadeVenda: number;
-  reembolsoEstimado: number;
-};
-
-export type OfertaValidadeMock = {
-  id: string;
-  sku: string;
-  descricao: string;
-  lojaId: string;
-  lojaNome: string;
-  precoNormal: number;
-  precoOferta: number;
-  dataVencimento: string;
-  dataInicio: string;
-  dataFim: string;
-  quantidadeInicial: number;
-  quantidadeVendida: number;
-  status: 'Ativa' | 'Próxima ao Fim' | 'Expirada';
-};
-
-export const nestleRebaixasMock: RebaixaMock[] = [
-  {
-    id: '1',
-    sku: '3566870',
-    descricao: 'Ninho Soluvel Inst Lata 380g',
-    lojaId: '1',
-    lojaNome: 'L01 LIDER CONDOR',
-    precoVendaAnterior: 18.90,
-    precoVendaOferta: 15.58,
-    descontoPercentual: 17.5,
-    dataInicio: '2026-08-10',
-    dataFim: '2026-09-10',
-    tipoRebaixa: 'Margem Garantida',
-    quantidadeVenda: 450,
-    reembolsoEstimado: 1494.00,
-  },
-  {
-    id: '2',
-    sku: '3566870',
-    descricao: 'Ninho Soluvel Inst Lata 380g',
-    lojaId: '4',
-    lojaNome: 'L04 LIDER OBIDOS',
-    precoVendaAnterior: 18.90,
-    precoVendaOferta: 15.58,
-    descontoPercentual: 17.5,
-    dataInicio: '2026-08-10',
-    dataFim: '2026-09-10',
-    tipoRebaixa: 'Margem Garantida',
-    quantidadeVenda: 120,
-    reembolsoEstimado: 398.40,
-  },
-  {
-    id: '3',
-    sku: '2368706',
-    descricao: 'Cereal Mucilon Milho Sachê 180g',
-    lojaId: '2',
-    lojaNome: 'L02 LIDER ALCINDO CACELA',
-    precoVendaAnterior: 9.50,
-    precoVendaOferta: 7.90,
-    descontoPercentual: 16.8,
-    dataInicio: '2026-08-15',
-    dataFim: '2026-09-15',
-    tipoRebaixa: 'Acordo Comercial',
-    quantidadeVenda: 890,
-    reembolsoEstimado: 1424.00,
-  },
-  {
-    id: '4',
-    sku: '33061424',
-    descricao: 'Chocolate KitKat Milk 41,5g',
-    lojaId: '3',
-    lojaNome: 'L03 LIDER DOCA',
-    precoVendaAnterior: 4.50,
-    precoVendaOferta: 3.49,
-    descontoPercentual: 22.4,
-    dataInicio: '2026-08-20',
-    dataFim: '2026-09-20',
-    tipoRebaixa: 'Preço de Custo',
-    quantidadeVenda: 1500,
-    reembolsoEstimado: 1515.00,
-  }
-];
-
-export const realRebaixasDb = [
-  { id: '24065', sku: '2676745', descricao: 'JAQUETA MOL MASC C/CAPUZ FICO PTO', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 10.09, precoVendaOferta: 8.07, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 242.4, supplierCodigo: '107251' }, 
-  { id: '23665', sku: '1583352', descricao: 'REG MACHAO MALHA JUV FAKINI AMA/12', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 2.69, precoVendaOferta: 2.15, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 64.8, supplierCodigo: '200598' }, 
-  { id: '24303', sku: '384526', descricao: 'BL COTT FEM MALWEE PTO/M', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 17.55, precoVendaOferta: 14.04, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 421.2, supplierCodigo: '103460' }, 
-  { id: '23581', sku: '1362445', descricao: 'PIJAMA BLUSA+SHORT INF MALWEE ROS/06', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 1.15, precoVendaOferta: 0.92, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 27.6, supplierCodigo: '103460' }, 
-  { id: '23785', sku: '1136356', descricao: 'BLUSA G POLO FEM MALWEE GOI/G', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 4.47, precoVendaOferta: 3.58, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 106.8, supplierCodigo: '103460' }, 
-  { id: '23663', sku: '1583425', descricao: 'CAM G POLO MALHA INF FAKINI MAR/06', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 2.69, precoVendaOferta: 2.15, descontoPercentual: 20.0, dataInicio: '2023-08-10', dataFim: '2023-10-08', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 64.8, supplierCodigo: '200598' }, 
-  { id: '18563', sku: '68861', descricao: 'CONJ MALHA BEBE MA LIL', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 40.39, precoVendaOferta: 32.31, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 969.6, supplierCodigo: '200598' }, 
-  { id: '21629', sku: '2670127', descricao: 'CALCA MOL MA JUV LUNENDER PTO/18', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.17, precoVendaOferta: 2.54, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 75.6, supplierCodigo: '107251' }, 
-  { id: '18089', sku: '2676753', descricao: 'JAQUETA MOL MASC C/CAPUZ FICO VDE/GG', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 10.09, precoVendaOferta: 8.07, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 242.4, supplierCodigo: '107251' }, 
-  { id: '18379', sku: '60828', descricao: 'CONJ MEIA MALHA BEBE MO BCL', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 7.6, precoVendaOferta: 6.08, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 182.4, supplierCodigo: '103460' }, 
-  { id: '18651', sku: '1462857', descricao: 'CAM XADREZ INF FAKINI AZL', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 1.81, precoVendaOferta: 1.45, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 43.2, supplierCodigo: '200598' }, 
-  { id: '18559', sku: '62863', descricao: 'CONJ MALHA BEBE MO BCO', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 39.34, precoVendaOferta: 31.47, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 944.4, supplierCodigo: '103460' }, 
-  { id: '18767', sku: '1637495', descricao: 'BLUSA MLH MA JUV MALWEE 42697 VDE/14', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 4.04, precoVendaOferta: 3.23, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 97.2, supplierCodigo: '103460' }, 
-  { id: '21679', sku: '1751280', descricao: 'BLUSA MLH INF FAKINI 3576 ROS/06', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.61, precoVendaOferta: 2.89, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 86.4, supplierCodigo: '200598' }, 
-  { id: '22181', sku: '2883627', descricao: 'VESTIDO BB MLH MA FORFUN AMA', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 7.5, precoVendaOferta: 6.0, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 180.0, supplierCodigo: '200598' }, 
-  { id: '18401', sku: '1916688', descricao: 'CAM MC MASC MALWEE VRM/P', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 9.72, precoVendaOferta: 7.78, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 232.8, supplierCodigo: '103460' }, 
-  { id: '19543', sku: '1756451', descricao: 'CASACO ESP FEM MALWEE 47298 OFF/GG', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 36.89, precoVendaOferta: 29.51, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 885.6, supplierCodigo: '103460' }, 
-  { id: '21517', sku: '1848550', descricao: 'VEST MLH MA RN FAKINI 2011 BCO/M', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 2.42, precoVendaOferta: 1.94, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 57.6, supplierCodigo: '200598' }, 
-  { id: '21689', sku: '2500256', descricao: 'CAM MLH JUV MO LUNENDER MAR/14', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.62, precoVendaOferta: 2.9, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 86.4, supplierCodigo: '107251' }, 
-  { id: '22459', sku: '1969307', descricao: 'CAM PL MASC MALWEE VIN/GG', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 10.19, precoVendaOferta: 8.15, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 244.8, supplierCodigo: '103460' }, 
-  { id: '22571', sku: '2355388', descricao: 'MACACAO MLH INF FAKINI MAR/04', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 11.73, precoVendaOferta: 9.38, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 282.0, supplierCodigo: '200598' }, 
-  { id: '21675', sku: '1390309', descricao: 'CONJ BLUSA+SHORT PATATI PATATA', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.52, precoVendaOferta: 2.82, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 84.0, supplierCodigo: '103460' }, 
-  { id: '19109', sku: '1743775', descricao: 'VEST ESP FEM LUNENDER 42240', lojaId: '8', lojaNome: 'L08 LIDER', precoVendaAnterior: 11.07, precoVendaOferta: 8.86, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 265.2, supplierCodigo: '107251' }, 
-  { id: '21735', sku: '2445336', descricao: 'BL MLH FEM MALWEE', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 3.98, precoVendaOferta: 3.18, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 96.0, supplierCodigo: '103460' }, 
-  { id: '21759', sku: '2167875', descricao: 'CAM MLH BB MO LUNENDER MAR/02', lojaId: '10', lojaNome: 'L10 LIDER', precoVendaAnterior: 4.29, precoVendaOferta: 3.43, descontoPercentual: 20.0, dataInicio: '2023-08-09', dataFim: '2023-10-07', tipoRebaixa: 'Acordo Comercial', quantidadeVenda: 120, reembolsoEstimado: 103.2, supplierCodigo: '107251' }
-];
-
-export const rebaixasMock: RebaixaMock[] = createDynamicArrayProxy(() => {
-  const code = getActiveSupplierCode();
-  const matchingReal = realRebaixasDb.filter((r) => r.supplierCodigo === code);
-  if (matchingReal.length > 0) {
-    return matchingReal;
-  }
-  return nestleRebaixasMock;
-});
-
-export const ofertasValidadeMock: OfertaValidadeMock[] = [
-  {
-    id: '101',
-    sku: '30526116',
-    descricao: 'Leite UHT Integral Ninho 1L',
-    lojaId: '1',
-    lojaNome: 'L01 LIDER CONDOR',
-    precoNormal: 6.90,
-    precoOferta: 4.99,
-    dataVencimento: '2026-09-05',
-    dataInicio: '2026-08-20',
-    dataFim: '2026-09-04',
-    quantidadeInicial: 2020,
-    quantidadeVendida: 820,
-    status: 'Ativa',
-  },
-  {
-    id: '102',
-    sku: '33504806',
-    descricao: 'Iogurte Grego Tradicional Nestlé 400g',
-    lojaId: '5',
-    lojaNome: 'L05 LIDER CASTANHEIRA',
-    precoNormal: 8.50,
-    precoOferta: 5.90,
-    dataVencimento: '2026-08-30',
-    dataInicio: '2026-08-18',
-    dataFim: '2026-08-29',
-    quantidadeInicial: 600,
-    quantidadeVendida: 150,
-    status: 'Próxima ao Fim',
-  },
-  {
-    id: '103',
-    sku: '33061424',
-    descricao: 'Chocolate KitKat Milk 41,5g',
-    lojaId: '2',
-    lojaNome: 'L02 LIDER ALCINDO CACELA',
-    precoNormal: 4.50,
-    precoOferta: 2.99,
-    dataVencimento: '2026-08-22',
-    dataInicio: '2026-08-01',
-    dataFim: '2026-08-21',
-    quantidadeInicial: 950,
-    quantidadeVendida: 950,
-    status: 'Expirada',
-  }
-];

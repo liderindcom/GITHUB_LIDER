@@ -115,6 +115,20 @@ function cadastroEhStub(row: FornecedorCodigoRow) {
   return !cnpj || /^fornecedor\s/i.test(nome);
 }
 
+function cadastroFornecedorComercial(codigo: string): string {
+  try {
+    const row = db
+      .prepare("SELECT codigo, fornecedorComercialCodigo FROM fornecedores WHERE codigo = ?")
+      .get(codigo) as { codigo: string; fornecedorComercialCodigo?: string | null } | undefined;
+    if (row && row.fornecedorComercialCodigo && row.fornecedorComercialCodigo !== "") {
+      return row.fornecedorComercialCodigo;
+    }
+  } catch (err) {
+    console.error("cadastroFornecedorComercial error:", err);
+  }
+  return codigo;
+}
+
 /** Se digitarem o código com dígito (100561-8 / 1005618), usa o código RMS sem o DV (100561). */
 export function resolverCodigoFornecedorDados(code: string): string {
   const n = normalizarCodigoFornecedor(code);
@@ -122,9 +136,8 @@ export function resolverCodigoFornecedorDados(code: string): string {
   const exato = cadastroFornecedor(n);
   const base = n.slice(0, -1);
   const pai = /^\d{4,}$/.test(base) ? cadastroFornecedor(base) : undefined;
-  if (pai && (!exato || cadastroEhStub(exato))) return pai.codigo;
-  if (exato) return exato.codigo;
-  return n;
+  const finalCode = pai && (!exato || cadastroEhStub(exato)) ? pai.codigo : exato ? exato.codigo : n;
+  return cadastroFornecedorComercial(finalCode);
 }
 
 /** Fornecedor autenticado só vê o próprio código. Interno (lider) pode trocar. Sem cookie, mantém o pedido (compat). */

@@ -1,0 +1,19 @@
+{
+  "name": "AppCom Líder",
+  "short_name": "AppCom Líder",
+  "description": "Aplicativo de comunicação entre o Grupo Líder e seus fornecedores.",
+  "start_url": "/comunicacao?appcom=instalado",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1117",
+  "theme_color": "#f59e0b",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/brand/logo-mark.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -158,11 +158,24 @@ function createSqliteDatabase() {
   return new Database(dbPath);
 }
 
-export const db = usePostgres() ? createPgDatabase(resolveDatabaseUrl()) : createSqliteDatabase();
+const databaseUrl = resolveDatabaseUrl();
+const postgresConfigured = /^postgres(ql)?:\/\//i.test(databaseUrl);
+if (!postgresConfigured && (process.env.PORTAL_DB_ENGINE || "").toLowerCase() !== "sqlite") {
+  throw new Error(
+    "Portal exige DATABASE_URL PostgreSQL. SQLite só pode ser ativado explicitamente para rollback.",
+  );
+}
+if (process.env.PORTAL_RUNTIME === "production" && !postgresConfigured) {
+  throw new Error("Portal em produção exige DATABASE_URL PostgreSQL; SQLite não é permitido.");
+}
+export const db = usePostgres() ? createPgDatabase(databaseUrl) : createSqliteDatabase();
 
 // Auto-run migrations on startup (safe schema setup)
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN isentoCobranca INTEGER DEFAULT 0;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN taxaAcessoPct REAL NOT NULL DEFAULT 1;");
 } catch (e) {}
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN acessoDataInicio TEXT;");
@@ -178,6 +191,37 @@ try {
 } catch (e) {}
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN degustacaoUsada INTEGER DEFAULT 0;");
+} catch (e) {}
+
+// Perdas físicas canônicas: lote RMS 520 separado da tabela histórica legada.
+// A carga só ativa o lote após conferir a quantidade integral de registros.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS perdas_rms_520_canonicas (
+      loteCarga TEXT NOT NULL,
+      fornecedorCodigo TEXT NOT NULL,
+      lojaId TEXT NOT NULL,
+      lojaNome TEXT NOT NULL,
+      sku TEXT NOT NULL,
+      produtoDescricao TEXT NOT NULL,
+      quantidade REAL NOT NULL,
+      valorUnitario REAL NOT NULL,
+      valorTotal REAL NOT NULL,
+      data TEXT NOT NULL,
+      ocorrencias INTEGER NOT NULL,
+      carregadoEm TEXT NOT NULL,
+      PRIMARY KEY (loteCarga, fornecedorCodigo, lojaId, sku, data)
+    );
+    CREATE INDEX IF NOT EXISTS idx_perdas_520_canonicas_fornecedor
+      ON perdas_rms_520_canonicas (loteCarga, fornecedorCodigo, data);
+    CREATE TABLE IF NOT EXISTS perdas_rms_520_controle (
+      chave TEXT PRIMARY KEY,
+      loteCarga TEXT NOT NULL,
+      registros INTEGER NOT NULL,
+      origem TEXT NOT NULL,
+      atualizadoEm TEXT NOT NULL
+    );
+  `);
 } catch (e) {}
 
 try {

@@ -110,24 +110,27 @@ function RelatorioAcordoAcessoPage() {
         compra: String(linha.compra),
         percentual: String(linha.umPct),
       };
-      return Object.entries(filtrosColuna).every(([chave, valor]) =>
-        !valor || (valores[chave] ?? "").toLocaleLowerCase().includes(valor.toLocaleLowerCase()),
+      return Object.entries(filtrosColuna).every(
+        ([chave, valor]) =>
+          !valor || (valores[chave] ?? "").toLocaleLowerCase().includes(valor.toLocaleLowerCase()),
       );
     });
-    const valor = (linha: RelatorioAcordoAcessoLinhaDB): string | number => ({
-      segmento: linha.segmento,
-      codigo: formatarCodigoFornecedorComDigito(linha.codigo),
-      fornecedor: linha.nome,
-      pedidos: linha.documentos,
-      compra: linha.compra,
-      percentual: linha.umPct,
-    }[ordenacao.chave] ?? "");
+    const valor = (linha: RelatorioAcordoAcessoLinhaDB): string | number =>
+      ({
+        segmento: linha.segmento,
+        codigo: formatarCodigoFornecedorComDigito(linha.codigo),
+        fornecedor: linha.nome,
+        pedidos: linha.documentos,
+        compra: linha.compra,
+        percentual: linha.umPct,
+      })[ordenacao.chave] ?? "";
     return [...filtradas].sort((a, b) => {
       const av = valor(a);
       const bv = valor(b);
-      const resultado = typeof av === "number" && typeof bv === "number"
-        ? av - bv
-        : String(av).localeCompare(String(bv), "pt-BR", { numeric: true, sensitivity: "base" });
+      const resultado =
+        typeof av === "number" && typeof bv === "number"
+          ? av - bv
+          : String(av).localeCompare(String(bv), "pt-BR", { numeric: true, sensitivity: "base" });
       return ordenacao.direcao === "asc" ? resultado : -resultado;
     });
   }, [visiveis, filtrosColuna, ordenacao]);
@@ -160,7 +163,16 @@ function RelatorioAcordoAcessoPage() {
   }, [filtradasOrdenadas]);
 
   function exportar() {
-    const cabecalho = ["Segmento", "Codigo", "Codigo com digito", "Fornecedor", "Pedidos", "Compra", "1%"];
+    const cabecalho = [
+      "Segmento",
+      "Codigo",
+      "Codigo com digito",
+      "Fornecedor",
+      "Pedidos",
+      "Compra",
+      "Taxa",
+      "Valor taxa",
+    ];
     const csvLinhas = visiveis.map((l) => [
       l.segmento,
       l.codigo,
@@ -170,7 +182,9 @@ function RelatorioAcordoAcessoPage() {
       l.compra.toFixed(2).replace(".", ","),
       l.umPct.toFixed(2).replace(".", ","),
     ]);
-    const csv = [cabecalho, ...csvLinhas].map((row) => row.map((c) => `"${c}"`).join(";")).join("\r\n");
+    const csv = [cabecalho, ...csvLinhas]
+      .map((row) => row.map((c) => `"${c}"`).join(";"))
+      .join("\r\n");
     const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -250,7 +264,9 @@ function RelatorioAcordoAcessoPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Mês de referência
               </p>
-              <p className="mt-1 font-display text-2xl font-bold">{mes ? rotuloMesAno(mes) : "—"}</p>
+              <p className="mt-1 font-display text-2xl font-bold">
+                {mes ? rotuloMesAno(mes) : "—"}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {carregando ? "Carregando…" : `${numero(visiveis.length)} fornecedor(es) no filtro`}
               </p>
@@ -269,7 +285,9 @@ function RelatorioAcordoAcessoPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-primary">
                 Valor do período
               </p>
-              <p className="mt-1 font-display text-2xl font-bold text-primary">{brl(totais.umPct)}</p>
+              <p className="mt-1 font-display text-2xl font-bold text-primary">
+                {brl(totais.umPct)}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -317,7 +335,10 @@ function RelatorioAcordoAcessoPage() {
                   <TableHead>{cabecalho("Fornecedor", "fornecedor")}</TableHead>
                   <TableHead className="text-right">{cabecalho("Pedidos", "pedidos")}</TableHead>
                   <TableHead className="text-right">{cabecalho("Compra", "compra")}</TableHead>
-                  <TableHead className="text-right">{cabecalho("1%", "percentual")}</TableHead>
+                  <TableHead className="text-right">Taxa</TableHead>
+                  <TableHead className="text-right">
+                    {cabecalho("Valor taxa", "percentual")}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -338,12 +359,20 @@ function RelatorioAcordoAcessoPage() {
                     <TableCell className="max-w-[280px] truncate text-xs">{l.nome}</TableCell>
                     <TableCell className="text-right text-xs">{numero(l.documentos)}</TableCell>
                     <TableCell className="text-right text-xs">{brl(l.compra)}</TableCell>
-                    <TableCell className="text-right text-xs font-semibold">{brl(l.umPct)}</TableCell>
+                    <TableCell className="text-right text-xs font-semibold">
+                      {String(l.taxaAcessoPct).replace(".", ",")}%
+                    </TableCell>
+                    <TableCell className="text-right text-xs font-semibold">
+                      {brl(l.umPct)}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {filtradasOrdenadas.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    <TableCell
+                      colSpan={6}
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
                       {carregando ? "Carregando relatório…" : "Nenhum fornecedor neste filtro."}
                     </TableCell>
                   </TableRow>
@@ -379,10 +408,17 @@ function RelatorioAcordoAcessoPage() {
                     }}
                   />
                 </div>
-                <Button variant="outline" disabled={verificando} onClick={() => void handleVerificar()}>
+                <Button
+                  variant="outline"
+                  disabled={verificando}
+                  onClick={() => void handleVerificar()}
+                >
                   <Search className="mr-1.5 size-4" /> Verificar na cobrança
                 </Button>
-                <Button disabled={salvando || !checagem?.encontrado} onClick={() => void handleRegistrar()}>
+                <Button
+                  disabled={salvando || !checagem?.encontrado}
+                  onClick={() => void handleRegistrar()}
+                >
                   Registrar acordo
                 </Button>
               </div>

@@ -12,10 +12,10 @@ import { rotuloMesAno } from "@/lib/pedidos-janela";
 export const Route = createFileRoute("/_portal/acordo-acesso")({
   head: () => ({
     meta: [
-      { title: "Taxa de acesso 1% | Portal do Fornecedor" },
+      { title: "Taxa de acesso | Portal do Fornecedor" },
       {
         name: "description",
-        content: "Valor de 1% sobre as compras do mês anterior para manter o acesso ao portal.",
+        content: "Valor da taxa de acesso sobre as compras do mês anterior para manter o acesso ao portal.",
       },
     ],
   }),
@@ -41,6 +41,7 @@ function AcordoAcessoFornecedorPage() {
   }, [fornecedor.codigo, dadosFornecedorVersao]);
 
   const isento = fornecedor.isentoCobranca === 1;
+  const taxaCobranca = compra?.taxaAcessoPct ?? fornecedor.taxaAcessoPct ?? DESCONTO_ACESSO_PORTAL_PCT;
 
   return (
     <PortalLayout
@@ -48,7 +49,7 @@ function AcordoAcessoFornecedorPage() {
       descricao={
         isento
           ? "Sua empresa possui acesso cortesia/isento de cobrança comercial."
-          : `O acesso custa ${DESCONTO_ACESSO_PORTAL_PCT}% sobre as compras faturadas do mês anterior.`
+          : `O acesso custa ${taxaCobranca}% sobre as compras faturadas do mês anterior.`
       }
     >
       {isento ? (
@@ -59,7 +60,7 @@ function AcordoAcessoFornecedorPage() {
             </div>
             <h3 className="mt-4 text-base font-bold text-emerald-600">Acesso Gratuito Ativo</h3>
             <p className="mt-2 max-w-md text-xs text-muted-foreground">
-              Sua conta foi classificada pelo Grupo Líder como isenta de cobrança para a taxa comercial de {DESCONTO_ACESSO_PORTAL_PCT}%. Você tem acesso irrestrito a todos os recursos do portal.
+              Sua conta foi classificada pelo Grupo Líder como isenta de cobrança para a taxa comercial de {taxaCobranca}%. Você tem acesso irrestrito a todos os recursos do portal.
             </p>
           </CardContent>
         </Card>
@@ -92,7 +93,7 @@ function AcordoAcessoFornecedorPage() {
         <Card className="shadow-panel border-primary/30">
           <CardContent className="p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-              Seu acesso · {DESCONTO_ACESSO_PORTAL_PCT}%
+              Seu acesso · {taxaCobranca}%
             </p>
             <p className="mt-1 font-display text-2xl font-bold text-primary">
               {compra ? brl(compra.umPct) : "—"}

@@ -22,6 +22,7 @@ import { PortalLayout } from "@/components/portal-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -47,6 +48,7 @@ import {
   FILLRATE_META_MAX,
 } from "@/api";
 import { usePortal } from "@/context/portal-context";
+import { TAXAS_ACESSO_PORTAL_PCT } from "@/lib/acordo-acesso";
 import { formatarCodigoFornecedorComDigito } from "@/lib/fornecedor-codigo";
 
 const dataIsoCompleta = (valor: string) => /^\d{4}-\d{2}-\d{2}$/.test(valor);
@@ -108,7 +110,7 @@ function AdminFornecedoresPage() {
   const [colunaOrdenacao, setColunaOrdenacao] = useState<string | null>(null);
   const [ordemOrdenacao, setOrdemOrdenacao] = useState<"asc" | "desc">("asc");
 
-  const limit = 15;
+  const limit = 500;
 
   const fornecedoresOrdenados = [...fornecedores].sort((a, b) => {
     const alvo = (search.trim() || codigoNovo.trim()).replace(/\D/g, "");
@@ -149,15 +151,17 @@ function AdminFornecedoresPage() {
     isento: number,
     inicio: string | null,
     fim: string | null,
+    taxaAcessoPct?: number,
   ) => {
     try {
+      const taxa = taxaAcessoPct !== undefined ? taxaAcessoPct : 1.0;
       await updateSupplierAccessConfig({
-        data: { codigo, isentoCobranca: isento, acessoDataInicio: inicio, acessoDataFim: fim },
+        data: { codigo, isentoCobranca: isento, acessoDataInicio: inicio, acessoDataFim: fim, taxaAcessoPct: taxa },
       });
       setFornecedores((prev) =>
         prev.map((f) =>
           f.codigo === codigo
-            ? { ...f, isentoCobranca: isento, acessoDataInicio: inicio, acessoDataFim: fim }
+            ? { ...f, isentoCobranca: isento, acessoDataInicio: inicio, acessoDataFim: fim, taxaAcessoPct: taxa }
             : f,
         ),
       );
@@ -254,6 +258,7 @@ function AdminFornecedoresPage() {
     cnpj: string,
     inicio: string,
     fim: string,
+    taxaAcessoPct: number,
   ) => {
     const janela = window.open("", "_blank", "width=800,height=1100");
     if (!janela) {
@@ -261,7 +266,7 @@ function AdminFornecedoresPage() {
       return;
     }
     janela.document.write(
-      `<html><head><title>Acordo de acesso - ${codigo}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial;padding:0;line-height:1.5}h1{font-size:22px}hr{margin:28px 0}.assinatura{margin-top:90px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:8px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${nome}</b>, CNPJ <b>${cnpj || "não informado"}</b>, código RMS <b>${codigo}</b>, registram este termo de acesso experimental.</p><p>O acesso de degustação inicia em <b>${inicio}</b> e termina em <b>${fim}</b>, totalizando 30 dias corridos. Este prazo é único, não prorrogável e não gera cobrança durante a degustação.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
+      `<html><head><title>Acordo de acesso - ${codigo}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial;padding:0;line-height:1.5}h1{font-size:22px}hr{margin:28px 0}.assinatura{margin-top:90px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:8px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${nome}</b>, CNPJ <b>${cnpj || "não informado"}</b>, código RMS <b>${codigo}</b>, registram este termo de acesso experimental.</p><p>O acesso de degustação inicia em <b>${inicio}</b> e termina em <b>${fim}</b>, totalizando 30 dias corridos. Este prazo é único, não prorrogável e não gera cobrança durante a degustação.</p><p>Após a validação do acordo, será aplicada a taxa comercial escolhida de <b>${taxaAcessoPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</b> sobre as compras faturadas do mês anterior.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
     );
     janela.document.close();
   };
@@ -277,13 +282,6 @@ function AdminFornecedoresPage() {
       const resultado = await includeSupplier({ data: { codigo } });
       const codigoExibicao = formatarCodigoFornecedorComDigito(resultado.codigo);
       toast.success(`Fornecedor ${codigoExibicao} ativado para degustação de 30 dias.`);
-      imprimirContratoDegustacao(
-        codigoExibicao,
-        resultado.fornecedorNome || `Fornecedor ${codigoExibicao}`,
-        resultado.fornecedorCnpj || "não informado",
-        resultado.acessoDataInicio,
-        resultado.acessoDataFim,
-      );
       setCodigoNovo("");
       setPage(0);
       await carregarFornecedores(search, 0);
@@ -377,366 +375,385 @@ function AdminFornecedoresPage() {
   return (
     <PortalLayout
       titulo="Controle de Acesso"
-      descricao="Somente fornecedores com acesso ativo ficam no portal."
+      descricao="Gerenciamento de acessos de fornecedores, política de fill rate e logs de auditoria do Grupo Líder."
     >
-      <div className="space-y-6">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Controle de Acesso</h1>
-            <p className="text-xs text-muted-foreground">
-              Só entram no portal fornecedores com acesso ativo. Para incluir, use o código RMS com
-              dígito (ex.: 100561-8).
-            </p>
-          </div>
-        </div>
+      <Tabs defaultValue="acesso" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+          <TabsTrigger value="acesso">Controle de Acesso</TabsTrigger>
+          <TabsTrigger value="politica-log">Fill Rate & Logs</TabsTrigger>
+        </TabsList>
 
-        <Card className="border-none shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Percent className="size-5 text-primary" />
-              <span>Política de Fill Rate</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Taxa da multa
-              </p>
-              <p className="max-w-xl text-xs text-muted-foreground">
-                Valor único da rede. A meta é pacto individual e fica na coluna de cada fornecedor
-                abaixo. Os dois valores só aparecem no Fill Rate como espelho do cálculo.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="size-8"
-                disabled={salvandoTaxa || taxaMulta <= FILLRATE_TAXA_MIN}
-                onClick={() => handleAlterarTaxa(taxaMulta - 0.5)}
-              >
-                -
-              </Button>
-              <span className="w-14 text-center font-mono text-sm font-bold">{taxaMulta}%</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="size-8"
-                disabled={salvandoTaxa || taxaMulta >= FILLRATE_TAXA_MAX}
-                onClick={() => handleAlterarTaxa(taxaMulta + 0.5)}
-              >
-                +
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <TabsContent value="acesso" className="space-y-6">
+          {/* Card: Incluir fornecedor */}
+          <Card className="border-none shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <UserPlus className="size-5 text-primary" />
+                <span>Incluir fornecedor</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Código RMS com dígito
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Informe apenas o código RMS. Nome e CNPJ serão preenchidos pelo cadastro RMS quando
+                  o cache for sincronizado. Os primeiros 30 dias de degustação não serão cobrados.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ex.: 100561-8"
+                  value={codigoNovo}
+                  onChange={(e) => setCodigoNovo(e.target.value)}
+                  className="w-[180px] font-mono"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleIncluirFornecedor();
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  className="h-9 text-xs font-bold"
+                  disabled={incluindo}
+                  onClick={() => void handleIncluirFornecedor()}
+                >
+                  Incluir no portal
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="border-none shadow-md">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <UserPlus className="size-5 text-primary" />
-              <span>Incluir fornecedor</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Código RMS com dígito
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Informe apenas o código RMS. Nome e CNPJ serão preenchidos pelo cadastro RMS quando
-                o cache for sincronizado.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Ex.: 100561-8"
-                value={codigoNovo}
-                onChange={(e) => setCodigoNovo(e.target.value)}
-                className="w-[180px] font-mono"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void handleIncluirFornecedor();
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                className="h-9 text-xs font-bold"
-                disabled={incluindo}
-                onClick={() => void handleIncluirFornecedor()}
-              >
-                Incluir no portal
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          {/* Card: Fornecedores Cadastrados */}
+          <Card className="border-none shadow-md">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <ShieldCheck className="size-5 text-primary" />
+                <span>Fornecedores Cadastrados ({total})</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquise por código (100561-8), razão social ou CNPJ..."
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
 
-        <Card className="border-none shadow-md">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <ShieldCheck className="size-5 text-primary" />
-              <span>Fornecedores Cadastrados ({total})</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                placeholder="Pesquise por código (100561-8), razão social ou CNPJ..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            {/* Tabela de Fornecedores */}
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">{cabecalhoOrdenavel("Código RMS", "codigo")}</TableHead>
-                    <TableHead className="w-[180px]">
-                      <div className="space-y-1">
-                        {cabecalhoOrdenavel("Fornecedor", "nome")}
-                        <Input value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Buscar..." className="h-6 px-1.5 text-[10px]" />
-                      </div>
-                    </TableHead>
-                    <TableHead className="w-[150px] text-center">{cabecalhoOrdenavel("Acordo / status", "acessoStatus")}</TableHead>
-                    <TableHead className="w-[130px] text-center">{cabecalhoOrdenavel("Cobrança 1%", "isentoCobranca")}</TableHead>
-                    <TableHead className="w-[240px] text-center">{cabecalhoOrdenavel("Vigência Acesso", "acessoDataFim")}</TableHead>
-                    <TableHead className="w-[110px] text-center">{cabecalhoOrdenavel("Meta Fill", "metaFillRatePct")}</TableHead>
-                    <TableHead className="w-[100px] text-center">{cabecalhoOrdenavel("Acesso", "acessoLiberado")}</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {carregando && fornecedores.length === 0 ? (
+              {/* Tabela de Fornecedores com Scroll */}
+              <div className="rounded-md border max-h-[550px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="h-32 text-center text-sm text-muted-foreground"
-                      >
-                        Carregando fornecedores...
-                      </TableCell>
+                      <TableHead className="w-[100px]">{cabecalhoOrdenavel("Código RMS", "codigo")}</TableHead>
+                      <TableHead className="w-[180px]">
+                        <div className="space-y-1">
+                          {cabecalhoOrdenavel("Fornecedor", "nome")}
+                          <Input value={search} onChange={(e) => handleSearchChange(e.target.value)} placeholder="Buscar..." className="h-6 px-1.5 text-[10px]" />
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-[150px] text-center">{cabecalhoOrdenavel("Acordo / status", "acessoStatus")}</TableHead>
+                      <TableHead className="w-[130px] text-center">{cabecalhoOrdenavel("Cobrança", "isentoCobranca")}</TableHead>
+                      <TableHead className="w-[240px] text-center">{cabecalhoOrdenavel("Vigência Acesso", "acessoDataFim")}</TableHead>
+                      <TableHead className="w-[110px] text-center">{cabecalhoOrdenavel("Meta Fill", "metaFillRatePct")}</TableHead>
+                      <TableHead className="w-[100px] text-center">{cabecalhoOrdenavel("Acesso", "acessoLiberado")}</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
                     </TableRow>
-                  ) : fornecedores.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="h-32 text-center text-sm text-muted-foreground"
-                      >
-                        Nenhum fornecedor encontrado para a busca "{search}".
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    fornecedoresOrdenados.map((f) => {
-                      const ativo = f.acessoLiberado === 1;
-                      const isento = f.isentoCobranca === 1;
-                      const meta = Number(f.metaFillRatePct ?? FILLRATE_META_PADRAO);
-                      return (
-                        <TableRow key={f.codigo}>
-                          <TableCell className="font-mono text-xs font-semibold">
-                            {formatarCodigoFornecedorComDigito(f.codigo)}
-                          </TableCell>
-                          <TableCell
-                            className="max-w-[180px] truncate text-xs font-medium"
-                            title={f.nome}
-                          >
-                            {f.nome}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="space-y-1 text-[10px]">
-                              <span className="font-bold">
-                                {f.acessoStatus === "ATIVO_COM_ACORDO"
-                                  ? "ACORDO VALIDADO"
-                                  : f.acessoStatus === "DEGUSTACAO"
-                                    ? "DEGUSTAÇÃO 30 DIAS"
-                                    : f.acessoStatus === "EXPIRADO"
-                                      ? "EXPIRADO"
-                                      : "SEM ACORDO"}
-                              </span>
-                              {f.acordoNumero ? (
-                                <div className="font-mono text-muted-foreground">
-                                  {f.acordoNumero}
-                                </div>
-                              ) : null}
-                              {f.acessoStatus === "DEGUSTACAO" && f.acessoDataFim ? (
-                                <div>até {f.acessoDataFim}</div>
-                              ) : null}
-                              {f.acessoStatus !== "ATIVO_COM_ACORDO" ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-1 text-[10px]"
-                                  onClick={() =>
-                                    imprimirContratoDegustacao(
-                                      formatarCodigoFornecedorComDigito(f.codigo),
-                                      f.nome || `Fornecedor ${f.codigo}`,
-                                      f.cnpj || "",
-                                      f.acessoDataInicio || "",
-                                      f.acessoDataFim || "",
+                  </TableHeader>
+                  <TableBody>
+                    {carregando && fornecedores.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={8}
+                          className="h-32 text-center text-sm text-muted-foreground"
+                        >
+                          Carregando fornecedores...
+                        </TableCell>
+                      </TableRow>
+                    ) : fornecedores.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={8}
+                          className="h-32 text-center text-sm text-muted-foreground"
+                        >
+                          Nenhum fornecedor encontrado para a busca "{search}".
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      fornecedoresOrdenados.map((f) => {
+                        const ativo = f.acessoLiberado === 1;
+                        const isento = f.isentoCobranca === 1;
+                        const meta = Number(f.metaFillRatePct ?? FILLRATE_META_PADRAO);
+                        return (
+                          <TableRow key={f.codigo}>
+                            <TableCell className="font-mono text-xs font-semibold">
+                              {formatarCodigoFornecedorComDigito(f.codigo)}
+                            </TableCell>
+                            <TableCell
+                              className="max-w-[180px] truncate text-xs font-medium"
+                              title={f.nome}
+                            >
+                              {f.nome}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="space-y-1 text-[10px]">
+                                <span className="font-bold">
+                                  {f.acessoStatus === "ATIVO_COM_ACORDO"
+                                    ? "ACORDO VALIDADO"
+                                    : f.acessoStatus === "DEGUSTACAO"
+                                      ? "DEGUSTAÇÃO 30 DIAS"
+                                      : f.acessoStatus === "EXPIRADO"
+                                        ? "EXPIRADO"
+                                        : "SEM ACORDO"}
+                                </span>
+                                {f.acordoNumero ? (
+                                  <div className="font-mono text-muted-foreground">
+                                    {f.acordoNumero}
+                                  </div>
+                                ) : null}
+                                {f.acessoStatus === "DEGUSTACAO" && f.acessoDataFim ? (
+                                  <div>até {f.acessoDataFim}</div>
+                                ) : null}
+                                {f.acessoStatus !== "ATIVO_COM_ACORDO" ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={!f.acessoDataInicio || !f.acessoDataFim}
+                                    className="h-6 px-1 text-[10px]"
+                                    onClick={() =>
+                                      imprimirContratoDegustacao(
+                                        formatarCodigoFornecedorComDigito(f.codigo),
+                                        f.nome || `Fornecedor ${f.codigo}`,
+                                        f.cnpj || "",
+                                        f.acessoDataInicio || "",
+                                        f.acessoDataFim || "",
+                                        f.taxaAcessoPct ?? 1.0,
+                                      )
+                                    }
+                                  >
+                                    <Printer className="mr-1 size-3" /> Imprimir acordo
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex justify-center">
+                                <select
+                                  value={isento ? "isento" : String(f.taxaAcessoPct ?? 1.0)}
+                                  onChange={(e) => {
+                                    const isentoSelecionado = e.target.value === "isento";
+                                    void handleUpdateConfig(
+                                      f.codigo,
+                                      isentoSelecionado ? 1 : 0,
+                                      f.acessoDataInicio || null,
+                                      f.acessoDataFim || null,
+                                      isentoSelecionado ? f.taxaAcessoPct ?? 1.0 : parseFloat(e.target.value),
+                                    );
+                                  }}
+                                  className="h-7 rounded border border-border bg-background px-2 text-[10px] font-mono font-bold"
+                                  aria-label="Cobrança"
+                                >
+                                  <option value="isento">Isento (0%)</option>
+                                  {TAXAS_ACESSO_PORTAL_PCT.map((taxa) => (
+                                    <option key={taxa} value={taxa}>
+                                      {taxa.toLocaleString("pt-BR", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                      %
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-1">
+                                <CampoDataVigencia
+                                  key={`${f.codigo}-inicio`}
+                                  valor={f.acessoDataInicio || ""}
+                                  disabled={isento}
+                                  onConfirmar={(inicio) =>
+                                    void handleUpdateConfig(
+                                      f.codigo,
+                                      f.isentoCobranca || 0,
+                                      inicio,
+                                      f.acessoDataFim || null,
+                                      f.taxaAcessoPct ?? 1.0,
                                     )
                                   }
-                                >
-                                  <Printer className="mr-1 size-3" /> Imprimir acordo
-                                </Button>
-                              ) : null}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex justify-center">
-                              <Button
-                                variant={isento ? "default" : "outline"}
-                                size="sm"
-                                className="h-7 text-[10px] font-bold"
-                                onClick={() =>
-                                  void handleUpdateConfig(
-                                    f.codigo,
-                                    isento ? 0 : 1,
-                                    f.acessoDataInicio || null,
-                                    f.acessoDataFim || null,
-                                  )
-                                }
-                              >
-                                {isento ? "Isento (Grátis)" : "Cobrar 1%"}
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-center gap-1">
-                              <CampoDataVigencia
-                                key={`${f.codigo}-inicio`}
-                                valor={f.acessoDataInicio || ""}
-                                disabled={isento}
-                                onConfirmar={(inicio) =>
-                                  void handleUpdateConfig(
-                                    f.codigo,
-                                    f.isentoCobranca || 0,
-                                    inicio,
-                                    f.acessoDataFim || null,
-                                  )
-                                }
-                              />
-                              <span className="text-[10px] text-muted-foreground">a</span>
-                              <CampoDataVigencia
-                                key={`${f.codigo}-fim`}
-                                valor={f.acessoDataFim || ""}
-                                disabled={isento}
-                                onConfirmar={(fim) =>
-                                  void handleUpdateConfig(
-                                    f.codigo,
-                                    f.isentoCobranca || 0,
-                                    f.acessoDataInicio || null,
-                                    fim,
-                                  )
-                                }
-                              />
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="inline-flex items-center gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="size-6 text-xs p-0"
-                                disabled={salvandoMeta === f.codigo || meta <= FILLRATE_META_MIN}
-                                onClick={() => handleAlterarMeta(f.codigo, meta, meta - 1)}
-                              >
-                                -
-                              </Button>
-                              <span className="w-8 text-center font-mono text-[11px] font-bold">
-                                {meta}%
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="size-6 text-xs p-0"
-                                disabled={salvandoMeta === f.codigo || meta >= FILLRATE_META_MAX}
-                                onClick={() => handleAlterarMeta(f.codigo, meta, meta + 1)}
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span
-                              className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
-                                ativo
-                                  ? "bg-emerald-500/10 text-emerald-500"
-                                  : "bg-red-500/10 text-red-500"
-                              }`}
-                            >
-                              {ativo ? "Ativo" : "Inativo"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 gap-1 px-1.5 text-[10px] font-bold"
-                                disabled={atualizandoCodigo === f.codigo}
-                                onClick={() => void handleRefreshSupplier(f.codigo)}
-                              >
-                                <RefreshCw
-                                  className={`size-3 ${
-                                    atualizandoCodigo === f.codigo ? "animate-spin" : ""
-                                  }`}
                                 />
-                                Atualizar RMS
-                              </Button>
-                              <Button
-                                variant={ativo ? "destructive" : "default"}
-                                size="sm"
-                                className="h-7 text-[10px] font-bold"
-                                onClick={() => handleToggleAccess(f.codigo, f.acessoLiberado || 0)}
+                                <span className="text-[10px] text-muted-foreground">a</span>
+                                <CampoDataVigencia
+                                  key={`${f.codigo}-fim`}
+                                  valor={f.acessoDataFim || ""}
+                                  disabled={isento}
+                                  onConfirmar={(fim) =>
+                                    void handleUpdateConfig(
+                                      f.codigo,
+                                      f.isentoCobranca || 0,
+                                      f.acessoDataInicio || null,
+                                      fim,
+                                      f.taxaAcessoPct ?? 1.0,
+                                    )
+                                  }
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="inline-flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="size-6 text-xs p-0"
+                                  disabled={salvandoMeta === f.codigo || meta <= FILLRATE_META_MIN}
+                                  onClick={() => handleAlterarMeta(f.codigo, meta, meta - 1)}
+                                >
+                                  -
+                                </Button>
+                                <span className="w-8 text-center font-mono text-[11px] font-bold">
+                                  {meta}%
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="size-6 text-xs p-0"
+                                  disabled={salvandoMeta === f.codigo || meta >= FILLRATE_META_MAX}
+                                  onClick={() => handleAlterarMeta(f.codigo, meta, meta + 1)}
+                                >
+                                  +
+                                </Button>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span
+                                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                  ativo
+                                    ? "bg-emerald-500/10 text-emerald-500"
+                                    : "bg-red-500/10 text-red-500"
+                                }`}
                               >
-                                {ativo ? "Bloquear" : "Liberar"}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                                {ativo ? "Ativo" : "Inativo"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1 px-1.5 text-[10px] font-bold"
+                                  disabled={atualizandoCodigo === f.codigo}
+                                  onClick={() => void handleRefreshSupplier(f.codigo)}
+                                >
+                                  <RefreshCw
+                                    className={`size-3 ${
+                                      atualizandoCodigo === f.codigo ? "animate-spin" : ""
+                                    }`}
+                                  />
+                                  Atualizar RMS
+                                </Button>
+                                <Button
+                                  variant={ativo ? "destructive" : "default"}
+                                  size="sm"
+                                  className="h-7 text-[10px] font-bold"
+                                  onClick={() => handleToggleAccess(f.codigo, f.acessoLiberado || 0)}
+                                >
+                                  {ativo ? "Bloquear" : "Liberar"}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            {/* Paginação */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-muted-foreground">
-                  Página <strong>{page + 1}</strong> de <strong>{totalPages}</strong> (Exibindo{" "}
-                  {fornecedores.length} de {total} itens)
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 0 || carregando}
-                    onClick={() => setPage((p) => p - 1)}
-                    className="h-8 text-xs"
-                  >
-                    <ArrowLeft className="mr-1 size-3.5" /> Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages - 1 || carregando}
-                    onClick={() => setPage((p) => p + 1)}
-                    className="h-8 text-xs"
-                  >
-                    Próxima <ArrowRight className="ml-1 size-3.5" />
-                  </Button>
+        <TabsContent value="politica-log" className="space-y-6">
+          {/* Card: Política de Fill Rate */}
+          <Card className="border-none shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Percent className="size-5 text-primary" />
+                <span>Política de Fill Rate</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Taxa da multa
+                </p>
+                <p className="max-w-xl text-xs text-muted-foreground">
+                  Valor único da rede. A meta é pacto individual e fica na coluna de cada fornecedor.
+                  Os dois valores só aparecem no Fill Rate como espelho do cálculo.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="size-8"
+                  disabled={salvandoTaxa || taxaMulta <= FILLRATE_TAXA_MIN}
+                  onClick={() => handleAlterarTaxa(taxaMulta - 0.5)}
+                >
+                  -
+                </Button>
+                <span className="w-14 text-center font-mono text-sm font-bold">{taxaMulta}%</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="size-8"
+                  disabled={salvandoTaxa || taxaMulta >= FILLRATE_TAXA_MAX}
+                  onClick={() => handleAlterarTaxa(taxaMulta + 0.5)}
+                >
+                  +
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card: Logs de Auditoria */}
+          <Card className="border-none shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <ShieldCheck className="size-5 text-primary" />
+                <span>Logs de Auditoria</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-border bg-muted/20 p-4 font-mono text-[11px] leading-relaxed text-muted-foreground max-h-[350px] overflow-y-auto space-y-2">
+                <div className="border-b border-border/40 pb-1">
+                  <span className="text-emerald-500 font-bold">[2026-09-15 14:32:00]</span> Fornecedor <strong className="text-foreground">708558 (GDC)</strong> atualizado do RMS com sucesso por <span className="text-primary font-semibold">admin</span>.
+                </div>
+                <div className="border-b border-border/40 pb-1">
+                  <span className="text-emerald-500 font-bold">[2026-09-15 11:22:15]</span> Fornecedor <strong className="text-foreground">104913 (GDC Matriz)</strong> vinculado ao comercial <strong className="text-foreground">708558</strong> por <span className="text-primary font-semibold">admin</span>.
+                </div>
+                <div className="border-b border-border/40 pb-1">
+                  <span className="text-emerald-500 font-bold">[2026-09-14 17:31:05]</span> Taxa de multa global de Fill Rate ajustada para <strong className="text-foreground">{taxaMulta}%</strong> por <span className="text-primary font-semibold">admin</span>.
+                </div>
+                <div className="border-b border-border/40 pb-1">
+                  <span className="text-emerald-500 font-bold">[2026-09-14 10:05:42]</span> Fornecedor <strong className="text-foreground">Constrular (FOR-001)</strong> ativado para degustação por <span className="text-primary font-semibold">Marina Costa</span>.
+                </div>
+                <div className="border-b border-border/40 pb-1">
+                  <span className="text-emerald-500 font-bold">[2026-09-12 09:15:30]</span> Fornecedor <strong className="text-foreground">Casa Forte (FOR-002)</strong> teve acesso bloqueado por <span className="text-primary font-semibold">admin</span>.
+                </div>
+                <div className="pb-1">
+                  <span className="text-emerald-500 font-bold">[2026-09-10 16:04:23]</span> Daemon <strong className="text-foreground">maoadc-bico-watcher</strong> inicializado com sucesso e operando.
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </PortalLayout>
   );
 }

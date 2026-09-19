@@ -10,11 +10,11 @@ import {
 
 import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
 import {
-  agendamentos as agendamentosMock,
   fornecedor,
   type Agendamento,
   setActiveSupplierCode,
   getActiveSupplierCode,
+  clearActiveSupplierContext,
   globalDbCache,
 } from "@/lib/mock-data";
 import {
@@ -84,7 +84,9 @@ type PortalState = {
   concluirPrimeiroAcesso: () => void;
   marcarSenhaCorrigida: () => void;
   adicionarAgendamento: (agendamento: Omit<Agendamento, "id" | "status">) => void;
-  registrarAntecipacao: (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => Promise<Antecipacao>;
+  registrarAntecipacao: (
+    dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">,
+  ) => Promise<Antecipacao>;
   fornecedor: typeof fornecedor;
   classificacaoDados: string;
   setClassificacaoDados: (val: string) => void;
@@ -100,10 +102,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [autenticado, setAutenticado] = useState(false);
   const [primeiroAcessoConcluido, setPrimeiroAcessoConcluido] = useState(false);
   const [mfaAtivo, setMfaAtivo] = useState(false);
-  const [agendamentos, setAgendamentos] = useState<Agendamento[]>(agendamentosMock);
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [antecipacoes, setAntecipacoes] = useState<Antecipacao[]>([]);
   const [carregandoSessao, setCarregandoSessao] = useState(true);
-  const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState(getActiveSupplierCode());
+  const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState("");
   const [dadosFornecedorVersao, setDadosFornecedorVersao] = useState(0);
   const [usuarioInterno, setUsuarioInterno] = useState<UsuarioInternoDB | null>(null);
   const [usuarioFornecedor, setUsuarioFornecedor] = useState<ContaFornecedorSessao | null>(null);
@@ -122,6 +124,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
+    if (!code) return;
     try {
       setCodigoFornecedorAtivo(code);
       const [forn, prods, pds, vds, bloqs, estq, peds, fats, crs, nfes, docas, concil, transfs] =
@@ -158,6 +161,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           agendaRecebimentoCdam: forn.agendaRecebimentoCdam as any,
           filialEntregaPadrao: forn.filialEntregaPadrao,
           isentoCobranca: forn.isentoCobranca as any,
+          taxaAcessoPct: forn.taxaAcessoPct as any,
           acessoDataInicio: forn.acessoDataInicio,
           acessoDataFim: forn.acessoDataFim,
           ...(forn.fornecedorComercialCodigo
@@ -173,7 +177,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
             descontoFinanceiroAteDias: null,
             condicaoPagamentoLabel: forn.condicaoPagamentoLabel,
             anticipationEnabled: true,
-          }
+          },
         };
         globalDbCache.produtos = prods.map((p) => ({
           ...p,
@@ -243,9 +247,18 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const limparFornecedorAtivo = useCallback(() => {
+    clearActiveSupplierContext();
+    setCodigoFornecedorAtivo("");
+    setAntecipacoes([]);
+    setFiltroMercadologicoStore(FILTRO_VAZIO);
+    setFiltroMercadologicoState(FILTRO_VAZIO);
+    setDadosFornecedorVersao((versao) => versao + 1);
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const bruto = window.sessionStorage.getItem(CHAVE_SESSAO);
+    const bruto = window.localStorage.getItem(CHAVE_SESSAO);
     if (!bruto) {
       setCarregandoSessao(false);
       return;
@@ -293,11 +306,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         }
         if (dados.autenticado) {
           const code = getActiveSupplierCode();
-          setCodigoFornecedorAtivo(code);
-          await carregarDadosReaisFornecedor(code);
+          if (dados.usuarioInterno) {
+            limparFornecedorAtivo();
+          } else if (code) {
+            setCodigoFornecedorAtivo(code);
+            await carregarDadosReaisFornecedor(code);
+          }
         }
       } catch {
-        window.sessionStorage.removeItem(CHAVE_SESSAO);
+        window.localStorage.removeItem(CHAVE_SESSAO);
       } finally {
         if (!cancelado) setCarregandoSessao(false);
       }
@@ -309,11 +326,40 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined" || carregandoSessao) return;
-    window.sessionStorage.setItem(
+    if (!autenticado) {
+      window.localStorage.removeItem(CHAVE_SESSAO);
+      return;
+    }
+    window.localStorage.setItem(
       CHAVE_SESSAO,
       JSON.stringify({ autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor }),
     );
   }, [autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor, carregandoSessao]);
+
+  useEffect(() => {
+    if (!autenticado || !usuarioFornecedor || typeof window === "undefined") return;
+    let cancelado = false;
+    const validarUsuarioAtivo = async () => {
+      try {
+        const conta = await fetchMinhaContaFornecedor();
+        if (!conta && !cancelado) {
+          window.localStorage.removeItem(CHAVE_SESSAO);
+          setAutenticado(false);
+          setUsuarioFornecedor(null);
+          setUsuarioInterno(null);
+          void encerrarSessaoPortal();
+        }
+      } catch {
+        // Erro transitório de rede não encerra uma sessão válida.
+      }
+    };
+    void validarUsuarioAtivo();
+    const intervalo = window.setInterval(() => void validarUsuarioAtivo(), 30_000);
+    return () => {
+      cancelado = true;
+      window.clearInterval(intervalo);
+    };
+  }, [autenticado, usuarioFornecedor]);
 
   useEffect(() => {
     if (codigoFornecedorAtivo) {
@@ -334,10 +380,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       if (userInterno) {
         setUsuarioInterno(userInterno);
         setUsuarioFornecedor(null);
-        const jaAtivo = getActiveSupplierCode();
-        setActiveSupplierCode(jaAtivo);
-        setCodigoFornecedorAtivo(jaAtivo);
-        void carregarDadosReaisFornecedor(jaAtivo);
+        limparFornecedorAtivo();
         setPrimeiroAcessoConcluido(true);
       } else if (codigoFornecedor) {
         setUsuarioInterno(null);
@@ -349,17 +392,19 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       }
       setAutenticado(true);
     },
-    [carregarDadosReaisFornecedor],
+    [carregarDadosReaisFornecedor, limparFornecedorAtivo],
   );
   const sair = useCallback(() => {
     setAutenticado(false);
     setUsuarioInterno(null);
     setUsuarioFornecedor(null);
+    limparFornecedorAtivo();
     void encerrarSessaoPortal();
-  }, []);
+  }, [limparFornecedorAtivo]);
 
   const mudarFornecedorAtivo = useCallback(
     (code: string) => {
+      if (!code) return;
       setActiveSupplierCode(code);
       setCodigoFornecedorAtivo(code);
       setFiltroMercadologicoStore(FILTRO_VAZIO);
@@ -375,9 +420,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const marcarSenhaCorrigida = useCallback(() => {
-    setUsuarioFornecedor((atual) =>
-      atual ? { ...atual, precisaTrocarSenha: false } : atual,
-    );
+    setUsuarioFornecedor((atual) => (atual ? { ...atual, precisaTrocarSenha: false } : atual));
     setPrimeiroAcessoConcluido(true);
   }, []);
 
@@ -390,6 +433,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   const registrarAntecipacao = useCallback(
     async (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => {
+      if (!codigoFornecedorAtivo) {
+        throw new Error("Selecione um fornecedor antes de registrar uma antecipação.");
+      }
       const res = await solicitarAntecipacao({
         data: {
           fornecedorCodigo: codigoFornecedorAtivo,
@@ -420,8 +466,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       entrar,
       sair,
       mudarFornecedorAtivo,
-  solicitarAntecipacao,
-  fetchAntecipacoes,
+      solicitarAntecipacao,
+      fetchAntecipacoes,
       concluirPrimeiroAcesso,
       marcarSenhaCorrigida,
       adicionarAgendamento,
@@ -446,8 +492,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       entrar,
       sair,
       mudarFornecedorAtivo,
-  solicitarAntecipacao,
-  fetchAntecipacoes,
+      solicitarAntecipacao,
+      fetchAntecipacoes,
       concluirPrimeiroAcesso,
       marcarSenhaCorrigida,
       adicionarAgendamento,

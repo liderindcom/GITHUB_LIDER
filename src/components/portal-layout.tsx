@@ -21,15 +21,29 @@ export function PortalLayout({
   descricao: string;
   children: ReactNode;
 }) {
-  const { fornecedor, mfaAtivo, usuarioInterno, mudarFornecedorAtivo, dadosFornecedorVersao } = usePortal();
+  const {
+    fornecedor,
+    mfaAtivo,
+    usuarioInterno,
+    codigoFornecedorAtivo,
+    dadosFornecedorVersao,
+    mudarFornecedorAtivo,
+  } = usePortal();
   const [fornecedoresList, setFornecedoresList] = useState<any[]>([]);
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const displayCodigo = mounted ? fornecedor.codigo : "704894";
-  const displayNome = mounted ? fornecedor.nome : "BTD DISTRIBUIDORA E COMERCIO L";
+  const temFornecedorSelecionado = !usuarioInterno || Boolean(codigoFornecedorAtivo);
+  const displayCodigo = usuarioInterno ? codigoFornecedorAtivo : mounted ? fornecedor.codigo : "";
+  const displayNome = usuarioInterno
+    ? codigoFornecedorAtivo
+      ? fornecedor.nome
+      : ""
+    : mounted
+      ? fornecedor.nome
+      : "";
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [busca, setBusca] = useState("");
 
@@ -77,68 +91,103 @@ export function PortalLayout({
               <div className="flex flex-col items-end gap-1.5 shrink-0">
                 <div className="flex items-center gap-2">
                   <LiderLogo variant="mark" className="size-7 sm:hidden" />
-                
-                {usuarioInterno ? (
-                  <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <button className="flex items-center gap-2 rounded-full border border-border bg-card/90 hover:bg-muted/70 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer max-w-[280px]">
-                        <ShieldCheck className="size-3.5 text-primary" />
-                        <span className="font-semibold text-primary font-mono">{formatarCodigoFornecedorComDigito(displayCodigo)}</span>
-                        <span className="truncate text-muted-foreground">· {displayNome}</span>
-                        <span className="text-[10px] text-primary/70 font-bold ml-1">▼</span>
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[300px] p-2 bg-card border border-border rounded-xl shadow-panel z-50">
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">Selecionar Fornecedor</p>
-                        <Input
-                          placeholder="Buscar por código ou nome..."
-                          className="h-8 text-xs pl-2 bg-background"
-                          value={busca}
-                          onChange={(e) => setBusca(e.target.value)}
-                        />
-                        <div className="max-h-[220px] overflow-y-auto space-y-0.5 pr-1">
-                          {listFiltrada.length === 0 ? (
-                            <p className="text-[10px] text-muted-foreground text-center py-4">Nenhum fornecedor encontrado.</p>
+
+                  {usuarioInterno ? (
+                    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-2 rounded-full border border-border bg-card/90 hover:bg-muted/70 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer max-w-[280px]">
+                          <ShieldCheck className="size-3.5 text-primary" />
+                          {temFornecedorSelecionado ? (
+                            <>
+                              <span className="font-semibold text-primary font-mono">
+                                {formatarCodigoFornecedorComDigito(displayCodigo)}
+                              </span>
+                              <span className="truncate text-muted-foreground">
+                                · {displayNome}
+                              </span>
+                            </>
                           ) : (
-                            listFiltrada.map((f) => (
-                              <button
-                                key={f.codigo}
-                                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
-                                  f.codigo === displayCodigo
-                                    ? "bg-primary text-primary-foreground font-semibold"
-                                    : "hover:bg-muted text-foreground"
-                                }`}
-                                onClick={() => {
-                                  mudarFornecedorAtivo(f.codigo);
-                                  setPopoverOpen(false);
-                                  setBusca("");
-                                  toast.success(`Navegando como ${f.nome}`);
-                                }}
-                              >
-                                <span className="font-mono text-[11px] font-semibold">{formatarCodigoFornecedorComDigito(f.codigo)}</span>
-                                <span className="truncate max-w-[180px] text-muted-foreground">{f.nome}</span>
-                              </button>
-                            ))
+                            <>
+                              <span className="font-semibold text-primary">Grupo Líder</span>
+                              <span className="text-muted-foreground">· Admin</span>
+                            </>
                           )}
+                          <span className="text-[10px] text-primary/70 font-bold ml-1">▼</span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[300px] p-2 bg-card border border-border rounded-xl shadow-panel z-50">
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">
+                            Selecionar Fornecedor
+                          </p>
+                          <Input
+                            placeholder="Buscar por código ou nome..."
+                            className="h-8 text-xs pl-2 bg-background"
+                            value={busca}
+                            onChange={(e) => setBusca(e.target.value)}
+                          />
+                          <div className="max-h-[220px] overflow-y-auto space-y-0.5 pr-1">
+                            {listFiltrada.length === 0 ? (
+                              <p className="text-[10px] text-muted-foreground text-center py-4">
+                                Nenhum fornecedor encontrado.
+                              </p>
+                            ) : (
+                              listFiltrada.map((f) => (
+                                <button
+                                  key={f.codigo}
+                                  className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                                    f.codigo === displayCodigo
+                                      ? "bg-primary text-primary-foreground font-semibold"
+                                      : "hover:bg-muted text-foreground"
+                                  }`}
+                                  onClick={() => {
+                                    mudarFornecedorAtivo(f.codigo);
+                                    setPopoverOpen(false);
+                                    setBusca("");
+                                    toast.success(`Navegando como ${f.nome}`);
+                                  }}
+                                >
+                                  <span className="font-mono text-[11px] font-semibold">
+                                    {formatarCodigoFornecedorComDigito(f.codigo)}
+                                  </span>
+                                  <span className="truncate max-w-[180px] text-muted-foreground">
+                                    {f.nome}
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                ) : (
-                  <div className="hidden items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-xs md:flex">
-                    {mfaAtivo && <ShieldCheck className="size-3.5 text-success" />}
-                    <span className="font-semibold font-mono">{formatarCodigoFornecedorComDigito(displayCodigo)}</span>
-                    <span className="text-muted-foreground">· {displayNome}</span>
-                  </div>
-                )}
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <div className="hidden items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-xs md:flex">
+                      {mfaAtivo && <ShieldCheck className="size-3.5 text-success" />}
+                      <span className="font-semibold font-mono">
+                        {formatarCodigoFornecedorComDigito(displayCodigo)}
+                      </span>
+                      <span className="text-muted-foreground">· {displayNome}</span>
+                    </div>
+                  )}
                 </div>
-                
+
                 <FiltroMixHeader />
               </div>
             </div>
           </header>
-          <main className="rise-in flex-1 p-4 sm:p-6" key={dadosFornecedorVersao}>{children}</main>
+          <main className="rise-in flex-1 p-4 sm:p-6" key={dadosFornecedorVersao}>
+            {usuarioInterno && !codigoFornecedorAtivo ? (
+              <div className="mx-auto flex min-h-[52vh] max-w-xl flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-8 text-center">
+                <ShieldCheck className="mb-4 size-10 text-primary" />
+                <h2 className="font-display text-xl font-bold">Selecione um fornecedor</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Escolha um fornecedor no seletor acima para consultar seus dados comerciais.
+                </p>
+              </div>
+            ) : (
+              children
+            )}
+          </main>
         </SidebarInset>
       </div>
     </SidebarProvider>

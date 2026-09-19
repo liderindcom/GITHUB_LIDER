@@ -11,13 +11,16 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PortalRouteImport } from './routes/_portal'
+import { Route as ComunicacaoRouteImport } from './routes/comunicacao'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalAcordoAcessoRouteImport } from './routes/_portal.acordo-acesso'
 import { Route as PortalAcordoFillrateRouteImport } from './routes/_portal.acordo-fillrate'
 import { Route as PortalAdminAcordoAcessoRouteImport } from './routes/_portal.admin-acordo-acesso'
 import { Route as PortalAdminFornecedoresRouteImport } from './routes/_portal.admin-fornecedores'
+import { Route as PortalAdminPermissoesRouteImport } from './routes/_portal.admin-permissoes'
 import { Route as PortalAdminPrecosRouteImport } from './routes/_portal.admin-precos'
 import { Route as PortalAdminRebaixaRouteImport } from './routes/_portal.admin-rebaixa'
+import { Route as PortalAdminScanntechRouteImport } from './routes/_portal.admin-scanntech'
 import { Route as PortalAdminUsuariosRouteImport } from './routes/_portal.admin-usuarios'
 import { Route as PortalAgendaRouteImport } from './routes/_portal.agenda'
 import { Route as PortalCatalogoComercialRouteImport } from './routes/_portal.catalogo-comercial'
@@ -28,6 +31,7 @@ import { Route as PortalCorrigirSenhaRouteImport } from './routes/_portal.corrig
 import { Route as PortalDashboardRouteImport } from './routes/_portal.dashboard'
 import { Route as PortalEstoqueRouteImport } from './routes/_portal.estoque'
 import { Route as PortalFinanceiroRouteImport } from './routes/_portal.financeiro'
+import { Route as PortalInstalarRouteImport } from './routes/_portal.instalar'
 import { Route as PortalItensRouteImport } from './routes/_portal.itens'
 import { Route as PortalLogisticaRouteImport } from './routes/_portal.logistica'
 import { Route as PortalOfertasRebaixasRouteImport } from './routes/_portal.ofertas-rebaixas'
@@ -42,6 +46,11 @@ import { Route as PortalSugestaoCompraRouteImport } from './routes/_portal.suges
 import { Route as PortalUsuariosRouteImport } from './routes/_portal.usuarios'
 import { Route as PortalVendasRouteImport } from './routes/_portal.vendas'
 import { Route as PortalVendasAnualRouteImport } from './routes/_portal.vendas-anual'
+import { Route as ApiAtlasCarteiraRouteImport } from './routes/api/atlas/carteira'
+import { Route as ApiAtlasCompraRouteImport } from './routes/api/atlas/compra'
+import { Route as ApiAtlasCompradoresRouteImport } from './routes/api/atlas/compradores'
+import { Route as ApiAtlasFornecedoresRouteImport } from './routes/api/atlas/fornecedores'
+import { Route as ApiIntegracoesInteliderRebaixasRouteImport } from './routes/api/integracoes/intelider/rebaixas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -50,6 +59,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const PortalRoute = PortalRouteImport.update({
   id: '/_portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComunicacaoRoute = ComunicacaoRouteImport.update({
+  id: '/comunicacao',
+  path: '/comunicacao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -77,6 +91,11 @@ const PortalAdminFornecedoresRoute = PortalAdminFornecedoresRouteImport.update({
   path: '/admin-fornecedores',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalAdminPermissoesRoute = PortalAdminPermissoesRouteImport.update({
+  id: '/admin-permissoes',
+  path: '/admin-permissoes',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalAdminPrecosRoute = PortalAdminPrecosRouteImport.update({
   id: '/admin-precos',
   path: '/admin-precos',
@@ -85,6 +104,11 @@ const PortalAdminPrecosRoute = PortalAdminPrecosRouteImport.update({
 const PortalAdminRebaixaRoute = PortalAdminRebaixaRouteImport.update({
   id: '/admin-rebaixa',
   path: '/admin-rebaixa',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalAdminScanntechRoute = PortalAdminScanntechRouteImport.update({
+  id: '/admin-scanntech',
+  path: '/admin-scanntech',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalAdminUsuariosRoute = PortalAdminUsuariosRouteImport.update({
@@ -135,6 +159,11 @@ const PortalEstoqueRoute = PortalEstoqueRouteImport.update({
 const PortalFinanceiroRoute = PortalFinanceiroRouteImport.update({
   id: '/financeiro',
   path: '/financeiro',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalInstalarRoute = PortalInstalarRouteImport.update({
+  id: '/instalar',
+  path: '/instalar',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalItensRoute = PortalItensRouteImport.update({
@@ -208,16 +237,45 @@ const PortalVendasAnualRoute = PortalVendasAnualRouteImport.update({
   path: '/vendas-anual',
   getParentRoute: () => PortalRoute,
 } as any)
+const ApiAtlasCarteiraRoute = ApiAtlasCarteiraRouteImport.update({
+  id: '/api/atlas/carteira',
+  path: '/api/atlas/carteira',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAtlasCompraRoute = ApiAtlasCompraRouteImport.update({
+  id: '/api/atlas/compra',
+  path: '/api/atlas/compra',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAtlasCompradoresRoute = ApiAtlasCompradoresRouteImport.update({
+  id: '/api/atlas/compradores',
+  path: '/api/atlas/compradores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAtlasFornecedoresRoute = ApiAtlasFornecedoresRouteImport.update({
+  id: '/api/atlas/fornecedores',
+  path: '/api/atlas/fornecedores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiIntegracoesInteliderRebaixasRoute =
+  ApiIntegracoesInteliderRebaixasRouteImport.update({
+    id: '/api/integracoes/intelider/rebaixas',
+    path: '/api/integracoes/intelider/rebaixas',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/comunicacao': typeof ComunicacaoRoute
   '/login': typeof LoginRoute
   '/acordo-acesso': typeof PortalAcordoAcessoRoute
   '/acordo-fillrate': typeof PortalAcordoFillrateRoute
   '/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/admin-permissoes': typeof PortalAdminPermissoesRoute
   '/admin-precos': typeof PortalAdminPrecosRoute
   '/admin-rebaixa': typeof PortalAdminRebaixaRoute
+  '/admin-scanntech': typeof PortalAdminScanntechRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/agenda': typeof PortalAgendaRoute
   '/catalogo-comercial': typeof PortalCatalogoComercialRoute
@@ -228,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
   '/financeiro': typeof PortalFinanceiroRoute
+  '/instalar': typeof PortalInstalarRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
   '/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
@@ -242,16 +301,24 @@ export interface FileRoutesByFullPath {
   '/usuarios': typeof PortalUsuariosRoute
   '/vendas': typeof PortalVendasRoute
   '/vendas-anual': typeof PortalVendasAnualRoute
+  '/api/atlas/carteira': typeof ApiAtlasCarteiraRoute
+  '/api/atlas/compra': typeof ApiAtlasCompraRoute
+  '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
+  '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/comunicacao': typeof ComunicacaoRoute
   '/login': typeof LoginRoute
   '/acordo-acesso': typeof PortalAcordoAcessoRoute
   '/acordo-fillrate': typeof PortalAcordoFillrateRoute
   '/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/admin-permissoes': typeof PortalAdminPermissoesRoute
   '/admin-precos': typeof PortalAdminPrecosRoute
   '/admin-rebaixa': typeof PortalAdminRebaixaRoute
+  '/admin-scanntech': typeof PortalAdminScanntechRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/agenda': typeof PortalAgendaRoute
   '/catalogo-comercial': typeof PortalCatalogoComercialRoute
@@ -262,6 +329,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
   '/financeiro': typeof PortalFinanceiroRoute
+  '/instalar': typeof PortalInstalarRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
   '/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
@@ -276,18 +344,26 @@ export interface FileRoutesByTo {
   '/usuarios': typeof PortalUsuariosRoute
   '/vendas': typeof PortalVendasRoute
   '/vendas-anual': typeof PortalVendasAnualRoute
+  '/api/atlas/carteira': typeof ApiAtlasCarteiraRoute
+  '/api/atlas/compra': typeof ApiAtlasCompraRoute
+  '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
+  '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_portal': typeof PortalRouteWithChildren
+  '/comunicacao': typeof ComunicacaoRoute
   '/login': typeof LoginRoute
   '/_portal/acordo-acesso': typeof PortalAcordoAcessoRoute
   '/_portal/acordo-fillrate': typeof PortalAcordoFillrateRoute
   '/_portal/admin-acordo-acesso': typeof PortalAdminAcordoAcessoRoute
   '/_portal/admin-fornecedores': typeof PortalAdminFornecedoresRoute
+  '/_portal/admin-permissoes': typeof PortalAdminPermissoesRoute
   '/_portal/admin-precos': typeof PortalAdminPrecosRoute
   '/_portal/admin-rebaixa': typeof PortalAdminRebaixaRoute
+  '/_portal/admin-scanntech': typeof PortalAdminScanntechRoute
   '/_portal/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/_portal/agenda': typeof PortalAgendaRoute
   '/_portal/catalogo-comercial': typeof PortalCatalogoComercialRoute
@@ -298,6 +374,7 @@ export interface FileRoutesById {
   '/_portal/dashboard': typeof PortalDashboardRoute
   '/_portal/estoque': typeof PortalEstoqueRoute
   '/_portal/financeiro': typeof PortalFinanceiroRoute
+  '/_portal/instalar': typeof PortalInstalarRoute
   '/_portal/itens': typeof PortalItensRoute
   '/_portal/logistica': typeof PortalLogisticaRoute
   '/_portal/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
@@ -312,18 +389,26 @@ export interface FileRoutesById {
   '/_portal/usuarios': typeof PortalUsuariosRoute
   '/_portal/vendas': typeof PortalVendasRoute
   '/_portal/vendas-anual': typeof PortalVendasAnualRoute
+  '/api/atlas/carteira': typeof ApiAtlasCarteiraRoute
+  '/api/atlas/compra': typeof ApiAtlasCompraRoute
+  '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
+  '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/comunicacao'
     | '/login'
     | '/acordo-acesso'
     | '/acordo-fillrate'
     | '/admin-acordo-acesso'
     | '/admin-fornecedores'
+    | '/admin-permissoes'
     | '/admin-precos'
     | '/admin-rebaixa'
+    | '/admin-scanntech'
     | '/admin-usuarios'
     | '/agenda'
     | '/catalogo-comercial'
@@ -334,6 +419,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/estoque'
     | '/financeiro'
+    | '/instalar'
     | '/itens'
     | '/logistica'
     | '/ofertas-rebaixas'
@@ -348,16 +434,24 @@ export interface FileRouteTypes {
     | '/usuarios'
     | '/vendas'
     | '/vendas-anual'
+    | '/api/atlas/carteira'
+    | '/api/atlas/compra'
+    | '/api/atlas/compradores'
+    | '/api/atlas/fornecedores'
+    | '/api/integracoes/intelider/rebaixas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/comunicacao'
     | '/login'
     | '/acordo-acesso'
     | '/acordo-fillrate'
     | '/admin-acordo-acesso'
     | '/admin-fornecedores'
+    | '/admin-permissoes'
     | '/admin-precos'
     | '/admin-rebaixa'
+    | '/admin-scanntech'
     | '/admin-usuarios'
     | '/agenda'
     | '/catalogo-comercial'
@@ -368,6 +462,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/estoque'
     | '/financeiro'
+    | '/instalar'
     | '/itens'
     | '/logistica'
     | '/ofertas-rebaixas'
@@ -382,17 +477,25 @@ export interface FileRouteTypes {
     | '/usuarios'
     | '/vendas'
     | '/vendas-anual'
+    | '/api/atlas/carteira'
+    | '/api/atlas/compra'
+    | '/api/atlas/compradores'
+    | '/api/atlas/fornecedores'
+    | '/api/integracoes/intelider/rebaixas'
   id:
     | '__root__'
     | '/'
     | '/_portal'
+    | '/comunicacao'
     | '/login'
     | '/_portal/acordo-acesso'
     | '/_portal/acordo-fillrate'
     | '/_portal/admin-acordo-acesso'
     | '/_portal/admin-fornecedores'
+    | '/_portal/admin-permissoes'
     | '/_portal/admin-precos'
     | '/_portal/admin-rebaixa'
+    | '/_portal/admin-scanntech'
     | '/_portal/admin-usuarios'
     | '/_portal/agenda'
     | '/_portal/catalogo-comercial'
@@ -403,6 +506,7 @@ export interface FileRouteTypes {
     | '/_portal/dashboard'
     | '/_portal/estoque'
     | '/_portal/financeiro'
+    | '/_portal/instalar'
     | '/_portal/itens'
     | '/_portal/logistica'
     | '/_portal/ofertas-rebaixas'
@@ -417,12 +521,23 @@ export interface FileRouteTypes {
     | '/_portal/usuarios'
     | '/_portal/vendas'
     | '/_portal/vendas-anual'
+    | '/api/atlas/carteira'
+    | '/api/atlas/compra'
+    | '/api/atlas/compradores'
+    | '/api/atlas/fornecedores'
+    | '/api/integracoes/intelider/rebaixas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PortalRoute: typeof PortalRouteWithChildren
+  ComunicacaoRoute: typeof ComunicacaoRoute
   LoginRoute: typeof LoginRoute
+  ApiAtlasCarteiraRoute: typeof ApiAtlasCarteiraRoute
+  ApiAtlasCompraRoute: typeof ApiAtlasCompraRoute
+  ApiAtlasCompradoresRoute: typeof ApiAtlasCompradoresRoute
+  ApiAtlasFornecedoresRoute: typeof ApiAtlasFornecedoresRoute
+  ApiIntegracoesInteliderRebaixasRoute: typeof ApiIntegracoesInteliderRebaixasRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -439,6 +554,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/comunicacao': {
+      id: '/comunicacao'
+      path: '/comunicacao'
+      fullPath: '/comunicacao'
+      preLoaderRoute: typeof ComunicacaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -476,6 +598,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAdminFornecedoresRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/admin-permissoes': {
+      id: '/_portal/admin-permissoes'
+      path: '/admin-permissoes'
+      fullPath: '/admin-permissoes'
+      preLoaderRoute: typeof PortalAdminPermissoesRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/admin-precos': {
       id: '/_portal/admin-precos'
       path: '/admin-precos'
@@ -488,6 +617,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-rebaixa'
       fullPath: '/admin-rebaixa'
       preLoaderRoute: typeof PortalAdminRebaixaRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/admin-scanntech': {
+      id: '/_portal/admin-scanntech'
+      path: '/admin-scanntech'
+      fullPath: '/admin-scanntech'
+      preLoaderRoute: typeof PortalAdminScanntechRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/admin-usuarios': {
@@ -558,6 +694,13 @@ declare module '@tanstack/react-router' {
       path: '/financeiro'
       fullPath: '/financeiro'
       preLoaderRoute: typeof PortalFinanceiroRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/instalar': {
+      id: '/_portal/instalar'
+      path: '/instalar'
+      fullPath: '/instalar'
+      preLoaderRoute: typeof PortalInstalarRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/itens': {
@@ -658,6 +801,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalVendasAnualRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/api/atlas/carteira': {
+      id: '/api/atlas/carteira'
+      path: '/api/atlas/carteira'
+      fullPath: '/api/atlas/carteira'
+      preLoaderRoute: typeof ApiAtlasCarteiraRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/atlas/compra': {
+      id: '/api/atlas/compra'
+      path: '/api/atlas/compra'
+      fullPath: '/api/atlas/compra'
+      preLoaderRoute: typeof ApiAtlasCompraRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/atlas/compradores': {
+      id: '/api/atlas/compradores'
+      path: '/api/atlas/compradores'
+      fullPath: '/api/atlas/compradores'
+      preLoaderRoute: typeof ApiAtlasCompradoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/atlas/fornecedores': {
+      id: '/api/atlas/fornecedores'
+      path: '/api/atlas/fornecedores'
+      fullPath: '/api/atlas/fornecedores'
+      preLoaderRoute: typeof ApiAtlasFornecedoresRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/integracoes/intelider/rebaixas': {
+      id: '/api/integracoes/intelider/rebaixas'
+      path: '/api/integracoes/intelider/rebaixas'
+      fullPath: '/api/integracoes/intelider/rebaixas'
+      preLoaderRoute: typeof ApiIntegracoesInteliderRebaixasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -666,8 +844,10 @@ interface PortalRouteChildren {
   PortalAcordoFillrateRoute: typeof PortalAcordoFillrateRoute
   PortalAdminAcordoAcessoRoute: typeof PortalAdminAcordoAcessoRoute
   PortalAdminFornecedoresRoute: typeof PortalAdminFornecedoresRoute
+  PortalAdminPermissoesRoute: typeof PortalAdminPermissoesRoute
   PortalAdminPrecosRoute: typeof PortalAdminPrecosRoute
   PortalAdminRebaixaRoute: typeof PortalAdminRebaixaRoute
+  PortalAdminScanntechRoute: typeof PortalAdminScanntechRoute
   PortalAdminUsuariosRoute: typeof PortalAdminUsuariosRoute
   PortalAgendaRoute: typeof PortalAgendaRoute
   PortalCatalogoComercialRoute: typeof PortalCatalogoComercialRoute
@@ -678,6 +858,7 @@ interface PortalRouteChildren {
   PortalDashboardRoute: typeof PortalDashboardRoute
   PortalEstoqueRoute: typeof PortalEstoqueRoute
   PortalFinanceiroRoute: typeof PortalFinanceiroRoute
+  PortalInstalarRoute: typeof PortalInstalarRoute
   PortalItensRoute: typeof PortalItensRoute
   PortalLogisticaRoute: typeof PortalLogisticaRoute
   PortalOfertasRebaixasRoute: typeof PortalOfertasRebaixasRoute
@@ -699,8 +880,10 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalAcordoFillrateRoute: PortalAcordoFillrateRoute,
   PortalAdminAcordoAcessoRoute: PortalAdminAcordoAcessoRoute,
   PortalAdminFornecedoresRoute: PortalAdminFornecedoresRoute,
+  PortalAdminPermissoesRoute: PortalAdminPermissoesRoute,
   PortalAdminPrecosRoute: PortalAdminPrecosRoute,
   PortalAdminRebaixaRoute: PortalAdminRebaixaRoute,
+  PortalAdminScanntechRoute: PortalAdminScanntechRoute,
   PortalAdminUsuariosRoute: PortalAdminUsuariosRoute,
   PortalAgendaRoute: PortalAgendaRoute,
   PortalCatalogoComercialRoute: PortalCatalogoComercialRoute,
@@ -711,6 +894,7 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalDashboardRoute: PortalDashboardRoute,
   PortalEstoqueRoute: PortalEstoqueRoute,
   PortalFinanceiroRoute: PortalFinanceiroRoute,
+  PortalInstalarRoute: PortalInstalarRoute,
   PortalItensRoute: PortalItensRoute,
   PortalLogisticaRoute: PortalLogisticaRoute,
   PortalOfertasRebaixasRoute: PortalOfertasRebaixasRoute,
@@ -733,7 +917,13 @@ const PortalRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PortalRoute: PortalRouteWithChildren,
+  ComunicacaoRoute: ComunicacaoRoute,
   LoginRoute: LoginRoute,
+  ApiAtlasCarteiraRoute: ApiAtlasCarteiraRoute,
+  ApiAtlasCompraRoute: ApiAtlasCompraRoute,
+  ApiAtlasCompradoresRoute: ApiAtlasCompradoresRoute,
+  ApiAtlasFornecedoresRoute: ApiAtlasFornecedoresRoute,
+  ApiIntegracoesInteliderRebaixasRoute: ApiIntegracoesInteliderRebaixasRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,0 +1,11 @@
+{
+  "name": "Portal do Fornecedor — Grupo Líder",
+  "short_name": "Portal Líder",
+  "start_url": "/instalar",
+  "display": "standalone",
+  "background_color": "#f5f7f4",
+  "theme_color": "#143b2d",
+  "lang": "pt-BR",
+  "description": "Canal oficial do fornecedor com mensagens e alertas operacionais.",
+  "icons": []
+}

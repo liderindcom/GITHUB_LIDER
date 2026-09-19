@@ -1,5 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Eye, EyeOff, KeyRound, Lock, Mail, ShieldCheck, Truck, User } from "lucide-react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  Mail,
+  ShieldCheck,
+  Truck,
+  User,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -9,11 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePortal } from "@/context/portal-context";
 import { soDigitos } from "@/lib/fornecedor-codigo";
-import {
-  loginUsuarioFornecedor,
-  loginUsuarioInterno,
-  primeiroAcessoFornecedor,
-} from "@/api";
+import { loginUsuarioFornecedor, loginUsuarioInterno, primeiroAcessoFornecedor } from "@/api";
 
 const destaques = [
   { icone: Truck, titulo: "Agendamento de NF-e", texto: "Janelas de descarga em tempo real" },
@@ -24,6 +30,9 @@ const destaques = [
 export function LoginScreen() {
   const navigate = useNavigate();
   const { entrar } = usePortal();
+  const origemComunicacao =
+    typeof window !== "undefined" &&
+    (new URLSearchParams(window.location.search).get("origem") === "comunicacao" || window.location.hostname.toLowerCase() === "appcom.intelider.com.br");
 
   const [mounted, setMounted] = useState(false);
   const [codigo, setCodigo] = useState("");
@@ -38,7 +47,6 @@ export function LoginScreen() {
 
   async function acessar() {
     setErro(null);
-
     try {
       const email = emailUsuario.trim().toLowerCase();
 
@@ -54,7 +62,7 @@ export function LoginScreen() {
           toast.success("Acesso administrativo liberado", {
             description: `Bem-vindo, ${userInterno.nome}.`,
           });
-          navigate({ to: "/admin-fornecedores" });
+          navigate({ to: origemComunicacao ? "/comunicacao" : "/admin-fornecedores" });
           return;
         }
         setErro("Informe o e-mail do usuário. É o login da sua conta — não deixe em branco.");
@@ -73,7 +81,16 @@ export function LoginScreen() {
           precisaTrocarSenha: precisa,
         });
         toast.success("Acesso liberado", { description: `Bem-vindo, ${usuario.nome}.` });
-        navigate({ to: precisa ? "/corrigir-senha" : "/dashboard" });
+        navigate({
+          to: precisa ? "/corrigir-senha" : origemComunicacao ? "/comunicacao" : "/dashboard",
+        });
+        return;
+      }
+
+      if (origemComunicacao) {
+        setErro(
+          "Este Comunicador e exclusivo para usuarios ja cadastrados no Portal do Fornecedor. Peca ao administrador da sua empresa para incluir seu usuario.",
+        );
         return;
       }
 
@@ -118,8 +135,15 @@ export function LoginScreen() {
       <div className="pointer-events-none absolute -left-40 top-[-10rem] size-[34rem] rounded-full bg-primary/20 blur-[140px]" />
       <div className="pointer-events-none absolute -bottom-52 right-[-8rem] size-[30rem] rounded-full bg-warning/20 blur-[150px]" />
 
-      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-6 py-12 lg:grid-cols-[1.05fr_minmax(0,26rem)] lg:gap-16">
-        <div className="rise-in space-y-10">
+      <div
+        className={
+          "relative mx-auto grid min-h-screen w-full items-center gap-10 px-6 py-12 " +
+          (origemComunicacao
+            ? "max-w-md"
+            : "max-w-6xl lg:grid-cols-[1.05fr_minmax(0,26rem)] lg:gap-16")
+        }
+      >
+        <div className={(origemComunicacao ? "hidden " : "") + "rise-in space-y-10"}>
           <div className="space-y-3">
             <LiderLogo
               variant="hero"
@@ -127,7 +151,9 @@ export function LoginScreen() {
               className="h-14 max-w-[16rem] sm:h-16 sm:max-w-[20rem]"
             />
             <div className="min-w-0">
-              <p className="font-display text-sm font-bold tracking-tight">Portal do Fornecedor</p>
+              <p className="font-display text-sm font-bold tracking-tight">
+                {origemComunicacao ? "AppCom Lider" : "Portal do Fornecedor"}
+              </p>
               <p className="text-xs text-muted-foreground">Grupo Líder · Varejo Alimentício</p>
             </div>
           </div>
@@ -137,11 +163,14 @@ export function LoginScreen() {
               Ambiente do parceiro
             </span>
             <h1 className="ember-text max-w-xl text-4xl font-extrabold leading-[1.05] sm:text-5xl lg:text-6xl">
-              Sua operação com o Grupo Líder, viva em um só painel.
+              {origemComunicacao
+                ? "Sua comunicação com o Grupo Líder, em um só lugar."
+                : "Sua operação com o Grupo Líder, viva em um só painel."}
             </h1>
             <p className="max-w-lg text-base text-muted-foreground">
-              Pedidos, sell-out item a item, rupturas de estoque, agendamento logístico e
-              antecipação de recebíveis — tudo em tempo real.
+              {origemComunicacao
+                ? "Entre para acompanhar avisos do Atlas, responder propostas e negociar com o comprador."
+                : "Pedidos, sell-out item a item, rupturas de estoque, agendamento logístico e antecipação de recebíveis — tudo em tempo real."}
             </p>
           </div>
 
@@ -163,10 +192,13 @@ export function LoginScreen() {
           <div className="mb-5 flex items-center gap-3 lg:hidden">
             <LiderLogo variant="full" priority className="h-7" />
           </div>
-          <h2 className="font-display text-2xl font-bold">Acesse sua conta</h2>
+          <h2 className="font-display text-2xl font-bold">
+            {origemComunicacao ? "Acesse o AppCom Lider" : "Acesse sua conta"}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Código RMS ou CNPJ, e-mail e senha. No primeiro acesso a senha é o CNPJ; o portal
-            pede em seguida para corrigir a senha no menu.
+            {origemComunicacao
+              ? "Use o usuário já cadastrado no Portal do Fornecedor para acessar o comunicador."
+              : "Código RMS ou CNPJ, e-mail e senha. No primeiro acesso a senha é o CNPJ; o portal pede em seguida para corrigir a senha no menu."}
           </p>
 
           <div className="mt-6 space-y-4">
@@ -255,14 +287,15 @@ export function LoginScreen() {
               className="group h-11 w-full rounded-xl font-semibold shadow-ember"
               onClick={acessar}
             >
-              Entrar no portal
+              {origemComunicacao ? "Entrar no AppCom" : "Entrar no portal"}
               <ArrowRight className="ml-1 size-4 transition-transform group-hover:translate-x-1" />
             </Button>
 
             {mounted ? (
               <p className="text-center text-xs text-muted-foreground">
-                Primeiro acesso: e-mail + senha = CNPJ, depois o menu Corrigir senha. Equipe
-                Líder: usuário interno no primeiro campo, e-mail em branco.
+                {origemComunicacao
+                  ? "Use os mesmos dados do Portal do Fornecedor."
+                  : "Primeiro acesso: e-mail + senha = CNPJ, depois o menu Corrigir senha. Equipe Líder: usuário interno no primeiro campo, e-mail em branco."}
               </p>
             ) : null}
           </div>
