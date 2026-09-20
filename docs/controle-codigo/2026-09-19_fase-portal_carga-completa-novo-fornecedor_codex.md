@@ -33,3 +33,10 @@
 
 - A confirmação operacional integral ocorrerá na primeira inclusão/revalidação real; até lá nenhum novo fornecedor pode ser liberado pelo fluxo sem o registro `COMPLETA`.
 - A carga usa somente SELECT na origem RMS e grava no PostgreSQL do Portal; não há consulta direta da interface ao RMS.
+
+
+## Validação operacional posterior
+
+- Em 2026-09-20, a carga real do fornecedor RMS `11640` (BRF S.A.) concluiu com `COMPLETA` no PostgreSQL.
+- Conferência registrada: 349 produtos/visibilidades, 6.964 chaves SKU+loja de estoque, 264.709 vendas diárias, 7.193 linhas mensais, 303 pedidos, 6.983 itens e lote canônico de perdas com 28.463 registros.
+- O primeiro ciclo detectou 16 linhas de estoque que convergiam para as mesmas chaves SKU+loja; o carregador passou a consolidar valores por chave antes do upsert. A repetição conferiu integralmente.
