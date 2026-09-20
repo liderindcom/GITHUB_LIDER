@@ -48,8 +48,18 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const response = await normalizeCatastrophicSsrResponse(
+        await handler.fetch(request, env, ctx),
+      );
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("text/html")) return response;
+      const headers = new Headers(response.headers);
+      headers.set("cache-control", "no-store, max-age=0");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {
