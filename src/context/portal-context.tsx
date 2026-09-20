@@ -124,6 +124,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
+    code = normalizarCodigoFornecedor(code);
     if (!code) return;
     try {
       setCodigoFornecedorAtivo(code);
