@@ -127,29 +127,111 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     if (!code) return;
     try {
       setCodigoFornecedorAtivo(code);
+      // Nunca exibir indicadores do fornecedor anterior enquanto o novo cadastro
+      // é hidratado. A sessão permanece ativa; apenas o cache de dados é limpo.
+      globalDbCache.fornecedor = null;
+      globalDbCache.produtos = null;
+      globalDbCache.perdas = null;
+      globalDbCache.vendas = null;
+      globalDbCache.estoque = null;
+      globalDbCache.vendasMensais = null;
+      globalDbCache.bloqueios = null;
+      globalDbCache.pedidos = null;
+      globalDbCache.faturas = null;
+      globalDbCache.contasReceber = null;
+      globalDbCache.nfePendentes = null;
+      globalDbCache.docas = null;
+      globalDbCache.conciliacao = null;
+      globalDbCache.transferenciasCdam = null;
+      setDadosFornecedorVersao((versao) => versao + 1);
+      // A tela inicial não precisa esperar a série detalhada de vendas e os dados
+      // de menus secundários. Reutilizamos as mesmas promessas para não duplicar
+      // chamadas, mas liberamos o cadastro, catálogo e estoque primeiro.
+      const fornecedorPromise = fetchFornecedor({ data: code });
+      const produtosPromise = fetchProdutos({ data: code });
+      const perdasPromise = fetchPerdas({ data: code });
+      const vendasPromise = fetchVendas({ data: code }).catch((err) => {
+        console.error("Erro ao carregar vendas do fornecedor:", err);
+        return [] as Awaited<ReturnType<typeof fetchVendas>>;
+      });
+      const bloqueiosPromise = fetchProdutosBloqueios({ data: code });
+      const estoquePromise = fetchEstoque({ data: code });
+      const pedidosPromise = fetchPedidos({ data: code });
+      const faturasPromise = fetchFaturas({ data: code });
+      const contasReceberPromise = fetchContasReceber({ data: code });
+      const nfePendentesPromise = fetchNfePendentes({ data: code });
+      const docasPromise = fetchDocas();
+      const conciliacaoPromise = fetchConciliacaoNfePedido({ data: code });
+      const transferenciasPromise = fetchTransferenciasCdam({ data: code }).catch((err) => {
+        console.error("Erro ao carregar transferencias CDAM:", err);
+        return [] as Awaited<ReturnType<typeof fetchTransferenciasCdam>>;
+      });
+
+      const [fornecedorInicial, produtosIniciais, estoqueInicial] = await Promise.all([
+        fornecedorPromise,
+        produtosPromise,
+        estoquePromise,
+      ]);
+      if (getActiveSupplierCode() !== code) return;
+      if (fornecedorInicial) {
+        globalDbCache.fornecedor = {
+          codigo: fornecedorInicial.codigo,
+          nome: fornecedorInicial.nome,
+          cnpj: fornecedorInicial.cnpj,
+          cnpjSenhaInicial: fornecedorInicial.cnpjSenhaInicial,
+          destinatario: fornecedorInicial.destinatario,
+          modeloEntrega: fornecedorInicial.modeloEntrega as any,
+          agendaRecebimentoCdam: fornecedorInicial.agendaRecebimentoCdam as any,
+          filialEntregaPadrao: fornecedorInicial.filialEntregaPadrao,
+          isentoCobranca: fornecedorInicial.isentoCobranca as any,
+          taxaAcessoPct: fornecedorInicial.taxaAcessoPct as any,
+          acessoDataInicio: fornecedorInicial.acessoDataInicio ?? null,
+          acessoDataFim: fornecedorInicial.acessoDataFim ?? null,
+          ...(fornecedorInicial.fornecedorComercialCodigo
+            ? { fornecedorComercialCodigo: fornecedorInicial.fornecedorComercialCodigo }
+            : {}),
+          ...(fornecedorInicial.fornecedorComercialNome
+            ? { fornecedorComercialNome: fornecedorInicial.fornecedorComercialNome }
+            : {}),
+          cadastroFinanceiro: {
+            prazoPagamentoDias: fornecedorInicial.prazoPagamentoDias,
+            prazoTipo: fornecedorInicial.prazoTipo ?? null,
+            descontoFinanceiroPct: fornecedorInicial.descontoFinanceiroPct,
+            descontoFinanceiroAteDias: null,
+            condicaoPagamentoLabel: fornecedorInicial.condicaoPagamentoLabel,
+            anticipationEnabled: true,
+          },
+        };
+        globalDbCache.produtos = produtosIniciais.map((p) => ({
+          ...p,
+          papelMercadologico: p.papelMercadologico as any,
+        }));
+        globalDbCache.estoque = (estoqueInicial ?? []).map((e) => ({
+          sku: e.sku,
+          lojaId: e.lojaId,
+          estoqueAtual: e.estoqueAtual,
+          estoqueMinimo: 0,
+        }));
+        setDadosFornecedorVersao((versao) => versao + 1);
+      }
       const [forn, prods, pds, vds, bloqs, estq, peds, fats, crs, nfes, docas, concil, transfs] =
         await Promise.all([
-          fetchFornecedor({ data: code }),
-          fetchProdutos({ data: code }),
-          fetchPerdas({ data: code }),
-          fetchVendas({ data: code }).catch((err) => {
-            console.error("Erro ao carregar vendas do fornecedor:", err);
-            return [] as Awaited<ReturnType<typeof fetchVendas>>;
-          }),
-          fetchProdutosBloqueios({ data: code }),
-          fetchEstoque({ data: code }),
-          fetchPedidos({ data: code }),
-          fetchFaturas({ data: code }),
-          fetchContasReceber({ data: code }),
-          fetchNfePendentes({ data: code }),
-          fetchDocas(),
-          fetchConciliacaoNfePedido({ data: code }),
-          fetchTransferenciasCdam({ data: code }).catch((err) => {
-            console.error("Erro ao carregar transferencias CDAM:", err);
-            return [] as Awaited<ReturnType<typeof fetchTransferenciasCdam>>;
-          }),
+          fornecedorPromise,
+          produtosPromise,
+          perdasPromise,
+          vendasPromise,
+          bloqueiosPromise,
+          estoquePromise,
+          pedidosPromise,
+          faturasPromise,
+          contasReceberPromise,
+          nfePendentesPromise,
+          docasPromise,
+          conciliacaoPromise,
+          transferenciasPromise,
         ]);
 
+      if (getActiveSupplierCode() !== code) return;
       if (forn) {
         globalDbCache.fornecedor = {
           codigo: forn.codigo,
