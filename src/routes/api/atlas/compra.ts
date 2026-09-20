@@ -37,6 +37,18 @@ type PedidoPendente = {
   precoMedioPedido: number | null;
 };
 
+type FluxoOperacionalCompacto = {
+  stockQuantity: number | null;
+  averageSalesQuantity: number | null;
+  pendingQuantity: number | null;
+  operationalBalanceQuantity: number | null;
+  coverageDays: number | null;
+  sourceQualityStatus: string;
+  operationalStatus: string;
+  financialBaseStatus: "SEM_BASE_FINANCEIRA";
+  asOfTs: string;
+};
+
 export const Route = createFileRoute("/api/atlas/compra")({
   server: {
     handlers: {
@@ -139,6 +151,26 @@ export const Route = createFileRoute("/api/atlas/compra")({
           Number(estoque?.saidaMediaTotal || 0) > 0
             ? Number(estoque.estoqueTotal) / Number(estoque.saidaMediaTotal)
             : null;
+        const fluxoOperacional = db
+          .prepare(
+            `SELECT f.stock_quantity AS "stockQuantity",
+                    f.average_sales_quantity AS "averageSalesQuantity",
+                    f.pending_quantity AS "pendingQuantity",
+                    f.operational_balance_quantity AS "operationalBalanceQuantity",
+                    f.coverage_days AS "coverageDays",
+                    f.source_quality_status AS "sourceQualityStatus",
+                    f.operational_status AS "operationalStatus",
+                    f.financial_base_status AS "financialBaseStatus",
+                    r.as_of_ts AS "asOfTs"
+               FROM atlas_fluxo_operacional_publicacao p
+               JOIN atlas_fluxo_operacional_runs r ON r.run_id = p.published_run_id
+               JOIN atlas_fluxo_operacional_sku_fornecedor f ON f.run_id = r.run_id
+              WHERE p.publication_key = TRUE
+                AND f.supplier_code = ?
+                AND f.product_code = ?
+              LIMIT 1`,
+          )
+          .get(fornecedorCodigo, produto.sku) as FluxoOperacionalCompacto | undefined;
 
         return Response.json(
           {
@@ -154,6 +186,7 @@ export const Route = createFileRoute("/api/atlas/compra")({
               vendasMensais,
               filiais,
             },
+            fluxoOperacional: fluxoOperacional ?? null,
             observedAt: new Date().toISOString(),
             source: "atlas_postgresql",
             scope: "produtos_em_linha_da_carteira_do_comprador",
