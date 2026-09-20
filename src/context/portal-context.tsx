@@ -242,6 +242,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       }
       setDadosFornecedorVersao((versao) => versao + 1);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error ?? "");
+      if (message.includes("Server function info not found") && typeof window !== "undefined") {
+        const recoveryKey = "portal-build-recovery-attempt";
+        if (window.sessionStorage.getItem(recoveryKey) !== "1") {
+          window.sessionStorage.setItem(recoveryKey, "1");
+          window.location.reload();
+          return;
+        }
+      }
       console.error("Erro ao carregar dados do SQLite no Contexto:", error);
       setDadosFornecedorVersao((versao) => versao + 1);
     }
