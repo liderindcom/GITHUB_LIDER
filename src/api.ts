@@ -626,7 +626,7 @@ export const fetchPerdas = createServerFn({ method: "GET" })
       `SELECT d.fornecedorCodigo, d.lojaId, d.lojaNome, d.sku, d.produtoDescricao,
               d.quantidade, d.valorUnitario, d.valorTotal, d.data, d.ocorrencias
          FROM perdas_rms_520_canonicas d
-         JOIN perdas_rms_520_controle c ON c.chave = "ativo" AND c.loteCarga = d.loteCarga
+         JOIN perdas_rms_520_controle c ON c.chave = 'ativo' AND c.loteCarga = d.loteCarga
          JOIN produtos p ON p.sku = d.sku
         WHERE ${sqlSkuVisivel("p")} AND d.lojaId NOT IN (${sqlLojasForaPortal})`,
     );
