@@ -131,6 +131,22 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => {
+    const recoveryKey = "portal-build-recovery-attempt";
+    const recoverFromStaleClient = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const message =
+        reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+      if (!message.includes("Server function info not found")) return;
+      if (window.sessionStorage.getItem(recoveryKey) === "1") return;
+      window.sessionStorage.setItem(recoveryKey, "1");
+      event.preventDefault();
+      window.location.reload();
+    };
+    window.addEventListener("unhandledrejection", recoverFromStaleClient);
+    return () => window.removeEventListener("unhandledrejection", recoverFromStaleClient);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <PortalProvider>
