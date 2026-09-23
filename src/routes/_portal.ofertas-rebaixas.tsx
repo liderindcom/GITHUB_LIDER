@@ -534,12 +534,23 @@ function OfertasRebaixasPage() {
 
           <TabsContent value="solicitar" className="mt-4">
             <Card className="shadow-panel border-none">
-              <CardHeader>
-                <CardTitle>Solicitar rebaixa</CardTitle>
-                <CardDescription>
-                  Fornecedor e comprador são identificados automaticamente. O envio segue para
-                  análise do diretor do segmento.
-                </CardDescription>
+              <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+                <div className="space-y-1.5">
+                  <CardTitle>Solicitar rebaixa</CardTitle>
+                  <CardDescription>
+                    Fornecedor e comprador são identificados automaticamente. O envio segue para
+                    análise do diretor do segmento.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!periodoValido || !itensProposta.length || !lojasSelecionadas.length}
+                  onClick={imprimirProposta}
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Imprimir proposta
+                </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-4">
@@ -872,15 +883,6 @@ function OfertasRebaixasPage() {
                   </Table>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!periodoValido || !itensProposta.length || !lojasSelecionadas.length}
-                    onClick={imprimirProposta}
-                  >
-                    <Printer className="mr-2 h-4 w-4" />
-                    Imprimir proposta
-                  </Button>
                   <Button
                     disabled={
                       enviando ||
