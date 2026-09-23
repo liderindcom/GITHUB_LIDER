@@ -480,13 +480,21 @@ function getLiderWideAbcClasses() {
       volume: number;
     }>;
 
-    const itens = rows.map((r) => ({
-      sku: r.sku,
-      grupo: `${r.departamentoCodigo}`,
-      grupoQuantidade: `${r.departamentoCodigo}`,
-      valor: r.valor || 0,
-      volume: r.volume || 0,
-    }));
+    const itens = rows.map((r) => {
+      // A curva ABC compara itens concorrentes no mesmo subgrupo. Agrupar só
+      // por departamento mistura categorias com perfis de venda distintos e
+      // distorce a prioridade relativa de cada SKU.
+      const subgrupo = [r.departamentoCodigo, r.secaoCodigo, r.grupoCodigo, r.subgrupoCodigo]
+        .map((codigo) => String(codigo ?? "").trim())
+        .join(":");
+      return {
+        sku: r.sku,
+        grupo: subgrupo,
+        grupoQuantidade: subgrupo,
+        valor: r.valor || 0,
+        volume: r.volume || 0,
+      };
+    });
     const classificados = classificarCurvaAbcd(itens);
     const topStars = classificarCurvaTopStar(itens);
     for (const [sku, resultado] of classificados) {
