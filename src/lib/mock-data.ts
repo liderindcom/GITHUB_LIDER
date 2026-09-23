@@ -644,6 +644,59 @@ const diasEntre = (inicio: string, fim: string) => {
   return Math.max(0, Math.round((fimMs - inicioMs) / 86400000));
 };
 
+function dataCivilHojeSaoPaulo(agora = new Date()): string {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(agora);
+  const valor = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((parte) => parte.type === tipo)?.value ?? "";
+  return `${valor("year")}-${valor("month")}-${valor("day")}`;
+}
+
+function dataCivilValida(valor: string): boolean {
+  const raw = (valor || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const [ano, mes, dia] = raw.split("-").map(Number);
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+  return (
+    data.getUTCFullYear() === ano && data.getUTCMonth() === mes - 1 && data.getUTCDate() === dia
+  );
+}
+
+/** Pedido apto a apuracao contratual: emissao civil ha mais de 30 dias. */
+export function pedidoJulgavelFillRate(pedido: Pedido, agora = new Date()): boolean {
+  const totais = quantidadesPedido(pedido);
+  const emissao = (pedido.emissao || "").slice(0, 10);
+  return (
+    pedido.destino === "Fornecedor" &&
+    pedido.status !== "Cancelado" &&
+    totais.pedida > 0 &&
+    dataCivilValida(emissao) &&
+    diasEntre(emissao, dataCivilHojeSaoPaulo(agora)) > 30
+  );
+}
+
+/** Falta contratual: pedido julgavel que nao teve nenhuma quantidade faturada. */
+export function pedidoEmFaltaFillRate(pedido: Pedido, agora = new Date()): boolean {
+  return pedidoJulgavelFillRate(pedido, agora) && quantidadesPedido(pedido).faturada <= 0;
+}
+
+/** Uma competencia so pode ser rotulada como cobravel depois da carencia de 30 dias. */
+export function competenciaFillRateCobravel(competencia: string, agora = new Date()): boolean {
+  if (!/^\d{4}-\d{2}$/.test(competencia)) return false;
+  const [ano, mes] = competencia.split("-").map(Number);
+  const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  return (
+    diasEntre(
+      `${competencia}-${String(ultimoDia).padStart(2, "0")}`,
+      dataCivilHojeSaoPaulo(agora),
+    ) > 30
+  );
+}
+
 export const leadTimeEntregaCdam = (pedido: Pedido) =>
   pedido.entradaCdam ? diasEntre(pedido.emissao, pedido.entradaCdam) : null;
 
