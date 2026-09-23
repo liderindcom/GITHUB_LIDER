@@ -1670,6 +1670,8 @@ export const searchFornecedores = createServerFn({ method: "GET" })
     let query = `SELECT f.codigo, f.nome, f.cnpj, f.acessoLiberado, f.metaFillRatePct, f.isentoCobranca, f.taxaAcessoPct, f.acessoDataInicio, f.acessoDataFim, f.acessoStatus, f.acordoNumero, f.degustacaoUsada, c.status AS "cargaStatus", c.verificado_em AS "cargaVerificadaEm", c.erro AS "cargaErro" FROM fornecedores f LEFT JOIN fornecedor_carga_completude c ON c.fornecedor_codigo = f.codigo WHERE (f.codigo LIKE ? OR f.nome LIKE ? OR f.cnpj LIKE ?)`;
     const params: Array<string | number> = [cleanSearch, cleanSearch, cleanSearch];
 
+    if (onlyActive) query += " AND f.acessoLiberado = 1";
+
     query += " ORDER BY codigo LIMIT ? OFFSET ?";
     params.push(limit, offset);
 
@@ -1680,6 +1682,7 @@ export const searchFornecedores = createServerFn({ method: "GET" })
     let countQuery =
       "SELECT COUNT(*) AS total FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
     const countParams: string[] = [cleanSearch, cleanSearch, cleanSearch];
+    if (onlyActive) countQuery += " AND acessoLiberado = 1";
     const countStmt = db.prepare(countQuery);
     const total = countStmt.get(...countParams) as { total: number } | undefined;
 

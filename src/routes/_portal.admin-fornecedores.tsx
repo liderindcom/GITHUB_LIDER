@@ -218,6 +218,7 @@ function AdminFornecedoresPage() {
           search: searchTerm,
           limit,
           offset: pageNum * limit,
+          onlyActive: true,
         },
       });
       setFornecedores(data.rows);
@@ -276,21 +277,33 @@ function AdminFornecedoresPage() {
     setPage(0);
   };
 
-  const imprimirContratoDegustacao = (
+  const imprimirAcordo = (
     codigo: string,
     nome: string,
     cnpj: string,
-    inicio: string,
-    fim: string,
+    acessoStatus: string | null | undefined,
+    inicio: string | null | undefined,
+    fim: string | null | undefined,
     taxaAcessoPct: number,
+    acordoNumero?: string | null,
   ) => {
     const janela = window.open("", "_blank", "width=800,height=1100");
     if (!janela) {
       toast.error("Permita pop-ups para imprimir o contrato.");
       return;
     }
+    const escaparHtml = (valor: string) =>
+      valor.replace(
+        /[&<>"']/g,
+        (caractere) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[caractere]!,
+      );
+    const degustacao = acessoStatus === "DEGUSTACAO";
+    const detalhesAcesso = degustacao
+      ? `<p>O acesso de degustação inicia em <b>${escaparHtml(inicio || "não informado")}</b> e termina em <b>${escaparHtml(fim || "não informado")}</b>, totalizando 30 dias corridos. Este prazo é único, não prorrogável e não gera cobrança durante a degustação.</p>`
+      : `<p>O acesso está ativo no Portal do Fornecedor${acordoNumero ? ` sob o acordo nº <b>${escaparHtml(acordoNumero)}</b>` : ""}.</p>`;
     janela.document.write(
-      `<html><head><title>Acordo de acesso - ${codigo}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial;padding:0;line-height:1.5}h1{font-size:22px}hr{margin:28px 0}.assinatura{margin-top:90px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:8px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${nome}</b>, CNPJ <b>${cnpj || "não informado"}</b>, código RMS <b>${codigo}</b>, registram este termo de acesso experimental.</p><p>O acesso de degustação inicia em <b>${inicio}</b> e termina em <b>${fim}</b>, totalizando 30 dias corridos. Este prazo é único, não prorrogável e não gera cobrança durante a degustação.</p><p>Após a validação do acordo, será aplicada a taxa comercial escolhida de <b>${taxaAcessoPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</b> sobre as compras faturadas do mês anterior.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
+      `<html><head><title>Acordo de acesso - ${escaparHtml(codigo)}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial;padding:0;line-height:1.5}h1{font-size:22px}hr{margin:28px 0}.assinatura{margin-top:90px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:8px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${escaparHtml(nome)}</b>, CNPJ <b>${escaparHtml(cnpj || "não informado")}</b>, código RMS <b>${escaparHtml(codigo)}</b>, registram este termo de acesso.</p>${detalhesAcesso}<p>Após a validação do acordo, será aplicada a taxa comercial escolhida de <b>${taxaAcessoPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</b> sobre as compras faturadas do mês anterior.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
     );
     janela.document.close();
   };
@@ -363,6 +376,10 @@ function AdminFornecedoresPage() {
       await updateSupplierAccess({
         data: { codigo, acessoLiberado: novoStatus },
       });
+      if (novoStatus === 0) {
+        setFornecedores((prev) => prev.filter((f) => f.codigo !== codigo));
+        setTotal((prev) => Math.max(0, prev - 1));
+      }
       toast.success(
         novoStatus === 1
           ? `Acesso LIBERADO para o fornecedor ${formatarCodigoFornecedorComDigito(codigo)}.`
@@ -566,26 +583,25 @@ function AdminFornecedoresPage() {
                                 {f.acessoStatus === "DEGUSTACAO" && f.acessoDataFim ? (
                                   <div>até {f.acessoDataFim}</div>
                                 ) : null}
-                                {f.acessoStatus !== "ATIVO_COM_ACORDO" ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    disabled={!f.acessoDataInicio || !f.acessoDataFim}
-                                    className="h-6 px-1 text-[10px]"
-                                    onClick={() =>
-                                      imprimirContratoDegustacao(
-                                        formatarCodigoFornecedorComDigito(f.codigo),
-                                        f.nome || `Fornecedor ${f.codigo}`,
-                                        f.cnpj || "",
-                                        f.acessoDataInicio || "",
-                                        f.acessoDataFim || "",
-                                        f.taxaAcessoPct ?? 1.0,
-                                      )
-                                    }
-                                  >
-                                    <Printer className="mr-1 size-3" /> Imprimir acordo
-                                  </Button>
-                                ) : null}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-1 text-[10px]"
+                                  onClick={() =>
+                                    imprimirAcordo(
+                                      formatarCodigoFornecedorComDigito(f.codigo),
+                                      f.nome || `Fornecedor ${f.codigo}`,
+                                      f.cnpj || "",
+                                      f.acessoStatus,
+                                      f.acessoDataInicio,
+                                      f.acessoDataFim,
+                                      f.taxaAcessoPct ?? 1.0,
+                                      f.acordoNumero,
+                                    )
+                                  }
+                                >
+                                  <Printer className="mr-1 size-3" /> Imprimir acordo
+                                </Button>
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
