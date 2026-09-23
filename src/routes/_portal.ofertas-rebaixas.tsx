@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Percent, Tag, Search } from "lucide-react";
+import { Percent, Tag, Search, Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { DateRange } from "react-day-picker";
 
@@ -28,7 +28,7 @@ import {
 } from "@/api";
 import { usePortal } from "@/context/portal-context";
 import { segmentoIntelider } from "@/lib/acordo-acesso";
-import { lojas } from "@/lib/mock-data";
+import { fornecedor, lojas } from "@/lib/mock-data";
 
 const lojasDisponiveis = lojas.filter(
   (loja) =>
@@ -211,6 +211,87 @@ function OfertasRebaixasPage() {
       }, 0),
     [itensComRebaixa, tiposDesconto, valoresDesconto, vendas, dataInicio, dataFim],
   );
+
+  const itensProposta = useMemo(
+    () =>
+      itensComRebaixa.map((produto) => {
+        const sku = String(produto.sku ?? produto.codigoProdutoRms ?? "");
+        const tipoDesconto = tiposDesconto[sku] ?? "R$";
+        const valorDesconto = Number((valoresDesconto[sku] ?? "0").replace(",", ".")) || 0;
+        const precoVigente = Number(produto.precoTabela ?? 0);
+        const previsao = previsaoProduto(sku, tipoDesconto, valorDesconto);
+        return {
+          sku,
+          descricao: String(produto.descricao ?? ""),
+          precoVigente,
+          tipoDesconto,
+          valorDesconto,
+          precoOferta:
+            tipoDesconto === "%"
+              ? precoVigente - (precoVigente * valorDesconto) / 100
+              : precoVigente - valorDesconto,
+          quantidadePrevista: previsao.quantidade,
+          reembolsoEstimado: previsao.total,
+        };
+      }),
+    [itensComRebaixa, tiposDesconto, valoresDesconto, vendas, dataInicio, dataFim],
+  );
+
+  const imprimirProposta = () => {
+    if (!periodoValido || !lojasSelecionadas.length || !itensProposta.length) return;
+    const escaparHtml = (valor: string | number) =>
+      String(valor)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    const filiais = lojasDisponiveis
+      .filter((loja) => lojasSelecionadas.includes(loja.idLocal))
+      .map((loja) => `${loja.idLocal} · ${loja.nome}`)
+      .join("; ");
+    const linhas = itensProposta
+      .map(
+        (item) => `<tr>
+          <td>${escaparHtml(item.sku)}</td>
+          <td>${escaparHtml(item.descricao)}</td>
+          <td>${escaparHtml(brl(item.precoVigente))}</td>
+          <td>${escaparHtml(`${item.tipoDesconto} ${item.tipoDesconto === "%" ? percentual(item.valorDesconto) : brl(item.valorDesconto)}`)}</td>
+          <td>${escaparHtml(brl(item.precoOferta))}</td>
+          <td>${escaparHtml(numero(Math.round(item.quantidadePrevista)))}</td>
+          <td>${escaparHtml(brl(item.reembolsoEstimado))}</td>
+        </tr>`,
+      )
+      .join("");
+    const janela = window.open("", "_blank", "noopener,noreferrer");
+    if (!janela) {
+      setErro("O navegador bloqueou a janela de impressão. Libere pop-ups e tente novamente.");
+      return;
+    }
+    janela.document
+      .write(`<!doctype html><html lang="pt-BR"><head><title>Proposta de rebaixa</title><style>
+      body { font-family: Arial, sans-serif; color: #172033; margin: 32px; font-size: 12px; }
+      h1 { font-size: 22px; margin: 0 0 4px; } h2 { font-size: 15px; margin: 24px 0 8px; }
+      .meta { color: #4b5563; margin: 3px 0; } .status { display: inline-block; margin: 14px 0; padding: 6px 10px; border: 1px solid #f59e0b; color: #92400e; background: #fffbeb; font-weight: 700; }
+      table { border-collapse: collapse; width: 100%; } th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; vertical-align: top; } th { background: #f3f4f6; } td:nth-child(n+3), th:nth-child(n+3) { text-align: right; }
+      .total { font-size: 16px; font-weight: 700; text-align: right; margin-top: 16px; } .notice { margin-top: 20px; color: #4b5563; }
+      @media print { body { margin: 16px; } }
+    </style></head><body>
+      <h1>Proposta de rebaixa</h1>
+      <p class="meta"><strong>Fornecedor:</strong> ${escaparHtml(fornecedor.nome || codigoFornecedorAtivo)}</p>
+      <p class="meta"><strong>Título:</strong> ${escaparHtml(titulo || "REBAIXA")}</p>
+      <p class="meta"><strong>Período:</strong> ${escaparHtml(dataBR(dataInicio))} a ${escaparHtml(dataBR(dataFim))}</p>
+      <p class="meta"><strong>Filiais:</strong> ${escaparHtml(filiais)}</p>
+      <p class="meta"><strong>Emitida em:</strong> ${escaparHtml(new Date().toLocaleString("pt-BR"))}</p>
+      <div class="status">PROPOSTA EM ELABORAÇÃO — sujeita à análise do Grupo Líder</div>
+      <h2>Itens propostos</h2><table><thead><tr><th>SKU</th><th>Descrição</th><th>Preço vigente</th><th>Desconto</th><th>Preço oferta</th><th>Venda prevista</th><th>Reembolso estimado</th></tr></thead><tbody>${linhas}</tbody></table>
+      <p class="total">Valor estimado da proposta: ${escaparHtml(brl(totalEstimadoRebaixa))}</p>
+      <p class="notice">Estimativas de venda e reembolso são projeções informativas; esta impressão não constitui aprovação, cobrança ou alteração de preço.</p>
+    </body></html>`);
+    janela.document.close();
+    janela.focus();
+    janela.print();
+  };
 
   const ofertasFiltradas = useMemo(() => {
     const termo = busca.toLowerCase();
@@ -790,85 +871,95 @@ function OfertasRebaixasPage() {
                     </TableBody>
                   </Table>
                 </div>
-                <Button
-                  disabled={
-                    enviando ||
-                    !periodoValido ||
-                    !itensComRebaixa.length ||
-                    !lojasSelecionadas.length
-                  }
-                  onClick={async () => {
-                    setEnviando(true);
-                    try {
-                      await submitSolicitacaoRebaixa({
-                        data: {
-                          titulo,
-                          dataInicio,
-                          dataFim,
-                          segmentos: [
-                            ...new Set(
-                              itensComRebaixa.map((p) =>
-                                segmentoIntelider(p.departamentoCodigo, p.departamento),
-                              ),
-                            ),
-                          ],
-                          lojas: lojasSelecionadas,
-                          itens: itensComRebaixa.map((p) => ({
-                            sku: p.sku,
-                            descricao: p.descricao,
-                            precoVigente: p.precoTabela,
-                            compradorCodigo: p.compradorCodigo,
-                            compradorNome: p.compradorNome,
-                            tipoDesconto:
-                              tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
-                            valorDesconto: Number(
-                              (valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0").replace(
-                                ",",
-                                ".",
-                              ),
-                            ),
-                            vendaMediaDiaria: previsaoProduto(
-                              String(p.sku ?? p.codigoProdutoRms),
-                              tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
-                              Number(
-                                (
-                                  valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
-                                ).replace(",", "."),
-                              ),
-                            ).mediaDiaria,
-                            quantidadePrevista: previsaoProduto(
-                              String(p.sku ?? p.codigoProdutoRms),
-                              tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
-                              Number(
-                                (
-                                  valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
-                                ).replace(",", "."),
-                              ),
-                            ).quantidade,
-                            reembolsoEstimado: previsaoProduto(
-                              String(p.sku ?? p.codigoProdutoRms),
-                              tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
-                              Number(
-                                (
-                                  valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
-                                ).replace(",", "."),
-                              ),
-                            ).total,
-                          })),
-                        },
-                      });
-                      setErro("Solicitação enviada para análise.");
-                    } catch (e) {
-                      setErro(
-                        e instanceof Error ? e.message : "Não foi possível enviar a solicitação.",
-                      );
-                    } finally {
-                      setEnviando(false);
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!periodoValido || !itensProposta.length || !lojasSelecionadas.length}
+                    onClick={imprimirProposta}
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    Imprimir proposta
+                  </Button>
+                  <Button
+                    disabled={
+                      enviando ||
+                      !periodoValido ||
+                      !itensComRebaixa.length ||
+                      !lojasSelecionadas.length
                     }
-                  }}
-                >
-                  Enviar solicitação para análise
-                </Button>
+                    onClick={async () => {
+                      setEnviando(true);
+                      try {
+                        await submitSolicitacaoRebaixa({
+                          data: {
+                            titulo,
+                            dataInicio,
+                            dataFim,
+                            segmentos: [
+                              ...new Set(
+                                itensComRebaixa.map((p) =>
+                                  segmentoIntelider(p.departamentoCodigo, p.departamento),
+                                ),
+                              ),
+                            ],
+                            lojas: lojasSelecionadas,
+                            itens: itensComRebaixa.map((p) => ({
+                              sku: p.sku,
+                              descricao: p.descricao,
+                              precoVigente: p.precoTabela,
+                              compradorCodigo: p.compradorCodigo,
+                              compradorNome: p.compradorNome,
+                              tipoDesconto:
+                                tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
+                              valorDesconto: Number(
+                                (
+                                  valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
+                                ).replace(",", "."),
+                              ),
+                              vendaMediaDiaria: previsaoProduto(
+                                String(p.sku ?? p.codigoProdutoRms),
+                                tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
+                                Number(
+                                  (
+                                    valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
+                                  ).replace(",", "."),
+                                ),
+                              ).mediaDiaria,
+                              quantidadePrevista: previsaoProduto(
+                                String(p.sku ?? p.codigoProdutoRms),
+                                tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
+                                Number(
+                                  (
+                                    valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
+                                  ).replace(",", "."),
+                                ),
+                              ).quantidade,
+                              reembolsoEstimado: previsaoProduto(
+                                String(p.sku ?? p.codigoProdutoRms),
+                                tiposDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "R$",
+                                Number(
+                                  (
+                                    valoresDesconto[String(p.sku ?? p.codigoProdutoRms)] ?? "0"
+                                  ).replace(",", "."),
+                                ),
+                              ).total,
+                            })),
+                          },
+                        });
+                        setErro("Solicitação enviada para análise.");
+                      } catch (e) {
+                        setErro(
+                          e instanceof Error ? e.message : "Não foi possível enviar a solicitação.",
+                        );
+                      } finally {
+                        setEnviando(false);
+                      }
+                    }}
+                  >
+                    Enviar solicitação para análise
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
