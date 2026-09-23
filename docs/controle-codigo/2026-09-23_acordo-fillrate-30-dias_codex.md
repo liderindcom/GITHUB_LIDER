@@ -25,4 +25,4 @@
 - CODE-04: decisões e revisões DeepSeek/Grok registradas.
 - CODE-05/06: sem segredo, LGPD ou acesso às origens.
 - CODE-07/08: decisão, commit e checkpoint vinculados.
-- CODE-09/10: publicação funcional permanece pendente do caminho canônico de deploy.
+- CODE-09/10: runtime reiniciado pelo supervisor em 2026-09-23; novo Node escuta 127.0.0.1:18090. Smoke tests local e público de `/acordo-fillrate` responderam HTTP 200.
