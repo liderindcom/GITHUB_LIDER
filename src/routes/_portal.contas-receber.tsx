@@ -61,7 +61,11 @@ const tipoClasses: Record<ContaReceberFornecedor["tipo"], string> = {
 function ContasReceberPage() {
   const { fornecedor, dadosFornecedorVersao } = usePortal();
   const [buscaTabela, setBuscaTabela] = useState("");
-  const [ordenacao, setOrdenacao] = useState<{ campo: string; asc: boolean }>({ campo: "vencimento", asc: true });
+  const [ordenacao, setOrdenacao] = useState<{ campo: string; asc: boolean }>({
+    campo: "vencimento",
+    asc: true,
+  });
+  const hojeIso = new Date().toISOString().slice(0, 10);
 
   const contas = useMemo(
     () => contasReceberDoFornecedor(fornecedor.codigo),
@@ -83,15 +87,23 @@ function ContasReceberPage() {
 
   const contasTabela = useMemo(() => {
     const termo = buscaTabela.trim().toLowerCase();
-    const filtradas = contas.filter((conta) => `${conta.documento} ${conta.tipo} ${conta.descricao} ${conta.competencia} ${conta.vencimento} ${conta.origem} ${conta.status}`.toLowerCase().includes(termo));
+    const filtradas = contas.filter((conta) =>
+      `${conta.documento} ${conta.tipo} ${conta.descricao} ${conta.competencia} ${conta.vencimento} ${conta.origem} ${conta.status}`
+        .toLowerCase()
+        .includes(termo),
+    );
     return [...filtradas].sort((a, b) => {
       const av = ordenacao.campo === "valor" ? a.valor : String((a as any)[ordenacao.campo] ?? "");
       const bv = ordenacao.campo === "valor" ? b.valor : String((b as any)[ordenacao.campo] ?? "");
-      const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : av.localeCompare(bv, "pt-BR", { numeric: true });
+      const cmp =
+        typeof av === "number" && typeof bv === "number"
+          ? av - bv
+          : av.localeCompare(bv, "pt-BR", { numeric: true });
       return ordenacao.asc ? cmp : -cmp;
     });
   }, [contas, buscaTabela, ordenacao]);
-  const ordenar = (campo: string) => setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
+  const ordenar = (campo: string) =>
+    setOrdenacao((atual) => ({ campo, asc: atual.campo === campo ? !atual.asc : true }));
 
   const totalProgramado = contasProgramadas.reduce((acc, conta) => acc + conta.valor, 0);
   const totalAberto = contas
@@ -161,7 +173,10 @@ function ContasReceberPage() {
               <code>AA1RTITU</code>), aberto e — quando já programado — ligado a um título a pagar
               ainda em aberto (<code>AG1AUABT</code>). Lançamento de acordo comercial não entra.
               Quebra e agenda 520 continuam em{" "}
-              <Link to="/perdas" className="font-semibold text-primary underline-offset-2 hover:underline">
+              <Link
+                to="/perdas"
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+              >
                 Perdas físicas
               </Link>
               .
@@ -207,7 +222,8 @@ function ContasReceberPage() {
                   <ReceiptText className="size-4 text-primary" /> Débitos do fornecedor
                 </CardTitle>
                 <CardDescription>
-                  Somente títulos ainda não recebidos e sem baixa. Programado = já amarrado no próximo pagamento.
+                  Somente títulos ainda não recebidos e sem baixa. Programado = já amarrado no
+                  próximo pagamento.
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={exportar}>
@@ -219,54 +235,109 @@ function ContasReceberPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead><button type="button" onClick={() => ordenar("documento")}>Documento ↕</button></TableHead>
-                      <TableHead><button type="button" onClick={() => ordenar("tipo")}>Tipo ↕</button></TableHead>
-                      <TableHead><div className="flex items-center gap-1"><input value={buscaTabela} onChange={(e) => setBuscaTabela(e.target.value)} placeholder="Descrição / busca" className="h-7 w-full min-w-[150px] rounded-md border bg-background px-2 text-xs" /><button type="button" onClick={() => ordenar("descricao")}>↕</button></div></TableHead>
-                      <TableHead><button type="button" onClick={() => ordenar("competencia")}>Competência ↕</button></TableHead>
-                      <TableHead><button type="button" onClick={() => ordenar("vencimento")}>Vencimento ↕</button></TableHead>
-                      <TableHead><button type="button" onClick={() => ordenar("origem")}>Origem ↕</button></TableHead>
-                      <TableHead className="text-right"><button type="button" onClick={() => ordenar("valor")}>Valor ↕</button></TableHead>
+                      <TableHead>
+                        <button type="button" onClick={() => ordenar("documento")}>
+                          Documento ↕
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button type="button" onClick={() => ordenar("tipo")}>
+                          Tipo ↕
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={buscaTabela}
+                            onChange={(e) => setBuscaTabela(e.target.value)}
+                            placeholder="Descrição / busca"
+                            className="h-7 w-full min-w-[150px] rounded-md border bg-background px-2 text-xs"
+                          />
+                          <button type="button" onClick={() => ordenar("descricao")}>
+                            ↕
+                          </button>
+                        </div>
+                      </TableHead>
+                      <TableHead>
+                        <button type="button" onClick={() => ordenar("competencia")}>
+                          Competência ↕
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button type="button" onClick={() => ordenar("vencimento")}>
+                          Vencimento ↕
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button type="button" onClick={() => ordenar("origem")}>
+                          Origem ↕
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <button type="button" onClick={() => ordenar("valor")}>
+                          Valor ↕
+                        </button>
+                      </TableHead>
                       <TableHead>Abatimento</TableHead>
-                      <TableHead><button type="button" onClick={() => ordenar("status")}>Status ↕</button></TableHead>
+                      <TableHead>
+                        <button type="button" onClick={() => ordenar("status")}>
+                          Status ↕
+                        </button>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {contasTabela.map((conta) => (
-                      <TableRow key={conta.id}>
-                        <TableCell className="font-medium">{conta.documento}</TableCell>
-                        <TableCell>
-                          <Badge className={`border-0 ${tipoClasses[conta.tipo]}`}>
-                            {conta.tipo}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="min-w-[240px]">
-                          <div className="space-y-1">
-                            <p className="font-medium">{conta.descricao}</p>
-                            <p className="text-xs text-muted-foreground">{conta.observacao}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{conta.competencia}</TableCell>
-                        <TableCell>{dataBR(conta.vencimento)}</TableCell>
-                        <TableCell>{conta.origem}</TableCell>
-                        <TableCell className="text-right font-medium text-danger">
-                          {brl(conta.valor)}
-                        </TableCell>
-                        <TableCell>
-                          {conta.abatimentoProximoPagamento ? (
-                            <Badge className="border-0 bg-danger-soft text-danger">
-                              Próximo pagamento
+                    {contasTabela.map((conta) => {
+                      const vencida = Boolean(conta.vencimento && conta.vencimento < hojeIso);
+                      return (
+                        <TableRow
+                          key={conta.id}
+                          className={vencida ? "bg-danger-soft/30" : undefined}
+                        >
+                          <TableCell className="font-medium">{conta.documento}</TableCell>
+                          <TableCell>
+                            <Badge className={`border-0 ${tipoClasses[conta.tipo]}`}>
+                              {conta.tipo}
                             </Badge>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">Não programado</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={`border-0 ${statusClasses[conta.status]}`}>
-                            {conta.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          </TableCell>
+                          <TableCell className="min-w-[240px]">
+                            <div className="space-y-1">
+                              <p className="font-medium">{conta.descricao}</p>
+                              <p className="text-xs text-muted-foreground">{conta.observacao}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>{conta.competencia}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span>{dataBR(conta.vencimento)}</span>
+                              {vencida && (
+                                <Badge className="w-fit border-0 bg-danger-soft text-danger">
+                                  Vencido
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>{conta.origem}</TableCell>
+                          <TableCell className="text-right font-medium text-danger">
+                            {brl(conta.valor)}
+                          </TableCell>
+                          <TableCell>
+                            {conta.abatimentoProximoPagamento ? (
+                              <Badge className="border-0 bg-danger-soft text-danger">
+                                Próximo pagamento
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Não programado</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={`border-0 ${statusClasses[conta.status]}`}>
+                              {conta.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                     {contas.length === 0 && (
                       <TableRow>
                         <TableCell

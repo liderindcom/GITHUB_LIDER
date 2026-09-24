@@ -998,13 +998,9 @@ export const contasReceberDoFornecedor = (
   codigoFornecedor: string = fornecedor.codigo,
 ): ContaReceberFornecedor[] => {
   const code = normalizarCodigoFornecedor(codigoFornecedor);
-  const hoje = new Date();
-  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
-  const aberta = (conta: ContaReceberFornecedor) =>
-    conta.status !== "Descontado" && (!conta.vencimento || conta.vencimento >= hojeIso);
   if (globalDbCache.contasReceber) {
     return globalDbCache.contasReceber.filter(
-      (conta) => conta.fornecedorCodigo === code && aberta(conta),
+      (conta) => conta.fornecedorCodigo === code && conta.status !== "Descontado",
     );
   }
   return [];
