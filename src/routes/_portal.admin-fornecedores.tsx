@@ -240,6 +240,17 @@ function AdminFornecedoresPage() {
   }, [search, page]);
 
   useEffect(() => {
+    const possuiCargaEmAndamento = fornecedores.some(
+      (fornecedor) => fornecedor.cargaStatus === "PROCESSANDO",
+    );
+    if (!possuiCargaEmAndamento) return;
+    const timer = window.setInterval(() => {
+      void carregarFornecedores(search, page);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [fornecedores, search, page]);
+
+  useEffect(() => {
     let ativo = true;
     fetchFillratePolitica()
       .then((politica) => {
@@ -612,7 +623,9 @@ function AdminFornecedoresPage() {
                                     ? "bg-emerald-500/10 text-emerald-600"
                                     : f.cargaStatus === "FALHA"
                                       ? "bg-amber-500/10 text-amber-700"
-                                      : "bg-muted text-muted-foreground"
+                                      : f.cargaStatus === "PROCESSANDO"
+                                        ? "bg-blue-500/10 text-blue-700"
+                                        : "bg-muted text-muted-foreground"
                                 }`}
                                 title={
                                   f.cargaErro ||
@@ -624,7 +637,9 @@ function AdminFornecedoresPage() {
                                   ? "COMPLETA"
                                   : f.cargaStatus === "FALHA"
                                     ? "PENDENTE"
-                                    : "LEGADO"}
+                                    : f.cargaStatus === "PROCESSANDO"
+                                      ? "PROCESSANDO"
+                                      : "LEGADO"}
                               </span>
                             </TableCell>
                             <TableCell className="text-center">
@@ -734,7 +749,10 @@ function AdminFornecedoresPage() {
                                   variant="outline"
                                   size="sm"
                                   className="h-7 gap-1 px-1.5 text-[10px] font-bold"
-                                  disabled={atualizandoCodigo === f.codigo}
+                                  disabled={
+                                    atualizandoCodigo === f.codigo ||
+                                    f.cargaStatus === "PROCESSANDO"
+                                  }
                                   onClick={() => void handleRefreshSupplier(f.codigo)}
                                 >
                                   <RefreshCw
@@ -742,7 +760,9 @@ function AdminFornecedoresPage() {
                                       atualizandoCodigo === f.codigo ? "animate-spin" : ""
                                     }`}
                                   />
-                                  Validar carga RMS
+                                  {f.cargaStatus === "PROCESSANDO"
+                                    ? "Carga em andamento"
+                                    : "Validar carga RMS"}
                                 </Button>
                                 <Button
                                   variant={ativo ? "destructive" : "default"}

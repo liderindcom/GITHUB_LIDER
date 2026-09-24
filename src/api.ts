@@ -29,11 +29,72 @@ import {
   lerSessaoPortal,
   resolverCodigoFornecedorDados,
 } from "./server/sessao-portal";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
 
 const execAsync = promisify(exec);
+const cargasRmsEmAndamento = new Map<string, { iniciadoEm: string }>();
+const SCRIPT_CARGA_RMS = "/home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py";
+const PYTHON_CARGA_RMS = "/home/administrador/deepseek-env/bin/python3";
+
+function registrarEstadoCargaRms(
+  codigo: string,
+  status: "PROCESSANDO" | "FALHA",
+  erro: string | null = null,
+) {
+  db.prepare(
+    `INSERT INTO fornecedor_carga_completude
+      (fornecedor_codigo, status, verificado_em, detalhes_json, erro)
+     VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?)
+     ON CONFLICT (fornecedor_codigo) DO UPDATE SET
+       status=EXCLUDED.status, verificado_em=EXCLUDED.verificado_em,
+       detalhes_json=EXCLUDED.detalhes_json, erro=EXCLUDED.erro`,
+  ).run(codigo, status, JSON.stringify({ codigo, origem: "portal-assincrono" }), erro);
+}
+
+function iniciarCargaRmsAssincrona(codigo: string) {
+  if (cargasRmsEmAndamento.has(codigo)) return false;
+
+  registrarEstadoCargaRms(codigo, "PROCESSANDO");
+  const iniciadoEm = new Date().toISOString();
+  cargasRmsEmAndamento.set(codigo, { iniciadoEm });
+  const processo = spawn(PYTHON_CARGA_RMS, [SCRIPT_CARGA_RMS, "--codigo", codigo, "--json"], {
+    env: { ...process.env, LD_LIBRARY_PATH: "/home/administrador/instantclient_19_25" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  processo.stderr.on("data", (chunk: Buffer) => {
+    stderr = `${stderr}${chunk}`.slice(-4000);
+  });
+  processo.once("close", (code) => {
+    cargasRmsEmAndamento.delete(codigo);
+    if (code !== 0) {
+      try {
+        registrarEstadoCargaRms(
+          codigo,
+          "FALHA",
+          `Processo RMS encerrou com código ${code}: ${stderr}`.slice(0, 3500),
+        );
+      } catch (erro) {
+        console.error("Não foi possível registrar falha da carga RMS assíncrona:", erro);
+      }
+    }
+  });
+  processo.once("error", (erro) => {
+    cargasRmsEmAndamento.delete(codigo);
+    try {
+      registrarEstadoCargaRms(
+        codigo,
+        "FALHA",
+        `Não foi possível iniciar processo RMS: ${erro.message}`,
+      );
+    } catch (erroRegistro) {
+      console.error("Não foi possível registrar erro de início da carga RMS:", erroRegistro);
+    }
+  });
+  return true;
+}
 
 export function ensureFornecedoresColumns() {
   // Safe migrations run on startup in db.ts
@@ -86,7 +147,7 @@ export type FornecedorDB = {
   acessoStatus?: "SEM_ACORDO" | "DEGUSTACAO" | "ATIVO_COM_ACORDO" | "EXPIRADO" | null;
   acordoNumero?: string | null;
   degustacaoUsada?: number | null;
-  cargaStatus?: "COMPLETA" | "FALHA" | null;
+  cargaStatus?: "COMPLETA" | "FALHA" | "PROCESSANDO" | null;
   cargaVerificadaEm?: string | null;
   cargaErro?: string | null;
 };
@@ -3961,24 +4022,13 @@ export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
     const codigo = resolverCodigoFornecedorDados(data.codigo);
     if (!codigo) throw new Error("Código de fornecedor inválido.");
 
-    try {
-      const cmd =
-        "LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo " +
-        codigo +
-        " --json";
-      const { stdout, stderr } = await execAsync(cmd);
-      console.log("Atualização RMS imediata:", stdout, stderr);
-      const carga = extrairCompletudeRms(stdout);
-      return {
-        success: true,
-        message: "Carga RMS completa para " + (carga.fornecedor || codigo) + ".",
-      };
-    } catch (err) {
-      console.error("Erro ou divergência ao sincronizar fornecedor imediatamente:", err);
-      throw new Error(
-        "A carga RMS não foi confirmada como completa. O fornecedor permanece bloqueado até o reprocessamento.",
-      );
-    }
+    const iniciada = iniciarCargaRmsAssincrona(codigo);
+    return {
+      success: true,
+      message: iniciada
+        ? `Carga RMS iniciada para ${codigo}. Acompanhe o status na coluna Carga RMS.`
+        : `A carga RMS de ${codigo} já está em processamento.`,
+    };
   });
 
 export const ATLAS_PERMISSOES = [
