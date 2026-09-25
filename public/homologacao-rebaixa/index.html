@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Homologação — Rebaixas recebidas do Portal</title>
+    <style>
+      :root {
+        font-family: Arial, sans-serif;
+        color: #1f2937;
+        background: #f4f6f8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      header {
+        background: #123c69;
+        color: white;
+        padding: 18px 28px;
+      }
+      header strong {
+        display: block;
+        font-size: 20px;
+      }
+      header span {
+        font-size: 13px;
+        opacity: 0.86;
+      }
+      main {
+        max-width: 1280px;
+        margin: 24px auto;
+        padding: 0 20px 40px;
+      }
+      .notice {
+        border: 1px solid #dcae45;
+        background: #fff7df;
+        color: #694b0c;
+        border-radius: 5px;
+        padding: 12px 16px;
+        margin-bottom: 18px;
+        font-size: 14px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #d7dee5;
+        border-radius: 6px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        margin-bottom: 22px;
+      }
+      .card h2 {
+        font-size: 18px;
+        margin: 0;
+        padding: 15px 18px;
+        color: #173d67;
+        border-bottom: 1px solid #d7dee5;
+      }
+      .card-body {
+        padding: 18px;
+      }
+      .upload-area {
+        display: flex;
+        align-items: end;
+        gap: 16px;
+        flex-wrap: wrap;
+        border-bottom: 1px solid #e4e9ee;
+        padding-bottom: 18px;
+        margin-bottom: 18px;
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+        min-width: 330px;
+      }
+      label {
+        font-size: 13px;
+        font-weight: 700;
+      }
+      input[type="file"] {
+        border: 1px solid #b9c5d0;
+        border-radius: 4px;
+        padding: 8px;
+        background: #fff;
+      }
+      button {
+        border: 0;
+        border-radius: 4px;
+        padding: 10px 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .primary {
+        background: #1a70b8;
+        color: white;
+      }
+      .primary:disabled {
+        cursor: not-allowed;
+        background: #8aaeca;
+      }
+      .secondary {
+        background: #edf2f6;
+        color: #17436d;
+        border: 1px solid #c6d1db;
+      }
+      .actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .muted {
+        color: #607182;
+        font-size: 13px;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        border-collapse: collapse;
+        min-width: 1050px;
+        width: 100%;
+        font-size: 13px;
+      }
+      th {
+        background: #184a78;
+        color: #fff;
+        text-align: left;
+        padding: 10px 8px;
+        white-space: nowrap;
+      }
+      td {
+        border-bottom: 1px solid #dfe6ed;
+        padding: 11px 8px;
+        vertical-align: middle;
+      }
+      tr.selected {
+        background: #eaf5ff;
+      }
+      .tag {
+        display: inline-block;
+        color: #856100;
+        background: #fff3c4;
+        padding: 3px 7px;
+        border-radius: 9px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .empty {
+        border: 1px dashed #bdc9d4;
+        color: #5c6f81;
+        padding: 18px;
+        border-radius: 4px;
+        margin-top: 14px;
+        display: none;
+      }
+      .ok {
+        color: #17623a;
+        font-weight: 700;
+      }
+      @media (max-width: 640px) {
+        main {
+          padding: 0 12px;
+        }
+        .field {
+          min-width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>InteLider — Rebaixa do Fornecedor</strong>
+      <span>Homologação isolada · nenhum dado é enviado ao RMS ou ao CometNet</span>
+    </header>
+    <main>
+      <div class="notice">
+        Ambiente visual de validação. A seleção da planilha do Portal fica antes da lista de
+        ofertas, para o comprador revisar a solicitação antes de criar a rebaixa oficial.
+      </div>
+
+      <section class="card" aria-labelledby="portal-title">
+        <h2 id="portal-title">Solicitações recebidas do Portal do Fornecedor</h2>
+        <div class="card-body">
+          <div class="upload-area">
+            <div class="field">
+              <label for="planilha">Planilha enviada pelo Portal</label>
+              <input
+                id="planilha"
+                type="file"
+                accept=".xls,.xlsx"
+                aria-describedby="arquivo-status"
+              />
+              <span id="arquivo-status" class="muted"
+                >Selecione uma planilha XLS ou XLSX para conferência visual.</span
+              >
+            </div>
+            <button id="adicionar" class="secondary" type="button">Adicionar à fila</button>
+          </div>
+
+          <div class="actions">
+            <span class="muted"
+              >Selecione uma solicitação para abrir a nova rebaixa. A operação oficial continua sob
+              revisão do comprador.</span
+            >
+            <button id="usar" class="primary" type="button" disabled>
+              Usar solicitação selecionada
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table aria-label="Fila de solicitações recebidas do Portal">
+              <thead>
+                <tr>
+                  <th>Selecionar</th>
+                  <th>Recebida em</th>
+                  <th>Fornecedor</th>
+                  <th>Planilha</th>
+                  <th>Período solicitado</th>
+                  <th>Itens</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="fila">
+                <tr>
+                  <td>
+                    <input
+                      type="radio"
+                      name="solicitacao"
+                      value="brf-setembro"
+                      aria-label="Selecionar solicitação BRF"
+                    />
+                  </td>
+                  <td>24/09/2026 18:00</td>
+                  <td>116408 — BRF S/A</td>
+                  <td>rebaixa_brf_2026-09.xls</td>
+                  <td>25/09/2026 a 30/09/2026</td>
+                  <td>2</td>
+                  <td><span class="tag">Aguardando revisão</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="vazio" class="empty">Nenhuma planilha foi selecionada.</div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="ofertas-title">
+        <h2 id="ofertas-title">Listagem de Ofertas</h2>
+        <div class="card-body">
+          <p class="muted">
+            Esta área representa a tela original de Rebaixa do Fornecedor. A fila acima deve
+            aparecer antes dela; somente após selecionar uma solicitação o comprador inicia uma nova
+            rebaixa.
+          </p>
+          <button class="primary" type="button">Nova Oferta</button>
+        </div>
+      </section>
+    </main>
+    <script>
+      const file = document.querySelector("#planilha");
+      const status = document.querySelector("#arquivo-status");
+      const add = document.querySelector("#adicionar");
+      const queue = document.querySelector("#fila");
+      const use = document.querySelector("#usar");
+
+      function updateSelection() {
+        const selected = document.querySelector('input[name="solicitacao"]:checked');
+        queue
+          .querySelectorAll("tr")
+          .forEach((row) => row.classList.toggle("selected", row.contains(selected)));
+        use.disabled = !selected;
+      }
+
+      file.addEventListener("change", () => {
+        status.textContent = file.files[0]
+          ? `Arquivo selecionado: ${file.files[0].name}`
+          : "Selecione uma planilha XLS ou XLSX para conferência visual.";
+      });
+      add.addEventListener("click", () => {
+        if (!file.files[0]) {
+          status.textContent = "Selecione uma planilha antes de adicionar à fila.";
+          return;
+        }
+        const row = document.createElement("tr");
+        row.innerHTML = `<td><input type="radio" name="solicitacao" aria-label="Selecionar nova solicitação" /></td><td>Agora</td><td>Fornecedor de teste</td><td>${file.files[0].name.replace(/[<>&"]/g, "")}</td><td>A conferir</td><td>—</td><td><span class="tag">Aguardando revisão</span></td>`;
+        queue.prepend(row);
+        file.value = "";
+        status.textContent = "Planilha adicionada somente à fila visual desta homologação.";
+        updateSelection();
+      });
+      queue.addEventListener("change", updateSelection);
+      use.addEventListener("click", () => {
+        status.innerHTML =
+          '<span class="ok">Solicitação selecionada para revisão visual. Nenhuma rebaixa foi criada.</span>';
+      });
+    </script>
+  </body>
+</html>
