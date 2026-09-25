@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PortalRouteImport } from './routes/_portal'
 import { Route as ComunicacaoRouteImport } from './routes/comunicacao'
+import { Route as HomologacaoRebaixaRouteImport } from './routes/homologacao-rebaixa'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalAcordoAcessoRouteImport } from './routes/_portal.acordo-acesso'
 import { Route as PortalAcordoFillrateRouteImport } from './routes/_portal.acordo-fillrate'
@@ -64,6 +65,11 @@ const PortalRoute = PortalRouteImport.update({
 const ComunicacaoRoute = ComunicacaoRouteImport.update({
   id: '/comunicacao',
   path: '/comunicacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomologacaoRebaixaRoute = HomologacaoRebaixaRouteImport.update({
+  id: '/homologacao-rebaixa',
+  path: '/homologacao-rebaixa',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -267,6 +273,7 @@ const ApiIntegracoesInteliderRebaixasRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/comunicacao': typeof ComunicacaoRoute
+  '/homologacao-rebaixa': typeof HomologacaoRebaixaRoute
   '/login': typeof LoginRoute
   '/acordo-acesso': typeof PortalAcordoAcessoRoute
   '/acordo-fillrate': typeof PortalAcordoFillrateRoute
@@ -310,6 +317,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/comunicacao': typeof ComunicacaoRoute
+  '/homologacao-rebaixa': typeof HomologacaoRebaixaRoute
   '/login': typeof LoginRoute
   '/acordo-acesso': typeof PortalAcordoAcessoRoute
   '/acordo-fillrate': typeof PortalAcordoFillrateRoute
@@ -355,6 +363,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_portal': typeof PortalRouteWithChildren
   '/comunicacao': typeof ComunicacaoRoute
+  '/homologacao-rebaixa': typeof HomologacaoRebaixaRoute
   '/login': typeof LoginRoute
   '/_portal/acordo-acesso': typeof PortalAcordoAcessoRoute
   '/_portal/acordo-fillrate': typeof PortalAcordoFillrateRoute
@@ -400,6 +409,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/comunicacao'
+    | '/homologacao-rebaixa'
     | '/login'
     | '/acordo-acesso'
     | '/acordo-fillrate'
@@ -443,6 +453,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/comunicacao'
+    | '/homologacao-rebaixa'
     | '/login'
     | '/acordo-acesso'
     | '/acordo-fillrate'
@@ -487,6 +498,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_portal'
     | '/comunicacao'
+    | '/homologacao-rebaixa'
     | '/login'
     | '/_portal/acordo-acesso'
     | '/_portal/acordo-fillrate'
@@ -532,6 +544,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PortalRoute: typeof PortalRouteWithChildren
   ComunicacaoRoute: typeof ComunicacaoRoute
+  HomologacaoRebaixaRoute: typeof HomologacaoRebaixaRoute
   LoginRoute: typeof LoginRoute
   ApiAtlasCarteiraRoute: typeof ApiAtlasCarteiraRoute
   ApiAtlasCompraRoute: typeof ApiAtlasCompraRoute
@@ -561,6 +574,13 @@ declare module '@tanstack/react-router' {
       path: '/comunicacao'
       fullPath: '/comunicacao'
       preLoaderRoute: typeof ComunicacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/homologacao-rebaixa': {
+      id: '/homologacao-rebaixa'
+      path: '/homologacao-rebaixa'
+      fullPath: '/homologacao-rebaixa'
+      preLoaderRoute: typeof HomologacaoRebaixaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -918,6 +938,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PortalRoute: PortalRouteWithChildren,
   ComunicacaoRoute: ComunicacaoRoute,
+  HomologacaoRebaixaRoute: HomologacaoRebaixaRoute,
   LoginRoute: LoginRoute,
   ApiAtlasCarteiraRoute: ApiAtlasCarteiraRoute,
   ApiAtlasCompraRoute: ApiAtlasCompraRoute,

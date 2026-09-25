@@ -5,7 +5,7 @@ Espelho do registro canônico em
 
 ## Entrega
 
-- Criada a página estática `public/homologacao-rebaixa/index.html`.
+- Criada a rota isolada `src/routes/homologacao-rebaixa.tsx`.
 - A fila e a caixa de seleção da planilha aparecem antes da listagem de ofertas
   do CometNet, reproduzindo o ponto correto para validação visual.
 - Não há chamada para banco, RMS, CometNet ou compartilhamento SMB.
