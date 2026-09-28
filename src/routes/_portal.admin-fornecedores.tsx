@@ -330,12 +330,10 @@ function AdminFornecedoresPage() {
     try {
       const resultado = await includeSupplier({ data: { codigo } });
       const codigoExibicao = formatarCodigoFornecedorComDigito(resultado.codigo);
-      toast.success(
-        `Carga RMS completa. Fornecedor ${codigoExibicao} ativado para degustação de 30 dias.`,
-      );
+      toast.success(resultado.message || `Carga RMS iniciada para o fornecedor ${codigoExibicao}.`);
       setCodigoNovo("");
       setPage(0);
-      await carregarFornecedores(search, 0);
+      await carregarFornecedores(codigoExibicao, 0);
     } catch (err) {
       console.error(err);
       const mensagem =

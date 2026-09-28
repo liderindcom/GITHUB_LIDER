@@ -29,11 +29,9 @@ import {
   lerSessaoPortal,
   resolverCodigoFornecedorDados,
 } from "./server/sessao-portal";
-import { exec, spawn } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 
-const execAsync = promisify(exec);
 const cargasRmsEmAndamento = new Map<string, { iniciadoEm: string }>();
 const SCRIPT_CARGA_RMS = "/home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py";
 const PYTHON_CARGA_RMS = "/home/administrador/deepseek-env/bin/python3";
@@ -53,7 +51,7 @@ function registrarEstadoCargaRms(
   ).run(codigo, status, JSON.stringify({ codigo, origem: "portal-assincrono" }), erro);
 }
 
-function iniciarCargaRmsAssincrona(codigo: string) {
+function iniciarCargaRmsAssincrona(codigo: string, aoConcluir?: (stdout: string) => void) {
   if (cargasRmsEmAndamento.has(codigo)) return false;
 
   registrarEstadoCargaRms(codigo, "PROCESSANDO");
@@ -63,7 +61,11 @@ function iniciarCargaRmsAssincrona(codigo: string) {
     env: { ...process.env, LD_LIBRARY_PATH: "/home/administrador/instantclient_19_25" },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  let stdout = "";
   let stderr = "";
+  processo.stdout.on("data", (chunk: Buffer) => {
+    stdout = `${stdout}${chunk}`.slice(-16_000);
+  });
   processo.stderr.on("data", (chunk: Buffer) => {
     stderr = `${stderr}${chunk}`.slice(-4000);
   });
@@ -78,6 +80,28 @@ function iniciarCargaRmsAssincrona(codigo: string) {
         );
       } catch (erro) {
         console.error("Não foi possível registrar falha da carga RMS assíncrona:", erro);
+      }
+      return;
+    }
+    if (aoConcluir) {
+      try {
+        aoConcluir(stdout);
+      } catch (erro) {
+        try {
+          registrarEstadoCargaRms(
+            codigo,
+            "FALHA",
+            `A carga RMS terminou, mas não pôde ser confirmada: ${erro instanceof Error ? erro.message : String(erro)}`.slice(
+              0,
+              3500,
+            ),
+          );
+        } catch (erroRegistro) {
+          console.error(
+            "Não foi possível registrar erro de confirmação da carga RMS:",
+            erroRegistro,
+          );
+        }
       }
     }
   });
@@ -422,6 +446,29 @@ function exigirCargaCompletaParaLiberar(codigo: string) {
       "A carga RMS deste fornecedor não está completa. Corrija e atualize os dados antes de liberar o acesso.",
     );
   }
+}
+
+function ativarFornecedorParaDegustacao(codigo: string) {
+  const existente = db
+    .prepare("SELECT acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?")
+    .get(codigo) as { acessoStatus?: string; degustacaoUsada?: number } | undefined;
+  if (!existente) throw new Error("O RMS não retornou o cadastro do fornecedor solicitado.");
+  if (existente.acessoStatus === "ATIVO_COM_ACORDO") {
+    throw new Error("Fornecedor já possui acordo de acesso ativo.");
+  }
+  if (Number(existente.degustacaoUsada) === 1) {
+    throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
+  }
+
+  exigirCargaCompletaParaLiberar(codigo);
+  const hoje = new Date();
+  const inicio = hoje.toISOString().slice(0, 10);
+  hoje.setUTCDate(hoje.getUTCDate() + 30);
+  const fim = hoje.toISOString().slice(0, 10);
+  db.prepare(
+    "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
+  ).run(inicio, fim, codigo);
+  return { inicio, fim };
 }
 
 function extrairCompletudeRms(stdout: string) {
@@ -1739,7 +1786,9 @@ export const searchFornecedores = createServerFn({ method: "GET" })
     let query = `SELECT f.codigo, f.nome, f.cnpj, f.acessoLiberado, f.metaFillRatePct, f.isentoCobranca, f.taxaAcessoPct, f.acessoDataInicio, f.acessoDataFim, f.acessoStatus, f.acordoNumero, f.degustacaoUsada, c.status AS "cargaStatus", c.verificado_em AS "cargaVerificadaEm", c.erro AS "cargaErro" FROM fornecedores f LEFT JOIN fornecedor_carga_completude c ON c.fornecedor_codigo = f.codigo WHERE (f.codigo LIKE ? OR f.nome LIKE ? OR f.cnpj LIKE ?)`;
     const params: Array<string | number> = [cleanSearch, cleanSearch, cleanSearch];
 
-    if (onlyActive) query += " AND f.acessoLiberado = 1";
+    if (onlyActive) {
+      query += " AND (f.acessoLiberado = 1 OR c.status IN ('PROCESSANDO', 'FALHA'))";
+    }
 
     query += " ORDER BY codigo LIMIT ? OFFSET ?";
     params.push(limit, offset);
@@ -1749,9 +1798,11 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 
     // Obter contagem total
     let countQuery =
-      "SELECT COUNT(*) AS total FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
+      "SELECT COUNT(*) AS total FROM fornecedores f LEFT JOIN fornecedor_carga_completude c ON c.fornecedor_codigo = f.codigo WHERE (f.codigo LIKE ? OR f.nome LIKE ? OR f.cnpj LIKE ?)";
     const countParams: string[] = [cleanSearch, cleanSearch, cleanSearch];
-    if (onlyActive) countQuery += " AND acessoLiberado = 1";
+    if (onlyActive) {
+      countQuery += " AND (f.acessoLiberado = 1 OR c.status IN ('PROCESSANDO', 'FALHA'))";
+    }
     const countStmt = db.prepare(countQuery);
     const total = countStmt.get(...countParams) as { total: number } | undefined;
 
@@ -1806,42 +1857,19 @@ export const includeSupplier = createServerFn({ method: "POST" })
       throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
     }
 
-    try {
-      const cmd =
-        "LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo " +
-        codigo +
-        " --json";
-      const { stdout, stderr } = await execAsync(cmd);
-      console.log("Carga RMS de novo fornecedor:", stdout, stderr);
+    const iniciada = iniciarCargaRmsAssincrona(codigo, (stdout) => {
       extrairCompletudeRms(stdout);
-    } catch (err) {
-      console.error("Carga RMS incompleta para novo fornecedor:", err);
-      throw new Error(
-        "Não foi possível liberar o fornecedor: a carga RMS não foi confirmada como completa. Ele permanece bloqueado para reprocessamento.",
-      );
-    }
-
-    const fornecedor = db
-      .prepare("SELECT nome, cnpj FROM fornecedores WHERE codigo = ?")
-      .get(codigo) as { nome?: string; cnpj?: string } | undefined;
-    if (!fornecedor) throw new Error("O RMS não retornou o cadastro do fornecedor solicitado.");
-    exigirCargaCompletaParaLiberar(codigo);
-    const hoje = new Date();
-    const inicio = hoje.toISOString().slice(0, 10);
-    hoje.setUTCDate(hoje.getUTCDate() + 30);
-    const fim = hoje.toISOString().slice(0, 10);
-    db.prepare(
-      "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
-    ).run(inicio, fim, codigo);
+      const { inicio, fim } = ativarFornecedorParaDegustacao(codigo);
+      console.log(`Fornecedor ${codigo} ativado para degustação de ${inicio} a ${fim}.`);
+    });
     return {
       success: true,
       created: !existente,
       codigo,
-      status: "DEGUSTACAO",
-      acessoDataInicio: inicio,
-      acessoDataFim: fim,
-      fornecedorNome: fornecedor.nome || "Fornecedor " + codigo,
-      fornecedorCnpj: fornecedor.cnpj || "",
+      status: "PROCESSANDO",
+      message: iniciada
+        ? `Carga RMS iniciada para ${codigo}. O fornecedor será liberado automaticamente após a confirmação.`
+        : `A carga RMS de ${codigo} já está em processamento.`,
     };
   });
 export { DESCONTO_ACESSO_PORTAL_PCT };
