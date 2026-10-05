@@ -3,11 +3,13 @@ import {
   CalendarClock,
   BadgeDollarSign,
   BadgePercent,
+  FileSpreadsheet,
   KeyRound,
   LayoutDashboard,
+  LineChart,
   LogOut,
-  Package,
   PackagePlus,
+  PackageCheck,
   Percent,
   ReceiptText,
   Tags,
@@ -15,15 +17,13 @@ import {
   Wallet,
   TrendingDown,
   AlertTriangle,
-  PackageCheck,
   Users,
   ShieldCheck,
-  Upload,
   ClipboardCheck,
   Scale,
   TrendingUp,
   Coins,
-  Smartphone,
+  ClipboardList,
 } from "lucide-react";
 
 import { LiderLogo } from "@/components/lider-logo";
@@ -46,12 +46,13 @@ const itens = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Pedidos", url: "/pedidos", icon: ShoppingCart },
   { title: "Acordo Fill Rate", url: "/acordo-fillrate", icon: ClipboardCheck },
+  { title: "Vendas Sell-out", url: "/vendas", icon: LineChart },
   { title: "Vendas Anual", url: "/vendas-anual", icon: TrendingUp },
-  { title: "Estoque", url: "/estoque", icon: Package },
-  { title: "Meus Itens", url: "/itens", icon: PackageCheck },
   { title: "Catálogo Comercial", url: "/catalogo-comercial", icon: PackagePlus },
+  { title: "Estoque", url: "/estoque", icon: PackageCheck },
   { title: "Ruptura e Perda Venda", url: "/ruptura-venda", icon: AlertTriangle },
   { title: "Perdas Físicas", url: "/perdas", icon: TrendingDown },
+  { title: "Relatório MIX", url: "/relatorio-mix", icon: FileSpreadsheet },
   { title: "Preço Concorrência", url: "/precos", icon: BadgeDollarSign },
   { title: "Tabela de Preço (Sistema)", url: "/preco-sistema", icon: Coins },
   { title: "Share de Vendas", url: "/representatividade", icon: Percent },
@@ -64,7 +65,6 @@ const itens = [
   { title: "Financeiro", url: "/financeiro", icon: Wallet },
   { title: "Corrigir senha", url: "/corrigir-senha", icon: KeyRound },
   { title: "Usuários", url: "/usuarios", icon: Users },
-  { title: "Acessos no celular", url: "/instalar", icon: Smartphone },
   { title: "Taxa de acesso 1%", url: "/acordo-acesso", icon: BadgePercent },
   { title: "Aprovação de Preços", url: "/admin-precos", icon: ShieldCheck },
   { title: "Acesso Fornecedores (Admin)", url: "/admin-fornecedores", icon: Tags },
@@ -84,8 +84,8 @@ export function AppSidebar() {
     setMounted(true);
   }, []);
 
-  const displayNome = mounted ? fornecedor.nome : "Nestlé Brasil S/A";
-  const displayCodigo = mounted ? fornecedor.codigo : "704894";
+  const displayNome = mounted ? fornecedor.nome : "Carregando fornecedor...";
+  const displayCodigo = mounted ? fornecedor.codigo : "—";
 
   const itensVisiveis = useMemo(() => {
     const precisaTrocar = Boolean(usuarioFornecedor?.precisaTrocarSenha) && !usuarioInterno;
@@ -96,14 +96,11 @@ export function AppSidebar() {
       if (
         item.url === "/admin-fornecedores" ||
         item.url === "/admin-precos" ||
-        item.url === "/admin-acordo-acesso" ||
-        item.url === "/instalar"
+        item.url === "/admin-acordo-acesso"
       ) {
         return usuarioInterno !== null;
       }
-      if (
-        item.url === "/admin-usuarios"
-      ) {
+      if (item.url === "/admin-usuarios") {
         return usuarioInterno !== null && usuarioInterno.role === "admin";
       }
       if (

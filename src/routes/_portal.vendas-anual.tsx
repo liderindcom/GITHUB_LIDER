@@ -56,6 +56,7 @@ function precoMedio(valor: number, volume: number) {
 }
 
 type Direcao = "asc" | "desc" | null;
+type MetricaAnual = "valor" | "volume" | "preco";
 
 function ordenar<T>(linhas: T[], busca: string, texto: (linha: T) => string, direcao: Direcao, valor: (linha: T) => string | number) {
   const filtradas = linhas.filter((linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()));
@@ -138,6 +139,7 @@ function VendasAnualPage() {
   const [ordemMes, setOrdemMes] = useState<Direcao>(null);
   const [ordemSecao, setOrdemSecao] = useState<Direcao>(null);
   const [ordemItem, setOrdemItem] = useState<Direcao>(null);
+  const [metricaAnual, setMetricaAnual] = useState<MetricaAnual>("valor");
 
   useEffect(() => {
     let ativo = true;
@@ -267,45 +269,60 @@ function VendasAnualPage() {
           </div>
 
           <Card className="border-border bg-card shadow-panel">
-            <CardHeader className="pb-2">
+            <CardHeader className="flex flex-col gap-3 border-b border-border bg-muted/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="text-sm font-bold uppercase tracking-wider">
-                Vendas, volume e preço médio · {dados.corte.anoBase} × {dados.corte.anoAtual}
+                Comparação anual · {dados.corte.anoBase} × {dados.corte.anoAtual}
               </CardTitle>
+              <div className="flex gap-1 rounded-lg border border-border bg-background p-1">
+                {([
+                  ["valor", "Valor"],
+                  ["volume", "Volume"],
+                  ["preco", "Preço médio"],
+                ] as const).map(([metrica, rotulo]) => (
+                  <button
+                    key={metrica}
+                    type="button"
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      metricaAnual === metrica
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                    onClick={() => setMetricaAnual(metrica)}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
-            <CardContent className="grid gap-6">
+            <CardContent>
               <GraficoLinha
-                titulo="Vendas (R$)"
+                titulo={
+                  metricaAnual === "valor"
+                    ? "Valor das vendas (R$)"
+                    : metricaAnual === "volume"
+                      ? "Volume (unidades)"
+                      : "Preço médio (R$)"
+                }
                 anoBase={dados.corte.anoBase}
                 anoAtual={dados.corte.anoAtual}
-                formatar={(v) => brl(v)}
+                formatar={(v) =>
+                  metricaAnual === "volume" ? numero(Math.round(v)) : brl(v)
+                }
                 formatarEixo={eixoCompacto}
                 data={dados.meses.map((m) => ({
                   nome: m.nome.slice(0, 3),
-                  base: m.fornValorBase,
-                  atual: m.fornValorAtual,
-                }))}
-              />
-              <GraficoLinha
-                titulo="Volume"
-                anoBase={dados.corte.anoBase}
-                anoAtual={dados.corte.anoAtual}
-                formatar={(v) => numero(Math.round(v))}
-                formatarEixo={eixoCompacto}
-                data={dados.meses.map((m) => ({
-                  nome: m.nome.slice(0, 3),
-                  base: m.fornVolumeBase,
-                  atual: m.fornVolumeAtual,
-                }))}
-              />
-              <GraficoLinha
-                titulo="Preço médio"
-                anoBase={dados.corte.anoBase}
-                anoAtual={dados.corte.anoAtual}
-                formatar={(v) => brl(v)}
-                data={dados.meses.map((m) => ({
-                  nome: m.nome.slice(0, 3),
-                  base: precoMedio(m.fornValorBase, m.fornVolumeBase),
-                  atual: precoMedio(m.fornValorAtual, m.fornVolumeAtual),
+                  base:
+                    metricaAnual === "valor"
+                      ? m.fornValorBase
+                      : metricaAnual === "volume"
+                        ? m.fornVolumeBase
+                        : precoMedio(m.fornValorBase, m.fornVolumeBase),
+                  atual:
+                    metricaAnual === "valor"
+                      ? m.fornValorAtual
+                      : metricaAnual === "volume"
+                        ? m.fornVolumeAtual
+                        : precoMedio(m.fornValorAtual, m.fornVolumeAtual),
                 }))}
               />
             </CardContent>

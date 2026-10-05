@@ -22,16 +22,17 @@ from run_portal_fornecedor_dados_mestres_readonly import connect  # noqa: E402
 ROOT = Path("/lider/portal-fornecedor")
 ENV = ROOT / ".env.postgres"
 JERONIMO_LOC = (132, 450, 469, 493, 515, 523, 531, 566, 574, 582, 639, 647, 710, 736, 752, 760, 779, 809, 817, 841, 850, 868, 876, 884, 892, 906, 914, 922)
-
 SQL = """
-SELECT f.DIG_DATA, f.DIG_LOJA, f.DIG_COD_ITEM, i.GIT_COD_FOR, i.GIT_DESCRICAO,
+SELECT f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE, f.DIG_COD_ITEM,
+       i.GIT_COD_FOR, i.GIT_DESCRICAO,
        SUM(f.DIG_QTD_FAT), SUM(f.DIG_QTD_FAT * NVL(f.DIG_PRECO, 0)), COUNT(*)
 FROM RMS.AG1CDFAT f
 JOIN RMS.AA3CITEM i ON i.GIT_COD_ITEM = f.DIG_COD_ITEM
 WHERE f.DIG_AGENDA = 520
   AND f.DIG_DATA BETWEEN 1130101 AND 1261231
   AND f.DIG_LOJA NOT IN ({locais})
-GROUP BY f.DIG_DATA, f.DIG_LOJA, f.DIG_COD_ITEM, i.GIT_COD_FOR, i.GIT_DESCRICAO
+GROUP BY f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE,
+         f.DIG_COD_ITEM, i.GIT_COD_FOR, i.GIT_DESCRICAO
 """.format(locais=", ".join(str(item) for item in JERONIMO_LOC))
 
 
@@ -70,7 +71,7 @@ def origem():
         cursor.arraysize = 10_000
         cursor.execute(SQL)
         while rows := cursor.fetchmany(10_000):
-            for raw_date, store, item, supplier, description, quantity, amount, occurrences in rows:
+            for raw_date, store, nota, serie, item, supplier, description, quantity, amount, occurrences in rows:
                 day = parse_rms7(raw_date)
                 if not day:
                     continue
@@ -81,7 +82,9 @@ def origem():
                     continue
                 qty, total = float(quantity or 0), float(amount or 0)
                 yield (
-                    str(supplier_n), str(store_n), f"Loja {store_n}", sku,
+                    str(supplier_n), str(store_n), f"Loja {store_n}",
+                    str(nota).strip() if nota is not None else "",
+                    str(serie).strip() if serie is not None else "", sku,
                     (description or "").strip() or f"PRODUTO {sku}", qty,
                     round(total / qty, 4) if qty else 0.0, round(total, 2), day,
                     int(occurrences or 0),
@@ -92,10 +95,11 @@ DDL = """
 CREATE TABLE IF NOT EXISTS perdas_rms_520_canonicas (
   loteCarga TEXT NOT NULL, fornecedorCodigo TEXT NOT NULL, lojaId TEXT NOT NULL,
   lojaNome TEXT NOT NULL, sku TEXT NOT NULL, produtoDescricao TEXT NOT NULL,
+  numeroNota TEXT NOT NULL, serie TEXT NOT NULL,
   quantidade DOUBLE PRECISION NOT NULL, valorUnitario DOUBLE PRECISION NOT NULL,
   valorTotal DOUBLE PRECISION NOT NULL, data TEXT NOT NULL, ocorrencias INTEGER NOT NULL,
   carregadoEm TEXT NOT NULL,
-  PRIMARY KEY (loteCarga, fornecedorCodigo, lojaId, sku, data)
+  PRIMARY KEY (loteCarga, fornecedorCodigo, lojaId, numeroNota, serie, sku, data)
 );
 CREATE INDEX IF NOT EXISTS idx_perdas_520_canonicas_fornecedor
   ON perdas_rms_520_canonicas (loteCarga, fornecedorCodigo, data);
@@ -123,9 +127,10 @@ def main() -> int:
             cur.execute(DDL)
             cur.executemany(
                 """INSERT INTO perdas_rms_520_canonicas
-                   (loteCarga, fornecedorCodigo, lojaId, lojaNome, sku, produtoDescricao,
-                    quantidade, valorUnitario, valorTotal, data, ocorrencias, carregadoEm)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                   (loteCarga, fornecedorCodigo, lojaId, lojaNome, numeroNota, serie,
+                    sku, produtoDescricao, quantidade, valorUnitario, valorTotal, data,
+                    ocorrencias, carregadoEm)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 [(lot, *row, now) for row in rows],
             )
             cur.execute("SELECT COUNT(*) FROM perdas_rms_520_canonicas WHERE loteCarga = %s", (lot,))

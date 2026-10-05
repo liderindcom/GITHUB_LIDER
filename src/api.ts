@@ -10,7 +10,6 @@ import nodemailer from "nodemailer";
 import { faturasDoFornecedor } from "@/lib/mock-data";
 import {
   DESCONTO_ACESSO_PORTAL_PCT,
-  normalizarTaxaAcessoPortalPct,
   segmentoIntelider,
   valorUmPctCompra,
 } from "@/lib/acordo-acesso";
@@ -29,96 +28,11 @@ import {
   lerSessaoPortal,
   resolverCodigoFornecedorDados,
 } from "./server/sessao-portal";
-import { spawn } from "child_process";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { randomUUID } from "crypto";
 
-const cargasRmsEmAndamento = new Map<string, { iniciadoEm: string }>();
-const SCRIPT_CARGA_RMS = "/home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py";
-const PYTHON_CARGA_RMS = "/home/administrador/deepseek-env/bin/python3";
-
-function registrarEstadoCargaRms(
-  codigo: string,
-  status: "PROCESSANDO" | "FALHA",
-  erro: string | null = null,
-) {
-  db.prepare(
-    `INSERT INTO fornecedor_carga_completude
-      (fornecedor_codigo, status, verificado_em, detalhes_json, erro)
-     VALUES (?, ?, CURRENT_TIMESTAMP, ?, ?)
-     ON CONFLICT (fornecedor_codigo) DO UPDATE SET
-       status=EXCLUDED.status, verificado_em=EXCLUDED.verificado_em,
-       detalhes_json=EXCLUDED.detalhes_json, erro=EXCLUDED.erro`,
-  ).run(codigo, status, JSON.stringify({ codigo, origem: "portal-assincrono" }), erro);
-}
-
-function iniciarCargaRmsAssincrona(codigo: string, aoConcluir?: (stdout: string) => void) {
-  if (cargasRmsEmAndamento.has(codigo)) return false;
-
-  registrarEstadoCargaRms(codigo, "PROCESSANDO");
-  const iniciadoEm = new Date().toISOString();
-  cargasRmsEmAndamento.set(codigo, { iniciadoEm });
-  const processo = spawn(PYTHON_CARGA_RMS, [SCRIPT_CARGA_RMS, "--codigo", codigo, "--json"], {
-    env: { ...process.env, LD_LIBRARY_PATH: "/home/administrador/instantclient_19_25" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let stdout = "";
-  let stderr = "";
-  processo.stdout.on("data", (chunk: Buffer) => {
-    stdout = `${stdout}${chunk}`.slice(-16_000);
-  });
-  processo.stderr.on("data", (chunk: Buffer) => {
-    stderr = `${stderr}${chunk}`.slice(-4000);
-  });
-  processo.once("close", (code) => {
-    cargasRmsEmAndamento.delete(codigo);
-    if (code !== 0) {
-      try {
-        registrarEstadoCargaRms(
-          codigo,
-          "FALHA",
-          `Processo RMS encerrou com código ${code}: ${stderr}`.slice(0, 3500),
-        );
-      } catch (erro) {
-        console.error("Não foi possível registrar falha da carga RMS assíncrona:", erro);
-      }
-      return;
-    }
-    if (aoConcluir) {
-      try {
-        aoConcluir(stdout);
-      } catch (erro) {
-        try {
-          registrarEstadoCargaRms(
-            codigo,
-            "FALHA",
-            `A carga RMS terminou, mas não pôde ser confirmada: ${erro instanceof Error ? erro.message : String(erro)}`.slice(
-              0,
-              3500,
-            ),
-          );
-        } catch (erroRegistro) {
-          console.error(
-            "Não foi possível registrar erro de confirmação da carga RMS:",
-            erroRegistro,
-          );
-        }
-      }
-    }
-  });
-  processo.once("error", (erro) => {
-    cargasRmsEmAndamento.delete(codigo);
-    try {
-      registrarEstadoCargaRms(
-        codigo,
-        "FALHA",
-        `Não foi possível iniciar processo RMS: ${erro.message}`,
-      );
-    } catch (erroRegistro) {
-      console.error("Não foi possível registrar erro de início da carga RMS:", erroRegistro);
-    }
-  });
-  return true;
-}
+const execAsync = promisify(exec);
 
 export function ensureFornecedoresColumns() {
   // Safe migrations run on startup in db.ts
@@ -165,15 +79,11 @@ export type FornecedorDB = {
   acessoLiberado?: number;
   metaFillRatePct?: number;
   isentoCobranca?: number;
-  taxaAcessoPct?: number;
   acessoDataInicio?: string | null;
   acessoDataFim?: string | null;
   acessoStatus?: "SEM_ACORDO" | "DEGUSTACAO" | "ATIVO_COM_ACORDO" | "EXPIRADO" | null;
   acordoNumero?: string | null;
   degustacaoUsada?: number | null;
-  cargaStatus?: "COMPLETA" | "FALHA" | "PROCESSANDO" | null;
-  cargaVerificadaEm?: string | null;
-  cargaErro?: string | null;
 };
 
 export type ProdutoDB = {
@@ -224,6 +134,8 @@ export type PerdaDB = {
   fornecedorCodigo: string;
   lojaId: string;
   lojaNome: string;
+  numeroNota: string | null;
+  serie: string | null;
   sku: string;
   produtoDescricao: string;
   quantidade: number;
@@ -246,6 +158,8 @@ export type EstoqueDB = {
   sku: string;
   lojaId: string;
   estoqueAtual: number;
+  dataEstoque?: string | null;
+  dataInventario?: string | null;
 };
 
 export type FaturaDB = {
@@ -324,8 +238,50 @@ type PedidoItemRow = {
   precoUnitario: number;
 };
 
-const tabelaExiste = (nome: string) =>
-  Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(nome));
+const tabelaExiste = (nome: string) => {
+  try {
+    return Boolean(
+      db
+        .prepare(
+          "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
+        )
+        .get(nome),
+    );
+  } catch {
+    try {
+      return Boolean(
+        db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(nome),
+      );
+    } catch {
+      return false;
+    }
+  }
+};
+
+const colunaExiste = (tabela: string, coluna: string) => {
+  try {
+    if (
+      db
+        .prepare(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND lower(column_name) = lower(?)",
+        )
+        .get(tabela, coluna)
+    ) {
+      return true;
+    }
+  } catch {
+    /* SQLite não possui information_schema. */
+  }
+  try {
+    return Boolean(
+      db
+        .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE lower(name) = lower(?)`)
+        .get(tabela, coluna),
+    );
+  } catch {
+    return false;
+  }
+};
 
 /** Sortimento: fiscal ∪ grupo ∪ gabarito. Pedido/NF/financeiro continuam fiscais. */
 const sqlSkuVisivel = (alias = "p") =>
@@ -437,52 +393,6 @@ function vigenciaAcessoOk(row: {
   return hojeIso >= inicio && hojeIso <= fim;
 }
 
-function exigirCargaCompletaParaLiberar(codigo: string) {
-  const carga = db
-    .prepare("SELECT status FROM fornecedor_carga_completude WHERE fornecedor_codigo = ?")
-    .get(codigo) as { status?: string } | undefined;
-  if (carga && carga.status !== "COMPLETA") {
-    throw new Error(
-      "A carga RMS deste fornecedor não está completa. Corrija e atualize os dados antes de liberar o acesso.",
-    );
-  }
-}
-
-function ativarFornecedorParaDegustacao(codigo: string) {
-  const existente = db
-    .prepare("SELECT acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?")
-    .get(codigo) as { acessoStatus?: string; degustacaoUsada?: number } | undefined;
-  if (!existente) throw new Error("O RMS não retornou o cadastro do fornecedor solicitado.");
-  if (existente.acessoStatus === "ATIVO_COM_ACORDO") {
-    throw new Error("Fornecedor já possui acordo de acesso ativo.");
-  }
-  if (Number(existente.degustacaoUsada) === 1) {
-    throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
-  }
-
-  exigirCargaCompletaParaLiberar(codigo);
-  const hoje = new Date();
-  const inicio = hoje.toISOString().slice(0, 10);
-  hoje.setUTCDate(hoje.getUTCDate() + 30);
-  const fim = hoje.toISOString().slice(0, 10);
-  db.prepare(
-    "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
-  ).run(inicio, fim, codigo);
-  return { inicio, fim };
-}
-
-function extrairCompletudeRms(stdout: string) {
-  const linha = stdout.split("\n").find((item) => item.startsWith("COMPLETUDE_JSON="));
-  if (!linha) throw new Error("O RMS não devolveu a confirmação de completude da carga.");
-  const carga = JSON.parse(linha.slice("COMPLETUDE_JSON=".length)) as {
-    completa?: boolean;
-    fornecedor?: string;
-  };
-  if (!carga.completa)
-    throw new Error("A carga RMS terminou com divergência e o fornecedor foi mantido bloqueado.");
-  return carga;
-}
-
 function buscarFornecedorPorLogin(ident: string): FornecedorDB | undefined {
   ensureFornecedoresColumns();
   const codigo = resolverCodigoFornecedorDados(normalizarCodigoFornecedor(ident));
@@ -588,21 +498,13 @@ function getLiderWideAbcClasses() {
       volume: number;
     }>;
 
-    const itens = rows.map((r) => {
-      // A curva ABC compara itens concorrentes no mesmo subgrupo. Agrupar só
-      // por departamento mistura categorias com perfis de venda distintos e
-      // distorce a prioridade relativa de cada SKU.
-      const subgrupo = [r.departamentoCodigo, r.secaoCodigo, r.grupoCodigo, r.subgrupoCodigo]
-        .map((codigo) => String(codigo ?? "").trim())
-        .join(":");
-      return {
-        sku: r.sku,
-        grupo: subgrupo,
-        grupoQuantidade: subgrupo,
-        valor: r.valor || 0,
-        volume: r.volume || 0,
-      };
-    });
+    const itens = rows.map((r) => ({
+      sku: r.sku,
+      grupo: `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}.${r.subgrupoCodigo}`,
+      grupoQuantidade: `${r.departamentoCodigo}.${r.secaoCodigo}.${r.grupoCodigo}`,
+      valor: r.valor || 0,
+      volume: r.volume || 0,
+    }));
     const classificados = classificarCurvaAbcd(itens);
     const topStars = classificarCurvaTopStar(itens);
     for (const [sku, resultado] of classificados) {
@@ -738,29 +640,72 @@ export const fetchPerdas = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
+    const inicioJanela = new Date();
+    inicioJanela.setDate(1);
+    inicioJanela.setMonth(inicioJanela.getMonth() - 12);
+    const inicioJanelaIso = `${inicioJanela.getFullYear()}-${String(inicioJanela.getMonth() + 1).padStart(2, "0")}-01`;
+    const numeroNotaSql = colunaExiste("perdas", "numeroNota") ? "d.numeroNota" : "NULL";
+    const serieSql = colunaExiste("perdas", "serie") ? "d.serie" : "NULL";
     const stmt = db.prepare(
-      `SELECT d.fornecedorCodigo, d.lojaId, d.lojaNome, d.sku, d.produtoDescricao,
-              d.quantidade, d.valorUnitario, d.valorTotal, d.data, d.ocorrencias
-         FROM perdas_rms_520_canonicas d
-         JOIN perdas_rms_520_controle c ON c.chave = 'ativo' AND c.loteCarga = d.loteCarga
-         JOIN produtos p ON p.sku = d.sku
-        WHERE ${sqlSkuVisivel("p")} AND d.lojaId NOT IN (${sqlLojasForaPortal})`,
+      `SELECT d.*,
+              d.fornecedorCodigo AS "fornecedorCodigo",
+              d.lojaId AS "lojaId",
+              d.lojaNome AS "lojaNome",
+              d.sku AS "sku",
+              d.produtoDescricao AS "produtoDescricao",
+              d.quantidade AS "quantidade",
+              d.valorUnitario AS "valorUnitario",
+              d.valorTotal AS "valorTotal",
+              d.data AS "data",
+              d.ocorrencias AS "ocorrencias",
+              ${numeroNotaSql} AS "numeroNota", ${serieSql} AS "serie"
+        FROM perdas d
+        WHERE d.fornecedorCodigo = ?
+          AND d.data >= ?
+          AND d.lojaId NOT IN (${sqlLojasForaPortal})`,
     );
-    return stmt.all(fornecedorCodigo) as PerdaDB[];
+    return stmt.all(fornecedorCodigo, inicioJanelaIso) as PerdaDB[];
   });
 
 export const fetchEstoque = createServerFn({ method: "GET" })
   .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
+    const postgresRuntime = (process.env.PORTAL_DB_ENGINE || "").toLowerCase() === "postgres";
+    const dataEstoqueSql = tabelaExiste("atlas_estoque_snapshot_status")
+      ? `COALESCE(${postgresRuntime ? "NULLIF(e.dataEstoque::text, '')::date" : "e.dataEstoque"}, (SELECT CAST(last_success_at AS DATE)
+           FROM atlas_estoque_snapshot_status
+          WHERE stream_name = 'global_active_products'))`
+      : "e.dataEstoque";
+    const dataInventarioSql = colunaExiste("estoque", "datainventario")
+      ? "e.dataInventario"
+      : "NULL";
     const stmt = db.prepare(
-      `SELECT e.sku, e.lojaId, e.estoqueAtual
-       FROM estoque e
+      `SELECT e.sku, e.lojaId, e.estoqueAtual,
+              ${dataEstoqueSql} AS dataEstoque,
+              ${dataInventarioSql} AS dataInventario
+         FROM estoque e
        JOIN produtos p ON p.sku = e.sku
        WHERE ${sqlSkuVisivel("p")}
          AND e.lojaId NOT IN (${sqlLojasForaPortal})`,
     );
-    return stmt.all(fornecedorCodigo) as EstoqueDB[];
+    try {
+      return stmt.all(fornecedorCodigo) as EstoqueDB[];
+    } catch (error) {
+      // A posição de estoque não pode desaparecer por incompatibilidade nas
+      // colunas opcionais de snapshot/data. Mantém a carga principal disponível.
+      console.error("fetchEstoque: consulta de snapshot falhou; usando carga básica", error);
+      const fallback = db.prepare(
+        `SELECT e.sku, e.lojaId, e.estoqueAtual,
+                NULL AS dataEstoque,
+                NULL AS dataInventario
+           FROM estoque e
+           JOIN produtos p ON p.sku = e.sku
+          WHERE ${sqlSkuVisivel("p")}
+            AND e.lojaId NOT IN (${sqlLojasForaPortal})`,
+      );
+      return fallback.all(fornecedorCodigo) as EstoqueDB[];
+    }
   });
 
 export type ContaReceberDB = {
@@ -1497,7 +1442,7 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
         WHERE ${filtroFornMensal}
           AND (? IS NULL OR vm.anoMes >= ?)
           AND (? IS NULL OR vm.anoMes <= ?)
-        GROUP BY COALESCE(p.sku, vm.sku), COALESCE(p.descricao, vm.sku), p.marca, categoria
+        GROUP BY COALESCE(p.sku, vm.sku), COALESCE(p.descricao, vm.sku), p.marca, p.subgrupo, categoria
       `,
             )
             .all(fornecedorCodigo, fornecedorCodigo, inicioMes, inicioMes, fimMes, fimMes)
@@ -1516,7 +1461,7 @@ export const fetchShareFornecedor = createServerFn({ method: "GET" })
         WHERE ${sqlSkuVisivel("p")}
           AND (? IS NULL OR v.data >= ?)
           AND v.lojaId NOT IN (${sqlLojasForaPortal})
-        GROUP BY p.sku, p.descricao, p.marca, categoria
+        GROUP BY p.sku, p.descricao, p.marca, p.subgrupo, categoria
       `,
             )
             .all(fornecedorCodigo, inicio, inicio)
@@ -1783,12 +1728,9 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 
     ensureFornecedoresColumns();
     ensureFillrateMetaColumn();
-    let query = `SELECT f.codigo, f.nome, f.cnpj, f.acessoLiberado, f.metaFillRatePct, f.isentoCobranca, f.taxaAcessoPct, f.acessoDataInicio, f.acessoDataFim, f.acessoStatus, f.acordoNumero, f.degustacaoUsada, c.status AS "cargaStatus", c.verificado_em AS "cargaVerificadaEm", c.erro AS "cargaErro" FROM fornecedores f LEFT JOIN fornecedor_carga_completude c ON c.fornecedor_codigo = f.codigo WHERE (f.codigo LIKE ? OR f.nome LIKE ? OR f.cnpj LIKE ?)`;
+    let query =
+      "SELECT codigo, nome, cnpj, acessoLiberado, metaFillRatePct, isentoCobranca, acessoDataInicio, acessoDataFim, acessoStatus, acordoNumero, degustacaoUsada FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
     const params: Array<string | number> = [cleanSearch, cleanSearch, cleanSearch];
-
-    if (onlyActive) {
-      query += " AND (f.acessoLiberado = 1 OR c.status IN ('PROCESSANDO', 'FALHA'))";
-    }
 
     query += " ORDER BY codigo LIMIT ? OFFSET ?";
     params.push(limit, offset);
@@ -1798,11 +1740,8 @@ export const searchFornecedores = createServerFn({ method: "GET" })
 
     // Obter contagem total
     let countQuery =
-      "SELECT COUNT(*) AS total FROM fornecedores f LEFT JOIN fornecedor_carga_completude c ON c.fornecedor_codigo = f.codigo WHERE (f.codigo LIKE ? OR f.nome LIKE ? OR f.cnpj LIKE ?)";
+      "SELECT COUNT(*) AS total FROM fornecedores WHERE (codigo LIKE ? OR nome LIKE ? OR cnpj LIKE ?)";
     const countParams: string[] = [cleanSearch, cleanSearch, cleanSearch];
-    if (onlyActive) {
-      countQuery += " AND (f.acessoLiberado = 1 OR c.status IN ('PROCESSANDO', 'FALHA'))";
-    }
     const countStmt = db.prepare(countQuery);
     const total = countStmt.get(...countParams) as { total: number } | undefined;
 
@@ -1833,7 +1772,6 @@ export const updateSupplierAccess = createServerFn({ method: "POST" })
           "A degustação já foi utilizada ou expirou. Valide o acordo assinado antes de liberar o acesso.",
         );
       }
-      exigirCargaCompletaParaLiberar(codigoNorm);
       db.prepare("UPDATE fornecedores SET acessoLiberado = 1 WHERE codigo = ?").run(codigoNorm);
     }
     return { success: true };
@@ -1845,31 +1783,59 @@ export const includeSupplier = createServerFn({ method: "POST" })
     exigirInterno();
     const codigo = resolverCodigoFornecedorDados(data.codigo);
     if (!codigo) throw new Error("Informe o código RMS do fornecedor.");
+    const nomeNovo = String(data.nome ?? "").trim();
+    const cnpjNovo = String(data.cnpj ?? "").trim();
     ensureFornecedoresColumns();
+    const hoje = new Date();
+    const inicio = hoje.toISOString().slice(0, 10);
+    hoje.setUTCDate(hoje.getUTCDate() + 30);
+    const fim = hoje.toISOString().slice(0, 10);
     const existente = db
-      .prepare("SELECT codigo, acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?")
+      .prepare(
+        "SELECT codigo, nome, cnpj, acessoLiberado, acessoStatus, degustacaoUsada FROM fornecedores WHERE codigo = ?",
+      )
       .get(codigo) as
-      { codigo: string; acessoStatus?: string; degustacaoUsada?: number } | undefined;
-    if (existente?.acessoStatus === "ATIVO_COM_ACORDO") {
-      throw new Error("Fornecedor já possui acordo de acesso ativo.");
+      | {
+          codigo: string;
+          nome?: string;
+          cnpj?: string;
+          acessoLiberado?: number;
+          acessoStatus?: string;
+          degustacaoUsada?: number;
+        }
+      | undefined;
+    if (existente) {
+      if (existente.acessoStatus === "ATIVO_COM_ACORDO")
+        throw new Error("Fornecedor já possui acordo de acesso ativo.");
+      if (Number(existente.degustacaoUsada) === 1)
+        throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
+      db.prepare(
+        "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
+      ).run(inicio, fim, codigo);
+      return {
+        success: true,
+        created: false,
+        codigo,
+        status: "DEGUSTACAO",
+        acessoDataInicio: inicio,
+        acessoDataFim: fim,
+        fornecedorNome: existente.nome || `Fornecedor ${codigo}`,
+        fornecedorCnpj: existente.cnpj || "",
+      };
     }
-    if (Number(existente?.degustacaoUsada) === 1) {
-      throw new Error("A degustação de 30 dias já foi utilizada e não pode ser prorrogada.");
-    }
-
-    const iniciada = iniciarCargaRmsAssincrona(codigo, (stdout) => {
-      extrairCompletudeRms(stdout);
-      const { inicio, fim } = ativarFornecedorParaDegustacao(codigo);
-      console.log(`Fornecedor ${codigo} ativado para degustação de ${inicio} a ${fim}.`);
-    });
+    ensureFillrateMetaColumn();
+    db.prepare(
+      "INSERT INTO fornecedores (codigo, nome, cnpj, acessoLiberado, metaFillRatePct, acessoDataInicio, acessoDataFim, acessoStatus, degustacaoUsada) VALUES (?, ?, ?, 1, ?, ?, ?, 'DEGUSTACAO', 1)",
+    ).run(codigo, nomeNovo, cnpjNovo, FILLRATE_META_PADRAO, inicio, fim);
     return {
       success: true,
-      created: !existente,
+      created: true,
       codigo,
-      status: "PROCESSANDO",
-      message: iniciada
-        ? `Carga RMS iniciada para ${codigo}. O fornecedor será liberado automaticamente após a confirmação.`
-        : `A carga RMS de ${codigo} já está em processamento.`,
+      status: "DEGUSTACAO",
+      acessoDataInicio: inicio,
+      acessoDataFim: fim,
+      fornecedorNome: nomeNovo,
+      fornecedorCnpj: cnpjNovo,
     };
   });
 export { DESCONTO_ACESSO_PORTAL_PCT };
@@ -1903,7 +1869,6 @@ export type CompraMesAnteriorDB = {
   mes: string;
   compra: number;
   umPct: number;
-  taxaAcessoPct: number;
   documentos: number;
 };
 
@@ -1912,15 +1877,10 @@ export const fetchCompraMesAnterior = createServerFn({ method: "GET" })
   .handler(async ({ data: codigoPedido }) => {
     const codigo = codigoFornecedorEfetivo(codigoPedido);
     const mes = mesFechadoIso();
-    const fornecedor = db
-      .prepare("SELECT taxaAcessoPct FROM fornecedores WHERE codigo = ?")
-      .get(codigo) as { taxaAcessoPct?: number } | undefined;
-    const taxaAcessoPct = normalizarTaxaAcessoPortalPct(fornecedor?.taxaAcessoPct);
     const vazio = (): CompraMesAnteriorDB => ({
       mes,
       compra: 0,
       umPct: 0,
-      taxaAcessoPct,
       documentos: 0,
     });
     if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens")) return vazio();
@@ -1960,8 +1920,7 @@ export const fetchCompraMesAnterior = createServerFn({ method: "GET" })
     return {
       mes,
       compra,
-      umPct: valorUmPctCompra(compra, taxaAcessoPct),
-      taxaAcessoPct,
+      umPct: valorUmPctCompra(compra),
       documentos: Number(row?.documentos || 0),
     };
   });
@@ -1971,7 +1930,6 @@ export type RelatorioAcordoAcessoLinhaDB = {
   nome: string;
   segmento: string;
   compra: number;
-  taxaAcessoPct: number;
   umPct: number;
   documentos: number;
 };
@@ -2001,7 +1959,6 @@ export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).hand
     .prepare(
       `SELECT p.fornecedorCodigo AS codigo,
               ${campoNome} AS nome,
-              MAX(f.taxaAcessoPct) AS taxaAcessoPct,
               ${campoDeptoCod} AS departamentoCodigo,
               ${campoDeptoNome} AS departamento,
               COUNT(DISTINCT p.numero || '-' || p.lojaId) AS documentos,
@@ -2053,7 +2010,6 @@ export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).hand
     .all(mes) as Array<{
     codigo: string;
     nome: string;
-    taxaAcessoPct?: number;
     departamentoCodigo: string;
     departamento: string;
     documentos: number;
@@ -2067,12 +2023,11 @@ export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).hand
     const segmento = segmentoIntelider(row.departamentoCodigo, row.departamento);
     const chave = `${codigo}\t${segmento}`;
     const compra = Number(row.compra || 0);
-    const taxaAcessoPct = normalizarTaxaAcessoPortalPct(row.taxaAcessoPct);
     const atual = agregadas.get(chave);
     if (atual) {
       atual.compra += compra;
       atual.documentos += Number(row.documentos || 0);
-      atual.umPct = valorUmPctCompra(atual.compra, atual.taxaAcessoPct);
+      atual.umPct = valorUmPctCompra(atual.compra);
       const nome = String(row.nome || "").trim();
       if (nome && (!atual.nome || atual.nome.startsWith("Fornecedor "))) atual.nome = nome;
     } else {
@@ -2081,8 +2036,7 @@ export const fetchRelatorioAcordoAcesso = createServerFn({ method: "GET" }).hand
         nome: String(row.nome || "").trim() || `Fornecedor ${codigo}`,
         segmento,
         compra,
-        taxaAcessoPct,
-        umPct: valorUmPctCompra(compra, taxaAcessoPct),
+        umPct: valorUmPctCompra(compra),
         documentos: Number(row.documentos || 0),
       });
     }
@@ -2229,11 +2183,7 @@ export const registrarAcordoAcessoPortal = createServerFn({ method: "POST" })
       )
       .get(codigo, mes) as { documentos: number; compra: number } | undefined;
     const valorCompra = Number(compraRow?.compra || 0);
-    const fornecedor = db
-      .prepare("SELECT taxaAcessoPct FROM fornecedores WHERE codigo = ?")
-      .get(codigo) as { taxaAcessoPct?: number } | undefined;
-    const taxaAcessoPct = normalizarTaxaAcessoPortalPct(fornecedor?.taxaAcessoPct);
-    const umPct = valorUmPctCompra(valorCompra, taxaAcessoPct);
+    const umPct = valorUmPctCompra(valorCompra);
 
     if (!tabelaExiste("contas_receber")) {
       throw new Error("Cobrança do Líder indisponível.");
@@ -2254,7 +2204,6 @@ export const registrarAcordoAcessoPortal = createServerFn({ method: "POST" })
       throw new Error("Acordo não encontrado no sistema de cobrança do Líder.");
     }
 
-    exigirCargaCompletaParaLiberar(codigo);
     ensureAcordosAcessoPortal();
     db.prepare(
       "UPDATE fornecedores SET acessoLiberado = 1, acessoStatus = 'ATIVO_COM_ACORDO', acordoNumero = ?, acessoDataFim = NULL WHERE codigo = ?",
@@ -2468,13 +2417,6 @@ export type VendasAnualDB = {
   itens: VendasAnualItemDB[];
 };
 
-/**
- * Annual sales reads aggregate the complete sales window. This cache is
- * process-local and expires quickly; a new latest competency invalidates it.
- */
-const VENDAS_ANUAL_CACHE_TTL_MS = 5 * 60 * 1000;
-const vendasAnualCache = new Map<string, { expiraEm: number; dados: VendasAnualDB }>();
-
 function diasNoMes(ano: number, mes: number) {
   return new Date(ano, mes, 0).getDate();
 }
@@ -2484,13 +2426,9 @@ function crescimentoPct(atual: number, base: number): number | null {
   return (atual / base - 1) * 100;
 }
 
-function escopoSegmentoVendas(
-  codigoFornecedor: string,
-  segmentoFiltrado?: string,
-): {
+function escopoSegmentoVendas(codigoFornecedor: string): {
   segmento: string;
   departamentos: string[];
-  segmentosRede: string[];
 } {
   const produtosFornecedor = db
     .prepare(
@@ -2507,32 +2445,26 @@ function escopoSegmentoVendas(
     produtosFornecedor.map((p) => segmentoIntelider(p.departamentoCodigo, p.departamento)),
   );
   const segmento =
-    segmentoFiltrado && segmentoFiltrado !== ""
-      ? segmentoFiltrado
-      : segmentos.size === 1
-        ? (Array.from(segmentos)[0] ?? "OUTROS")
-        : segmentos.size > 1
-          ? "MIX DE SEGMENTOS"
-          : "OUTROS";
+    segmentos.size === 1
+      ? (Array.from(segmentos)[0] ?? "OUTROS")
+      : segmentos.size > 1
+        ? "MIX DE SEGMENTOS"
+        : "OUTROS";
   const departamentos = (
     db.prepare("SELECT DISTINCT departamentoCodigo, departamento FROM produtos").all() as Array<{
       departamentoCodigo?: string | null;
       departamento?: string | null;
     }>
   )
-    .filter((p) => {
-      const seg = segmentoIntelider(p.departamentoCodigo, p.departamento);
-      if (segmentoFiltrado && segmentoFiltrado !== "") {
-        return seg === segmentoFiltrado;
-      }
-      return segmentos.size === 0 || segmentos.has(seg);
-    })
+    .filter(
+      (p) =>
+        segmentos.size === 0 ||
+        segmentos.has(segmentoIntelider(p.departamentoCodigo, p.departamento)),
+    )
     .map((p) => String(p.departamentoCodigo ?? "").trim())
     .filter(Boolean);
 
-  const segmentosRede =
-    segmentoFiltrado && segmentoFiltrado !== "" ? [segmentoFiltrado] : Array.from(segmentos);
-  return { segmento, departamentos: Array.from(new Set(departamentos)), segmentosRede };
+  return { segmento, departamentos: Array.from(new Set(departamentos)) };
 }
 
 export type OfertaInteliderDB = {
@@ -2641,6 +2573,48 @@ export type RebaixaSolicitacaoDB = {
 
 export type RebaixaSegmentoEmailDB = { segmento: string; email: string; atualizadoEm: string };
 
+export type RebaixaCompradorDB = { codigo: string; nome: string };
+export type RebaixaDestinatarioDB = {
+  id: string;
+  compradorCodigo: string;
+  compradorNome: string;
+  papel: "comprador" | "auxiliar";
+  segmento: string;
+  emailPrincipal: string;
+  emailAlternativo?: string | null;
+  ativo: number;
+  criadoEm: string;
+  atualizadoEm: string;
+};
+
+const validarEmailRebaixa = (valor: unknown, campo: string) => {
+  const email = String(valor ?? "").trim().toLowerCase();
+  if (!email || /[\s\r\n\\]/.test(email) || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
+    throw new Error(`${campo} inválido.`);
+  }
+  return email;
+};
+
+function registrarAuditoriaRebaixa(
+  acao: string,
+  chave: string,
+  valorAnterior: unknown,
+  valorNovo: unknown,
+) {
+  db.prepare(
+    `INSERT INTO rebaixa_destinatarios_auditoria
+      (id, ator, acao, chave, valorAnterior, valorNovo, criadoEm)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(
+    randomUUID(),
+    String(lerSessaoPortal()?.codigo || "interno"),
+    acao,
+    chave,
+    valorAnterior == null ? null : JSON.stringify(valorAnterior),
+    valorNovo == null ? null : JSON.stringify(valorNovo),
+  );
+}
+
 function ensureSolicitacoesRebaixa() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS rebaixa_solicitacoes (
@@ -2651,6 +2625,28 @@ function ensureSolicitacoesRebaixa() {
     );
     CREATE TABLE IF NOT EXISTS rebaixa_segmento_emails (
       segmento TEXT PRIMARY KEY, email TEXT NOT NULL, atualizadoEm TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS rebaixa_destinatarios (
+      id TEXT PRIMARY KEY,
+      compradorCodigo TEXT NOT NULL,
+      compradorNome TEXT NOT NULL,
+      papel TEXT NOT NULL CHECK (papel IN ('comprador', 'auxiliar')),
+      segmento TEXT NOT NULL,
+      emailPrincipal TEXT NOT NULL,
+      emailAlternativo TEXT,
+      ativo INTEGER NOT NULL DEFAULT 1,
+      criadoEm TEXT NOT NULL,
+      atualizadoEm TEXT NOT NULL,
+      UNIQUE (compradorCodigo, segmento, papel, emailPrincipal)
+    );
+    CREATE TABLE IF NOT EXISTS rebaixa_destinatarios_auditoria (
+      id TEXT PRIMARY KEY,
+      ator TEXT NOT NULL,
+      acao TEXT NOT NULL,
+      chave TEXT NOT NULL,
+      valorAnterior TEXT,
+      valorNovo TEXT,
+      criadoEm TEXT NOT NULL
     );
   `);
 }
@@ -2680,6 +2676,96 @@ export const saveRebaixaSegmentoEmail = createServerFn({ method: "POST" })
       `INSERT INTO rebaixa_segmento_emails (segmento, email, atualizadoEm) VALUES (?, ?, datetime('now')) ON CONFLICT(segmento) DO UPDATE SET email=excluded.email, atualizadoEm=excluded.atualizadoEm`,
     ).run(segmento, email);
     return { success: true };
+  });
+
+export const fetchRebaixaDestinatarios = createServerFn({ method: "GET" }).handler(async () => {
+  exigirInterno();
+  ensureSolicitacoesRebaixa();
+  return {
+    destinatarios: db
+      .prepare(
+        `SELECT id, compradorCodigo, compradorNome, papel, segmento, emailPrincipal,
+                emailAlternativo, ativo, criadoEm, atualizadoEm
+         FROM rebaixa_destinatarios
+         ORDER BY compradorNome, segmento, papel, emailPrincipal`,
+      )
+      .all() as RebaixaDestinatarioDB[],
+    compradores: db
+      .prepare(
+        `SELECT compradorCodigo AS codigo, MAX(compradorNome) AS nome
+         FROM produtos
+         WHERE compradorCodigo IS NOT NULL AND TRIM(compradorCodigo) <> ''
+         GROUP BY compradorCodigo ORDER BY MAX(compradorNome), compradorCodigo`,
+      )
+      .all() as RebaixaCompradorDB[],
+  };
+});
+
+export const saveRebaixaDestinatario = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      id?: string;
+      compradorCodigo: string;
+      compradorNome: string;
+      papel: "comprador" | "auxiliar";
+      segmento: string;
+      emailPrincipal: string;
+      emailAlternativo?: string | null;
+      ativo: number;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    exigirInterno();
+    ensureSolicitacoesRebaixa();
+    const compradorCodigo = String(data.compradorCodigo ?? "").trim();
+    const compradorNome = String(data.compradorNome ?? "").trim();
+    const segmento = String(data.segmento ?? "").trim().toUpperCase();
+    if (!compradorCodigo || !compradorNome || !segmento || !["comprador", "auxiliar"].includes(data.papel)) {
+      throw new Error("Informe comprador, papel e segmento válidos.");
+    }
+    const emailPrincipal = validarEmailRebaixa(data.emailPrincipal, "E-mail principal");
+    const emailAlternativo = data.emailAlternativo?.trim()
+      ? validarEmailRebaixa(data.emailAlternativo, "E-mail alternativo")
+      : null;
+    const ativo = Number(data.ativo) === 1 ? 1 : 0;
+    const agora = new Date().toISOString();
+    const id = data.id?.trim() || randomUUID();
+    const anterior = db.prepare("SELECT * FROM rebaixa_destinatarios WHERE id = ?").get(id) as
+      | RebaixaDestinatarioDB
+      | undefined;
+    db.prepare(
+      `INSERT INTO rebaixa_destinatarios
+        (id, compradorCodigo, compradorNome, papel, segmento, emailPrincipal,
+         emailAlternativo, ativo, criadoEm, atualizadoEm)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET compradorCodigo=excluded.compradorCodigo,
+         compradorNome=excluded.compradorNome, papel=excluded.papel,
+         segmento=excluded.segmento, emailPrincipal=excluded.emailPrincipal,
+         emailAlternativo=excluded.emailAlternativo, ativo=excluded.ativo,
+         atualizadoEm=excluded.atualizadoEm`,
+    ).run(
+      id,
+      compradorCodigo,
+      compradorNome,
+      data.papel,
+      segmento,
+      emailPrincipal,
+      emailAlternativo,
+      ativo,
+      anterior?.criadoEm || agora,
+      agora,
+    );
+    registrarAuditoriaRebaixa(anterior ? "atualizar" : "criar", id, anterior || null, {
+      id,
+      compradorCodigo,
+      compradorNome,
+      papel: data.papel,
+      segmento,
+      emailPrincipal,
+      emailAlternativo,
+      ativo,
+    });
+    return { success: true, id };
   });
 
 export const fetchMinhasSolicitacoesRebaixa = createServerFn({ method: "GET" }).handler(
@@ -2780,13 +2866,10 @@ export const submitSolicitacaoRebaixa = createServerFn({ method: "POST" })
   });
 
 export const fetchVendasAnual = createServerFn({ method: "GET" })
-  .validator((data: { fornecedorCodigo: string; segmento?: string }) => ({
-    fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
-    segmento: data.segmento ? String(data.segmento).trim() : undefined,
-  }))
-  .handler(async ({ data }) => {
-    const fornecedorCodigo = codigoFornecedorEfetivo(data.fornecedorCodigo);
-    const escopo = escopoSegmentoVendas(fornecedorCodigo, data.segmento);
+  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .handler(async ({ data: codigoPedido }) => {
+    const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
+    const escopo = escopoSegmentoVendas(fornecedorCodigo);
     const hoje = new Date();
     const anoAtual = hoje.getUTCFullYear();
     const mesCorte = hoje.getUTCMonth() + 1;
@@ -2816,13 +2899,6 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
     };
     const cacheAte = cacheAteRow?.ate ?? null;
     const temAnoAtual = Boolean(cacheAte && cacheAte.startsWith(String(anoAtual)));
-    const chaveCache = [fornecedorCodigo, escopo.segmento, cacheAte ?? "sem-carga", corteIso].join(
-      "|",
-    );
-    const cache = vendasAnualCache.get(chaveCache);
-    if (cache && cache.expiraEm > Date.now()) {
-      return cache.dados;
-    }
 
     type MesAgg = { valor: number; volume: number };
     const zeroMes = (): MesAgg => ({ valor: 0, volume: 0 });
@@ -2835,42 +2911,26 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
     const filtroSegmentoRede = escopo.departamentos.length
       ? `AND p.departamentoCodigo IN (${placeholdersSegmento})`
       : "AND 1 = 0";
-    const segmentosRede = escopo.segmentosRede;
-    const redeRows =
-      tabelaExiste("vendas_rede_segmento_mes") && segmentosRede.length
-        ? (db
-            .prepare(
-              `SELECT anoMes, SUM(valor) AS valor, SUM(quantidade) AS volume
-             FROM vendas_rede_segmento_mes
-            WHERE segmento IN (${segmentosRede.map(() => "?").join(",")})
-              AND (anoMes LIKE ? OR anoMes LIKE ?)
-            GROUP BY anoMes`,
-            )
-            .all(...segmentosRede, `${anoBase}-%`, `${anoAtual}-%`) as {
-            anoMes: string;
-            valor: number;
-            volume: number;
-          }[])
-        : (db
-            .prepare(
-              `SELECT vm.anoMes, SUM(vm.valor) AS valor, SUM(vm.quantidade) AS volume
-             FROM vendas_mensal vm
-             INNER JOIN produtos p
-               ON p.sku = vm.sku
-               OR (
-                 length(vm.sku) > 1
-                 AND p.codigoProdutoRms = substr(vm.sku, 1, length(vm.sku) - 1)
-                 AND p.digitoProdutoRms = substr(vm.sku, -1)
-               )
-             WHERE (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
-               ${filtroSegmentoRede}
-             GROUP BY vm.anoMes`,
-            )
-            .all(`${anoBase}-%`, `${anoAtual}-%`, ...escopo.departamentos) as {
-            anoMes: string;
-            valor: number;
-            volume: number;
-          }[]);
+    const redeRows = db
+      .prepare(
+        `SELECT vm.anoMes, SUM(vm.valor) AS valor, SUM(vm.quantidade) AS volume
+         FROM vendas_mensal vm
+         INNER JOIN produtos p
+           ON p.sku = vm.sku
+           OR (
+             length(vm.sku) > 1
+             AND p.codigoProdutoRms = substr(vm.sku, 1, length(vm.sku) - 1)
+             AND p.digitoProdutoRms = substr(vm.sku, -1)
+           )
+         WHERE (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
+           ${filtroSegmentoRede}
+         GROUP BY vm.anoMes`,
+      )
+      .all(`${anoBase}-%`, `${anoAtual}-%`, ...escopo.departamentos) as {
+      anoMes: string;
+      valor: number;
+      volume: number;
+    }[];
 
     for (const row of redeRows) {
       const ano = Number(row.anoMes.slice(0, 4));
@@ -2899,11 +2959,10 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
       ), ''),
       'Sem seção'
     )`;
-    // vendas_mensal stores the canonical supplier code. A validation over the
-    // complete fact found no mapped code with a trailing digit, so equality is
-    // both correct and indexable.
-    const filtroForn = temFornCol ? "vm.fornecedorCodigo = ?" : sqlSkuVisivel("p");
-    const bindsForn = [fornecedorCodigo];
+    const filtroForn = temFornCol
+      ? `(vm.fornecedorCodigo = ? OR vm.fornecedorCodigo LIKE ? || '_')`
+      : sqlSkuVisivel("p");
+    const bindsForn = temFornCol ? [fornecedorCodigo, fornecedorCodigo] : [fornecedorCodigo];
     const joinProdObrigatorio = joinProdutoRms;
 
     const fornRows = db
@@ -2913,10 +2972,9 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
          ${joinProdutoRms}
          WHERE ${filtroForn}
            AND (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
-           ${filtroSegmentoRede}
          GROUP BY vm.anoMes`,
       )
-      .all(...bindsForn, `${anoBase}-%`, `${anoAtual}-%`, ...escopo.departamentos) as {
+      .all(...bindsForn, `${anoBase}-%`, `${anoAtual}-%`) as {
       anoMes: string;
       valor: number;
       volume: number;
@@ -2997,7 +3055,6 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
          ${joinProdObrigatorio}
          WHERE ${filtroForn}
            AND (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
-           ${filtroSegmentoRede}
          GROUP BY 1
          HAVING SUM(vm.valor) > 0
          ORDER BY valorBase DESC
@@ -3017,7 +3074,6 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
         ...bindsForn,
         `${anoBase}-%`,
         `${anoAtual}-%`,
-        ...escopo.departamentos,
       ) as VendasAnualSecaoDB[];
 
     const secoes: VendasAnualSecaoDB[] = secaoRows.map((s) => ({
@@ -3043,7 +3099,6 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
          ${joinProdObrigatorio}
          WHERE ${filtroForn}
            AND (vm.anoMes LIKE ? OR vm.anoMes LIKE ?)
-           ${filtroSegmentoRede}
          GROUP BY 1, 2, 3, 4, 5
          HAVING SUM(vm.valor) > 0
          ORDER BY valorBase DESC
@@ -3061,7 +3116,6 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
         ...bindsForn,
         `${anoBase}-%`,
         `${anoAtual}-%`,
-        ...escopo.departamentos,
       ) as Omit<VendasAnualItemDB, "crescimentoValorPct" | "contribuicaoFuro">[];
 
     const esperadoItem = (base: number) => base * (farolPct / 100);
@@ -3078,7 +3132,7 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
       })
       .slice(0, 40);
 
-    const resultado = {
+    return {
       corte: { data: corteIso, dia: diaCorte, mes: mesCorte, anoAtual, anoBase },
       segmento: escopo.segmento,
       farolPct,
@@ -3100,18 +3154,6 @@ export const fetchVendasAnual = createServerFn({ method: "GET" })
       secoes,
       itens,
     } satisfies VendasAnualDB;
-    vendasAnualCache.set(chaveCache, {
-      expiraEm: Date.now() + VENDAS_ANUAL_CACHE_TTL_MS,
-      dados: resultado,
-    });
-    if (vendasAnualCache.size > 200) {
-      for (const [chave, entrada] of vendasAnualCache) {
-        if (entrada.expiraEm <= Date.now() || vendasAnualCache.size > 160) {
-          vendasAnualCache.delete(chave);
-        }
-      }
-    }
-    return resultado;
   });
 
 export type UsuarioInternoDB = {
@@ -3128,7 +3170,6 @@ export type UsuarioFornecedorDB = {
   email: string;
   ativo: number;
   criadoEm: string;
-  precisaTrocarSenha?: number;
 };
 
 function publicUsuarioFornecedor(row: UsuarioFornecedorRow): UsuarioFornecedorDB {
@@ -3138,7 +3179,6 @@ function publicUsuarioFornecedor(row: UsuarioFornecedorRow): UsuarioFornecedorDB
     email: row.email,
     ativo: Number(row.ativo ?? 0),
     criadoEm: row.criadoEm,
-    precisaTrocarSenha: flagPrecisaTrocarSenha(row),
   };
 }
 
@@ -3450,7 +3490,7 @@ export const fetchUsuariosFornecedor = createServerFn({ method: "GET" })
     ensureUsuariosFornecedor();
     const rows = db
       .prepare(
-        `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm, precisaTrocarSenha
+        `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm
          FROM usuarios_fornecedor
          WHERE fornecedorCodigo = ?
          ORDER BY criadoEm ASC, email ASC`,
@@ -3493,7 +3533,7 @@ export const salvarUsuarioFornecedor = createServerFn({ method: "POST" })
     if (idExistente) {
       const atual = db
         .prepare(
-          `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm, precisaTrocarSenha
+          `SELECT id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm
            FROM usuarios_fornecedor WHERE id = ? AND fornecedorCodigo = ?`,
         )
         .get(idExistente, codigo) as UsuarioFornecedorRow | undefined;
@@ -3506,25 +3546,15 @@ export const salvarUsuarioFornecedor = createServerFn({ method: "POST" })
         : atual.senhaHash;
       if (senha) {
         db.prepare(
-          `UPDATE usuarios_fornecedor
-           SET nome = ?, email = ?, senhaHash = ?, ativo = 1, precisaTrocarSenha = 1
+          `UPDATE usuarios_fornecedor SET nome = ?, email = ?, senhaHash = ?, precisaTrocarSenha = 0
            WHERE id = ? AND fornecedorCodigo = ?`,
         ).run(nome, email, senhaHash, idExistente, codigo);
       } else {
         db.prepare(
-          `UPDATE usuarios_fornecedor
-           SET nome = ?, email = ?, ativo = 1
-           WHERE id = ? AND fornecedorCodigo = ?`,
+          `UPDATE usuarios_fornecedor SET nome = ?, email = ? WHERE id = ? AND fornecedorCodigo = ?`,
         ).run(nome, email, idExistente, codigo);
       }
-      return publicUsuarioFornecedor({
-        ...atual,
-        nome,
-        email,
-        senhaHash,
-        ativo: 1,
-        precisaTrocarSenha: senha ? 1 : atual.precisaTrocarSenha,
-      });
+      return publicUsuarioFornecedor({ ...atual, nome, email, senhaHash });
     }
 
     const total = db
@@ -3538,8 +3568,8 @@ export const salvarUsuarioFornecedor = createServerFn({ method: "POST" })
     const criadoEm = new Date().toISOString();
     const senhaHash = hashSenhaFornecedor(senha);
     db.prepare(
-      `INSERT INTO usuarios_fornecedor (id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm, precisaTrocarSenha)
-       VALUES (?, ?, ?, ?, ?, 1, ?, 1)`,
+      `INSERT INTO usuarios_fornecedor (id, fornecedorCodigo, nome, email, senhaHash, ativo, criadoEm)
+       VALUES (?, ?, ?, ?, ?, 1, ?)`,
     ).run(id, codigo, nome, email, senhaHash, criadoEm);
     return publicUsuarioFornecedor({
       id,
@@ -3549,7 +3579,6 @@ export const salvarUsuarioFornecedor = createServerFn({ method: "POST" })
       senhaHash,
       ativo: 1,
       criadoEm,
-      precisaTrocarSenha: 1,
     });
   });
 
@@ -3819,6 +3848,130 @@ export const restaurarSessaoPortal = createServerFn({ method: "POST" })
     return { ok: true, tipo: "fornecedor" as const, codigo };
   });
 
+export const ATLAS_PERMISSOES = [
+  "consultar_carteira",
+  "ver_detalhes",
+  "negociar",
+  "enviar_mensagens",
+  "criar_campanhas",
+  "aprovar_campanhas",
+  "solicitar_rebaixa",
+  "planejar_pedidos",
+  "emitir_pedidos",
+  "gerenciar_acessos",
+] as const;
+export type AtlasPermissao = (typeof ATLAS_PERMISSOES)[number];
+
+function ensureAtlasAcessos() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS atlas_acessos_usuarios (
+      username TEXT PRIMARY KEY,
+      papel TEXT NOT NULL,
+      permissoes TEXT NOT NULL,
+      segmentos TEXT NOT NULL,
+      compradores TEXT NOT NULL,
+      atualizadoEm TEXT NOT NULL
+    );
+  `);
+}
+
+export const fetchAtlasAcessosUsuarios = createServerFn({ method: "GET" }).handler(async () => {
+  exigirInterno();
+  ensureAtlasAcessos();
+  return (db.prepare("SELECT * FROM atlas_acessos_usuarios ORDER BY username").all() as Array<Record<string, unknown>>).map((row) => ({
+    username: String(row.username),
+    papel: String(row.papel),
+    permissoes: JSON.parse(String(row.permissoes || "[]")) as AtlasPermissao[],
+    segmentos: JSON.parse(String(row.segmentos || "[]")) as string[],
+    compradores: JSON.parse(String(row.compradores || "[]")) as string[],
+  }));
+});
+
+export const salvarAtlasAcessoUsuario = createServerFn({ method: "POST" })
+  .validator((data: { username: string; papel: string; permissoes: AtlasPermissao[]; segmentos: string[]; compradores: string[] }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    ensureAtlasAcessos();
+    const username = String(data.username || "").trim().toLowerCase();
+    const permissoes = [...new Set(data.permissoes)].filter((item): item is AtlasPermissao => (ATLAS_PERMISSOES as readonly string[]).includes(item));
+    if (!username || !data.papel || !permissoes.length) throw new Error("Informe usuário, papel e ao menos uma permissão.");
+    db.prepare(`
+      INSERT INTO atlas_acessos_usuarios (username, papel, permissoes, segmentos, compradores, atualizadoEm)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(username) DO UPDATE SET papel=excluded.papel, permissoes=excluded.permissoes,
+        segmentos=excluded.segmentos, compradores=excluded.compradores, atualizadoEm=excluded.atualizadoEm
+    `).run(username, data.papel, JSON.stringify(permissoes), JSON.stringify(data.segmentos), JSON.stringify(data.compradores));
+    return { success: true };
+  });
+
+function ensureScanntechImportacao() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scanntech_importacoes (
+      runId TEXT PRIMARY KEY,
+      competencia TEXT NOT NULL,
+      arquivo TEXT NOT NULL,
+      checksum TEXT NOT NULL,
+      cabecalhos TEXT NOT NULL,
+      status TEXT NOT NULL,
+      linhas INTEGER NOT NULL DEFAULT 0,
+      criadoEm TEXT NOT NULL,
+      promovidoEm TEXT
+    );
+    CREATE TABLE IF NOT EXISTS scanntech_importacao_itens (
+      runId TEXT NOT NULL,
+      linha INTEGER NOT NULL,
+      ean TEXT NOT NULL,
+      nome TEXT NOT NULL,
+      marca TEXT,
+      fabricante TEXT,
+      cesta TEXT,
+      categoria TEXT,
+      subcategoria TEXT,
+      metricas TEXT NOT NULL,
+      PRIMARY KEY (runId, linha)
+    );
+  `);
+}
+
+export const iniciarImportacaoScanntech = createServerFn({ method: "POST" })
+  .validator((data: { competencia: string; arquivo: string; checksum: string; cabecalhos: string[] }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    ensureScanntechImportacao();
+    if (!/^\\d{4}-\\d{2}$/.test(data.competencia) || !data.checksum) throw new Error("Competência ou checksum inválido.");
+    const runId = `scanntech-${data.competencia}-${Date.now()}`;
+    db.prepare("INSERT INTO scanntech_importacoes (runId, competencia, arquivo, checksum, cabecalhos, status, criadoEm) VALUES (?, ?, ?, ?, ?, 'staging', datetime('now'))").run(runId, data.competencia, data.arquivo, data.checksum, JSON.stringify(data.cabecalhos));
+    return { runId };
+  });
+
+export const enviarLoteScanntech = createServerFn({ method: "POST" })
+  .validator((data: { runId: string; itens: Array<Record<string, unknown>> }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    ensureScanntechImportacao();
+    const run = db.prepare("SELECT status FROM scanntech_importacoes WHERE runId = ?").get(data.runId) as { status?: string } | undefined;
+    if (!run || run.status !== "staging") throw new Error("Lote Scanntech não está em staging.");
+    const insert = db.prepare("INSERT OR REPLACE INTO scanntech_importacao_itens (runId, linha, ean, nome, marca, fabricante, cesta, categoria, subcategoria, metricas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const transaction = db.transaction((itens: Array<Record<string, unknown>>) => {
+      for (const item of itens) insert.run(data.runId, Number(item.linha), String(item.ean), String(item.nome || ""), item.marca ?? null, item.fabricante ?? null, item.cesta ?? null, item.categoria ?? null, item.subcategoria ?? null, JSON.stringify(item.metricas || {}));
+    });
+    transaction(data.itens);
+    return { success: true, recebidas: data.itens.length };
+  });
+
+export const promoverImportacaoScanntech = createServerFn({ method: "POST" })
+  .validator((data: { runId: string; linhasLidas: number; linhasRejeitadas: number }) => data)
+  .handler(async ({ data }) => {
+    exigirInterno();
+    ensureScanntechImportacao();
+    const run = db.prepare("SELECT status FROM scanntech_importacoes WHERE runId = ?").get(data.runId) as { status?: string } | undefined;
+    if (!run || run.status !== "staging") throw new Error("Lote Scanntech não está em staging.");
+    const total = db.prepare("SELECT COUNT(*) AS n FROM scanntech_importacao_itens WHERE runId = ?").get(data.runId) as { n: number };
+    if (Number(total?.n || 0) !== data.linhasLidas || data.linhasRejeitadas > 0) throw new Error("Lote Scanntech incompleto ou com rejeições.");
+    db.prepare("UPDATE scanntech_importacoes SET status = 'promovido', linhas = ?, promovidoEm = datetime('now') WHERE runId = ?").run(data.linhasLidas, data.runId);
+    return { promovidas: data.linhasLidas };
+  });
+
 export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(async () => {
   exigirInterno();
   const stmt = db.prepare("SELECT username, nome, role FROM usuarios_internos ORDER BY username");
@@ -3851,39 +4004,6 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
       `INSERT INTO usuarios_internos (username, nome, senha, "role") VALUES (?, ?, ?, ?)`,
     ).run(username, nome, senha, role);
     return { success: true, username };
-  });
-
-export const alterarSenhaUsuarioInterno = createServerFn({ method: "POST" })
-  .validator((data: { username: string; novaSenha: string }) => ({
-    username: String(data.username ?? "")
-      .trim()
-      .toLowerCase(),
-    novaSenha: String(data.novaSenha ?? ""),
-  }))
-  .handler(async ({ data }) => {
-    const sessao = lerSessaoPortal();
-    if (!sessao || sessao.tipo !== "interno") {
-      throw new Error("Acesso administrativo exigido.");
-    }
-    const operador = db
-      .prepare("SELECT role FROM usuarios_internos WHERE lower(username) = ?")
-      .get(sessao.codigo.toLowerCase()) as { role?: string } | undefined;
-    if (!operador || operador.role !== "admin") {
-      throw new Error("Somente administradores podem alterar senhas de usuários internos.");
-    }
-    if (!data.username) throw new Error("Informe o usuário.");
-    if (data.novaSenha.length < 8) {
-      throw new Error("A nova senha precisa ter no mínimo 8 caracteres.");
-    }
-    const alvo = db
-      .prepare("SELECT username FROM usuarios_internos WHERE lower(username) = ?")
-      .get(data.username) as { username: string } | undefined;
-    if (!alvo) throw new Error("Usuário administrativo não encontrado.");
-    db.prepare("UPDATE usuarios_internos SET senha = ? WHERE username = ?").run(
-      data.novaSenha,
-      alvo.username,
-    );
-    return { success: true };
   });
 
 export const deleteUsuarioInterno = createServerFn({ method: "POST" })
@@ -4020,14 +4140,12 @@ export const updateSupplierAccessConfig = createServerFn({ method: "POST" })
       isentoCobranca: number;
       acessoDataInicio: string | null;
       acessoDataFim: string | null;
-      taxaAcessoPct?: number;
     }) => data,
   )
   .handler(async ({ data }) => {
     exigirInterno();
     ensureFornecedoresColumns();
     const { codigo, isentoCobranca, acessoDataInicio, acessoDataFim } = data;
-    const taxaAcessoPct = normalizarTaxaAcessoPortalPct(data.taxaAcessoPct);
     const atual = db
       .prepare("SELECT acessoStatus, acessoDataFim FROM fornecedores WHERE codigo = ?")
       .get(codigo) as { acessoStatus?: string; acessoDataFim?: string | null } | undefined;
@@ -4038,9 +4156,9 @@ export const updateSupplierAccessConfig = createServerFn({ method: "POST" })
       throw new Error("A vigência da degustação de 30 dias é fixa e não pode ser prorrogada.");
     }
     db.prepare(
-      "UPDATE fornecedores SET isentoCobranca = ?, taxaAcessoPct = ?, acessoDataInicio = ?, acessoDataFim = ? WHERE codigo = ?",
-    ).run(isentoCobranca, taxaAcessoPct, acessoDataInicio, acessoDataFim, codigo);
-    return { success: true, taxaAcessoPct };
+      "UPDATE fornecedores SET isentoCobranca = ?, acessoDataInicio = ?, acessoDataFim = ? WHERE codigo = ?",
+    ).run(isentoCobranca, acessoDataInicio, acessoDataFim, codigo);
+    return { success: true };
   });
 
 export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
@@ -4050,251 +4168,13 @@ export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
     const codigo = resolverCodigoFornecedorDados(data.codigo);
     if (!codigo) throw new Error("Código de fornecedor inválido.");
 
-    const iniciada = iniciarCargaRmsAssincrona(codigo);
-    return {
-      success: true,
-      message: iniciada
-        ? `Carga RMS iniciada para ${codigo}. Acompanhe o status na coluna Carga RMS.`
-        : `A carga RMS de ${codigo} já está em processamento.`,
-    };
-  });
-
-export const ATLAS_PERMISSOES = [
-  "consultar_carteira",
-  "ver_detalhes",
-  "negociar",
-  "enviar_mensagens",
-  "criar_campanhas",
-  "aprovar_campanhas",
-  "solicitar_rebaixa",
-  "planejar_pedidos",
-  "emitir_pedidos",
-  "gerenciar_acessos",
-] as const;
-export type AtlasPermissao = (typeof ATLAS_PERMISSOES)[number];
-export type AtlasAcessoUsuario = {
-  username: string;
-  papel: string;
-  permissoes: AtlasPermissao[];
-  segmentos: string[];
-  compradores: string[];
-};
-function assegurarAtlasAcessos() {
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS atlas_acessos_usuarios (username TEXT PRIMARY KEY, papel TEXT NOT NULL, permissoes TEXT NOT NULL, segmentos TEXT NOT NULL, compradores TEXT NOT NULL, atualizadoEm TEXT NOT NULL)",
-  );
-}
-function podeGerenciarAtlas(username: string) {
-  const user = db
-    .prepare("SELECT role FROM usuarios_internos WHERE lower(username)=?")
-    .get(username.toLowerCase()) as { role?: string } | undefined;
-  if (user?.role === "admin") return true;
-  assegurarAtlasAcessos();
-  const row = db
-    .prepare("SELECT permissoes FROM atlas_acessos_usuarios WHERE lower(username)=?")
-    .get(username.toLowerCase()) as { permissoes?: string } | undefined;
-  try {
-    return (
-      Array.isArray(JSON.parse(row?.permissoes || "[]")) &&
-      JSON.parse(row?.permissoes || "[]").includes("gerenciar_acessos")
-    );
-  } catch {
-    return false;
-  }
-}
-function exigirGestaoAtlas() {
-  exigirInterno();
-  const s = lerSessaoPortal();
-  if (!s || !podeGerenciarAtlas(s.codigo))
-    throw new Error("Somente gestor geral ou delegado pode gerenciar acessos Atlas.");
-}
-export const fetchAtlasAcessosUsuarios = createServerFn({ method: "GET" }).handler(async () => {
-  exigirGestaoAtlas();
-  assegurarAtlasAcessos();
-  const rows = db
-    .prepare(
-      "SELECT username,papel,permissoes,segmentos,compradores FROM atlas_acessos_usuarios ORDER BY username",
-    )
-    .all() as Array<{
-    username: string;
-    papel: string;
-    permissoes: string;
-    segmentos: string;
-    compradores: string;
-  }>;
-  return rows.map((r) => ({
-    username: r.username,
-    papel: r.papel,
-    permissoes: JSON.parse(r.permissoes),
-    segmentos: JSON.parse(r.segmentos),
-    compradores: JSON.parse(r.compradores),
-  }));
-});
-export const salvarAtlasAcessoUsuario = createServerFn({ method: "POST" })
-  .validator((d: AtlasAcessoUsuario) => d)
-  .handler(async ({ data }) => {
-    exigirGestaoAtlas();
-    assegurarAtlasAcessos();
-    const papeis = new Set([
-      "gestor_geral",
-      "gestor_segmento",
-      "secretaria_segmento",
-      "comprador",
-      "auxiliar_comprador",
-    ]);
-    if (!papeis.has(data.papel)) throw new Error("Papel Atlas inválido.");
-    const permissoes = [...new Set(data.permissoes)].filter((p): p is AtlasPermissao =>
-      (ATLAS_PERMISSOES as readonly string[]).includes(p),
-    );
-    db.prepare(
-      "INSERT INTO atlas_acessos_usuarios (username,papel,permissoes,segmentos,compradores,atualizadoEm) VALUES (?,?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET papel=excluded.papel,permissoes=excluded.permissoes,segmentos=excluded.segmentos,compradores=excluded.compradores,atualizadoEm=excluded.atualizadoEm",
-    ).run(
-      data.username,
-      data.papel,
-      JSON.stringify(permissoes),
-      JSON.stringify(data.segmentos),
-      JSON.stringify(data.compradores),
-      new Date().toISOString(),
-    );
-    return { ok: true };
-  });
-
-const SCANNTECH_CABECALHOS = [
-  "Código Barras SKU",
-  "Nome SKU",
-  "Marca SKU",
-  "Fabricante SKU",
-  ".Cesta",
-  ".Categoria",
-  ".Sub-Categoria",
-];
-type ScanntechLinha = {
-  linha: number;
-  ean: string;
-  nome?: string;
-  marca?: string;
-  fabricante?: string;
-  cesta?: string;
-  categoria?: string;
-  subcategoria?: string;
-  metricas: Record<string, unknown>;
-};
-function exigirAdminScanntech() {
-  exigirInterno();
-  const sessao = lerSessaoPortal();
-  const row = sessao
-    ? (db
-        .prepare("SELECT role FROM usuarios_internos WHERE lower(username)=?")
-        .get(sessao.codigo.toLowerCase()) as { role?: string } | undefined)
-    : undefined;
-  if (row?.role !== "admin")
-    throw new Error("Somente o gestor geral pode importar dados Scanntech.");
-}
-export const iniciarImportacaoScanntech = createServerFn({ method: "POST" })
-  .validator(
-    (data: { competencia: string; arquivo: string; checksum: string; cabecalhos: string[] }) =>
-      data,
-  )
-  .handler(async ({ data }) => {
-    exigirAdminScanntech();
-    if (!/^\d{4}-\d{2}$/.test(data.competencia)) throw new Error("Competência deve usar AAAA-MM.");
-    if (!SCANNTECH_CABECALHOS.every((h) => data.cabecalhos.includes(h)))
-      throw new Error("Planilha Scanntech sem cabeçalhos obrigatórios.");
-    const runId = randomUUID();
-    const sessao = lerSessaoPortal();
-    db.prepare(
-      "INSERT INTO atlas_scanntech_import_runs (run_id,reference_month,status,source_file_name,source_sha256,headers,created_by) VALUES (?,?,?,?,?,?,?)",
-    ).run(
-      runId,
-      `${data.competencia}-01`,
-      `staging`,
-      data.arquivo,
-      data.checksum,
-      JSON.stringify(data.cabecalhos),
-      sessao?.codigo || "",
-    );
-    return { runId };
-  });
-export const enviarLoteScanntech = createServerFn({ method: "POST" })
-  .validator((data: { runId: string; itens: ScanntechLinha[] }) => data)
-  .handler(async ({ data }) => {
-    exigirAdminScanntech();
-    if (!Array.isArray(data.itens) || !data.itens.length || data.itens.length > 1000)
-      throw new Error("Lote Scanntech inválido.");
-    const run = db
-      .prepare("SELECT status FROM atlas_scanntech_import_runs WHERE run_id=?")
-      .get(data.runId) as { status?: string } | undefined;
-    if (run?.status !== "staging") throw new Error("Importação não está disponível para staging.");
-    const inserir = db.prepare(
-      "INSERT INTO atlas_scanntech_staging (run_id,row_number,barcode,sku_name,brand,manufacturer,basket,category,subcategory,metrics) VALUES (?,?,?,?,?,?,?,?,?,?)",
-    );
-    const tx = db.transaction((itens: ScanntechLinha[]) =>
-      itens.forEach((item) => {
-        const ean = String(item.ean || "").replace(/\D/g, "");
-        if (!/^\d{8,14}$/.test(ean)) throw new Error(`EAN inválido na linha ${item.linha}.`);
-        inserir.run(
-          data.runId,
-          item.linha,
-          ean,
-          item.nome || null,
-          item.marca || null,
-          item.fabricante || null,
-          item.cesta || null,
-          item.categoria || null,
-          item.subcategoria || null,
-          JSON.stringify(item.metricas || {}),
-        );
-      }),
-    );
-    tx(data.itens);
-    return { inseridos: data.itens.length };
-  });
-export const promoverImportacaoScanntech = createServerFn({ method: "POST" })
-  .validator((data: { runId: string; linhasLidas: number; linhasRejeitadas: number }) => data)
-  .handler(async ({ data }) => {
-    exigirAdminScanntech();
-    if (data.linhasRejeitadas > 0)
-      throw new Error("Promoção bloqueada: existem linhas rejeitadas.");
-    const run = db
-      .prepare("SELECT reference_month,status FROM atlas_scanntech_import_runs WHERE run_id=?")
-      .get(data.runId) as { reference_month?: string; status?: string } | undefined;
-    if (!run?.reference_month || run.status !== "staging")
-      throw new Error("Staging não encontrado.");
-    const total = db
-      .prepare("SELECT count(*) AS total FROM atlas_scanntech_staging WHERE run_id=?")
-      .get(data.runId) as { total: number };
-    if (total.total !== data.linhasLidas)
-      throw new Error("Contagem do staging diverge da planilha; promoção bloqueada.");
-    const tx = db.transaction(() => {
-      db.prepare("DELETE FROM atlas_scanntech_sku_month WHERE reference_month=?").run(
-        run.reference_month,
-      );
-      db.prepare(
-        "INSERT INTO atlas_scanntech_sku_month (reference_month,barcode,sku_name,brand,manufacturer,basket,category,subcategory,metrics,import_run_id) SELECT ?,barcode,sku_name,brand,manufacturer,basket,category,subcategory,metrics,run_id FROM atlas_scanntech_staging WHERE run_id=?",
-      ).run(run.reference_month, data.runId);
-      db.prepare(
-        "UPDATE atlas_scanntech_import_runs SET status='promoted',rows_read=?,rows_valid=?,rows_rejected=0,promoted_at=now() WHERE run_id=?",
-      ).run(data.linhasLidas, total.total, data.runId);
-    });
-    tx();
-    return { promovidas: total.total };
-  });
-
-/** Leitura administrativa do histórico de alterações de cobrança; sem mutação. */
-export const fetchCobrancaAuditoria = createServerFn({ method: "POST" })
-  .validator((data: { limit?: number }) => ({
-    limit: Math.min(Math.max(Number(data?.limit) || 20, 1), 100),
-  }))
-  .handler(async ({ data }) => {
-    exigirInterno("admin");
-    return db
-      .prepare(
-        `
-      SELECT id, fornecedorCodigo, usuarioUsername, usuarioNome, usuarioRole,
-             isentoAnterior, isentoNovo, taxaAnterior, taxaNova, criadoEm
-        FROM auditoria_cobranca_fornecedor
-       ORDER BY id DESC LIMIT ?
-    `,
-      )
-      .all(data.limit);
+    try {
+      const cmd = `LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo ${codigo}`;
+      const { stdout, stderr } = await execAsync(cmd);
+      console.log("Atualização RMS imediata:", stdout, stderr);
+      return { success: true, message: "Atualização no RMS realizada com sucesso!" };
+    } catch (err) {
+      console.error("Erro ao sincronizar fornecedor imediatamente:", err);
+      throw new Error("Erro de execução no script de sincronização do RMS.");
+    }
   });

@@ -35,11 +35,13 @@ import { Route as PortalFinanceiroRouteImport } from './routes/_portal.financeir
 import { Route as PortalInstalarRouteImport } from './routes/_portal.instalar'
 import { Route as PortalItensRouteImport } from './routes/_portal.itens'
 import { Route as PortalLogisticaRouteImport } from './routes/_portal.logistica'
+import { Route as PortalMovimentacoesRouteImport } from './routes/_portal.movimentacoes'
 import { Route as PortalOfertasRebaixasRouteImport } from './routes/_portal.ofertas-rebaixas'
 import { Route as PortalPedidosRouteImport } from './routes/_portal.pedidos'
 import { Route as PortalPerdasRouteImport } from './routes/_portal.perdas'
 import { Route as PortalPrecoSistemaRouteImport } from './routes/_portal.preco-sistema'
 import { Route as PortalPrecosRouteImport } from './routes/_portal.precos'
+import { Route as PortalReconciliacaoRouteImport } from './routes/_portal.reconciliacao'
 import { Route as PortalRelatorioMixRouteImport } from './routes/_portal.relatorio-mix'
 import { Route as PortalRepresentatividadeRouteImport } from './routes/_portal.representatividade'
 import { Route as PortalRupturaVendaRouteImport } from './routes/_portal.ruptura-venda'
@@ -182,6 +184,11 @@ const PortalLogisticaRoute = PortalLogisticaRouteImport.update({
   path: '/logistica',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalMovimentacoesRoute = PortalMovimentacoesRouteImport.update({
+  id: '/movimentacoes',
+  path: '/movimentacoes',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalOfertasRebaixasRoute = PortalOfertasRebaixasRouteImport.update({
   id: '/ofertas-rebaixas',
   path: '/ofertas-rebaixas',
@@ -205,6 +212,11 @@ const PortalPrecoSistemaRoute = PortalPrecoSistemaRouteImport.update({
 const PortalPrecosRoute = PortalPrecosRouteImport.update({
   id: '/precos',
   path: '/precos',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalReconciliacaoRoute = PortalReconciliacaoRouteImport.update({
+  id: '/reconciliacao',
+  path: '/reconciliacao',
   getParentRoute: () => PortalRoute,
 } as any)
 const PortalRelatorioMixRoute = PortalRelatorioMixRouteImport.update({
@@ -296,11 +308,13 @@ export interface FileRoutesByFullPath {
   '/instalar': typeof PortalInstalarRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
+  '/movimentacoes': typeof PortalMovimentacoesRoute
   '/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
   '/pedidos': typeof PortalPedidosRoute
   '/perdas': typeof PortalPerdasRoute
   '/preco-sistema': typeof PortalPrecoSistemaRoute
   '/precos': typeof PortalPrecosRoute
+  '/reconciliacao': typeof PortalReconciliacaoRoute
   '/relatorio-mix': typeof PortalRelatorioMixRoute
   '/representatividade': typeof PortalRepresentatividadeRoute
   '/ruptura-venda': typeof PortalRupturaVendaRoute
@@ -340,11 +354,13 @@ export interface FileRoutesByTo {
   '/instalar': typeof PortalInstalarRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
+  '/movimentacoes': typeof PortalMovimentacoesRoute
   '/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
   '/pedidos': typeof PortalPedidosRoute
   '/perdas': typeof PortalPerdasRoute
   '/preco-sistema': typeof PortalPrecoSistemaRoute
   '/precos': typeof PortalPrecosRoute
+  '/reconciliacao': typeof PortalReconciliacaoRoute
   '/relatorio-mix': typeof PortalRelatorioMixRoute
   '/representatividade': typeof PortalRepresentatividadeRoute
   '/ruptura-venda': typeof PortalRupturaVendaRoute
@@ -386,11 +402,13 @@ export interface FileRoutesById {
   '/_portal/instalar': typeof PortalInstalarRoute
   '/_portal/itens': typeof PortalItensRoute
   '/_portal/logistica': typeof PortalLogisticaRoute
+  '/_portal/movimentacoes': typeof PortalMovimentacoesRoute
   '/_portal/ofertas-rebaixas': typeof PortalOfertasRebaixasRoute
   '/_portal/pedidos': typeof PortalPedidosRoute
   '/_portal/perdas': typeof PortalPerdasRoute
   '/_portal/preco-sistema': typeof PortalPrecoSistemaRoute
   '/_portal/precos': typeof PortalPrecosRoute
+  '/_portal/reconciliacao': typeof PortalReconciliacaoRoute
   '/_portal/relatorio-mix': typeof PortalRelatorioMixRoute
   '/_portal/representatividade': typeof PortalRepresentatividadeRoute
   '/_portal/ruptura-venda': typeof PortalRupturaVendaRoute
@@ -432,11 +450,13 @@ export interface FileRouteTypes {
     | '/instalar'
     | '/itens'
     | '/logistica'
+    | '/movimentacoes'
     | '/ofertas-rebaixas'
     | '/pedidos'
     | '/perdas'
     | '/preco-sistema'
     | '/precos'
+    | '/reconciliacao'
     | '/relatorio-mix'
     | '/representatividade'
     | '/ruptura-venda'
@@ -476,11 +496,13 @@ export interface FileRouteTypes {
     | '/instalar'
     | '/itens'
     | '/logistica'
+    | '/movimentacoes'
     | '/ofertas-rebaixas'
     | '/pedidos'
     | '/perdas'
     | '/preco-sistema'
     | '/precos'
+    | '/reconciliacao'
     | '/relatorio-mix'
     | '/representatividade'
     | '/ruptura-venda'
@@ -521,11 +543,13 @@ export interface FileRouteTypes {
     | '/_portal/instalar'
     | '/_portal/itens'
     | '/_portal/logistica'
+    | '/_portal/movimentacoes'
     | '/_portal/ofertas-rebaixas'
     | '/_portal/pedidos'
     | '/_portal/perdas'
     | '/_portal/preco-sistema'
     | '/_portal/precos'
+    | '/_portal/reconciliacao'
     | '/_portal/relatorio-mix'
     | '/_portal/representatividade'
     | '/_portal/ruptura-venda'
@@ -737,6 +761,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalLogisticaRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/movimentacoes': {
+      id: '/_portal/movimentacoes'
+      path: '/movimentacoes'
+      fullPath: '/movimentacoes'
+      preLoaderRoute: typeof PortalMovimentacoesRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/ofertas-rebaixas': {
       id: '/_portal/ofertas-rebaixas'
       path: '/ofertas-rebaixas'
@@ -770,6 +801,13 @@ declare module '@tanstack/react-router' {
       path: '/precos'
       fullPath: '/precos'
       preLoaderRoute: typeof PortalPrecosRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/reconciliacao': {
+      id: '/_portal/reconciliacao'
+      path: '/reconciliacao'
+      fullPath: '/reconciliacao'
+      preLoaderRoute: typeof PortalReconciliacaoRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/relatorio-mix': {
@@ -881,11 +919,13 @@ interface PortalRouteChildren {
   PortalInstalarRoute: typeof PortalInstalarRoute
   PortalItensRoute: typeof PortalItensRoute
   PortalLogisticaRoute: typeof PortalLogisticaRoute
+  PortalMovimentacoesRoute: typeof PortalMovimentacoesRoute
   PortalOfertasRebaixasRoute: typeof PortalOfertasRebaixasRoute
   PortalPedidosRoute: typeof PortalPedidosRoute
   PortalPerdasRoute: typeof PortalPerdasRoute
   PortalPrecoSistemaRoute: typeof PortalPrecoSistemaRoute
   PortalPrecosRoute: typeof PortalPrecosRoute
+  PortalReconciliacaoRoute: typeof PortalReconciliacaoRoute
   PortalRelatorioMixRoute: typeof PortalRelatorioMixRoute
   PortalRepresentatividadeRoute: typeof PortalRepresentatividadeRoute
   PortalRupturaVendaRoute: typeof PortalRupturaVendaRoute
@@ -917,11 +957,13 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalInstalarRoute: PortalInstalarRoute,
   PortalItensRoute: PortalItensRoute,
   PortalLogisticaRoute: PortalLogisticaRoute,
+  PortalMovimentacoesRoute: PortalMovimentacoesRoute,
   PortalOfertasRebaixasRoute: PortalOfertasRebaixasRoute,
   PortalPedidosRoute: PortalPedidosRoute,
   PortalPerdasRoute: PortalPerdasRoute,
   PortalPrecoSistemaRoute: PortalPrecoSistemaRoute,
   PortalPrecosRoute: PortalPrecosRoute,
+  PortalReconciliacaoRoute: PortalReconciliacaoRoute,
   PortalRelatorioMixRoute: PortalRelatorioMixRoute,
   PortalRepresentatividadeRoute: PortalRepresentatividadeRoute,
   PortalRupturaVendaRoute: PortalRupturaVendaRoute,

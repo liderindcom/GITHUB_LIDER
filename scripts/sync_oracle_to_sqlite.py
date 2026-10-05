@@ -234,7 +234,9 @@ def main():
             valorUnitario REAL,
             valorTotal REAL,
             data TEXT,
-            ocorrencias INTEGER
+            ocorrencias INTEGER,
+            numeroNota TEXT,
+            serie TEXT
         );
         
         CREATE INDEX IF NOT EXISTS idx_produtos_forn ON produtos(fornecedorCodigo);

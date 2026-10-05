@@ -158,24 +158,11 @@ function createSqliteDatabase() {
   return new Database(dbPath);
 }
 
-const databaseUrl = resolveDatabaseUrl();
-const postgresConfigured = /^postgres(ql)?:\/\//i.test(databaseUrl);
-if (!postgresConfigured && (process.env.PORTAL_DB_ENGINE || "").toLowerCase() !== "sqlite") {
-  throw new Error(
-    "Portal exige DATABASE_URL PostgreSQL. SQLite só pode ser ativado explicitamente para rollback.",
-  );
-}
-if (process.env.PORTAL_RUNTIME === "production" && !postgresConfigured) {
-  throw new Error("Portal em produção exige DATABASE_URL PostgreSQL; SQLite não é permitido.");
-}
-export const db = usePostgres() ? createPgDatabase(databaseUrl) : createSqliteDatabase();
+export const db = usePostgres() ? createPgDatabase(resolveDatabaseUrl()) : createSqliteDatabase();
 
 // Auto-run migrations on startup (safe schema setup)
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN isentoCobranca INTEGER DEFAULT 0;");
-} catch (e) {}
-try {
-  db.exec("ALTER TABLE fornecedores ADD COLUMN taxaAcessoPct REAL NOT NULL DEFAULT 1;");
 } catch (e) {}
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN acessoDataInicio TEXT;");
@@ -192,49 +179,17 @@ try {
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN degustacaoUsada INTEGER DEFAULT 0;");
 } catch (e) {}
-
-// Portão de entrada: um fornecedor novo só pode ser liberado após a carga RMS completa.
 try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS fornecedor_carga_completude (
-      fornecedor_codigo TEXT PRIMARY KEY,
-      status TEXT NOT NULL,
-      verificado_em TEXT NOT NULL,
-      detalhes_json TEXT NOT NULL,
-      erro TEXT
-    );
-  `);
+  db.exec("ALTER TABLE perdas ADD COLUMN numeroNota TEXT;");
 } catch (e) {}
-
-// Perdas físicas canônicas: lote RMS 520 separado da tabela histórica legada.
-// A carga só ativa o lote após conferir a quantidade integral de registros.
 try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS perdas_rms_520_canonicas (
-      loteCarga TEXT NOT NULL,
-      fornecedorCodigo TEXT NOT NULL,
-      lojaId TEXT NOT NULL,
-      lojaNome TEXT NOT NULL,
-      sku TEXT NOT NULL,
-      produtoDescricao TEXT NOT NULL,
-      quantidade REAL NOT NULL,
-      valorUnitario REAL NOT NULL,
-      valorTotal REAL NOT NULL,
-      data TEXT NOT NULL,
-      ocorrencias INTEGER NOT NULL,
-      carregadoEm TEXT NOT NULL,
-      PRIMARY KEY (loteCarga, fornecedorCodigo, lojaId, sku, data)
-    );
-    CREATE INDEX IF NOT EXISTS idx_perdas_520_canonicas_fornecedor
-      ON perdas_rms_520_canonicas (loteCarga, fornecedorCodigo, data);
-    CREATE TABLE IF NOT EXISTS perdas_rms_520_controle (
-      chave TEXT PRIMARY KEY,
-      loteCarga TEXT NOT NULL,
-      registros INTEGER NOT NULL,
-      origem TEXT NOT NULL,
-      atualizadoEm TEXT NOT NULL
-    );
-  `);
+  db.exec("ALTER TABLE perdas ADD COLUMN serie TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE estoque ADD COLUMN dataEstoque TEXT;");
+  try {
+    db.exec("ALTER TABLE estoque ADD COLUMN dataInventario TEXT;");
+  } catch (e) {}
 } catch (e) {}
 
 try {

@@ -136,6 +136,21 @@ def main() -> int:
             for c in cols:
                 case_map[c["name"].lower()] = c["name"]
             if only and table in existing:
+                existing_cols = {
+                    row[0]
+                    for row in cur.execute(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = %s",
+                        (table,),
+                    )
+                }
+                for column in cols:
+                    if column["name"].lower() in {name.lower() for name in existing_cols} and column["name"].lower() in existing_cols:
+                        continue
+                    cur.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column['name'].lower()} "
+                        f"{pg_col_type(column['type'], False)}"
+                    )
                 print(f"  schema {table} keep (refresh)", flush=True)
                 continue
             cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")

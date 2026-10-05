@@ -1,5 +1,6 @@
-/** Taxas de acesso permitidas por fornecedor. */
+/** Desconto financeiro exigido para liberar o portal: 1% das compras do mês anterior. */
 export const DESCONTO_ACESSO_PORTAL_PCT = 1;
+
 export const TAXAS_ACESSO_PORTAL_PCT = [0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5] as const;
 export type TaxaAcessoPortalPct = (typeof TAXAS_ACESSO_PORTAL_PCT)[number];
 

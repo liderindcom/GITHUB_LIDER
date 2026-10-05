@@ -51,7 +51,13 @@ function PerdasPage() {
   const [buscasRanking, setBuscasRanking] = useState<Record<string, string>>({});
   const [ordenacaoRanking, setOrdenacaoRanking] = useState<{ campo: "posicao" | "nome" | "share" | "valor" | "quantidade" | "produtos"; direcao: "asc" | "desc" }>({ campo: "valor", direcao: "desc" });
   const [buscasProdutos, setBuscasProdutos] = useState<Record<string, string>>({});
-  const [ordenacaoProdutos, setOrdenacaoProdutos] = useState<{ campo: "loja" | "sku" | "produtoDescricao" | "quantidade" | "valorTotal"; direcao: "asc" | "desc" }>({ campo: "valorTotal", direcao: "desc" });
+  const [ordenacaoProdutos, setOrdenacaoProdutos] = useState<{ campo: "numeroNota" | "loja" | "sku" | "produtoDescricao" | "quantidade" | "valorTotal"; direcao: "asc" | "desc" }>({ campo: "valorTotal", direcao: "desc" });
+
+  const rotuloNota = (perda: { numeroNota?: string | null; serie?: string | null }) => {
+    const nota = perda.numeroNota?.trim() || "NF não informada";
+    const serie = perda.serie?.trim();
+    return serie ? `${nota} · série ${serie}` : nota;
+  };
 
   const mesesDisponiveis = useMemo(() => {
     const set = new Set<string>([mesCorrente]);
@@ -123,6 +129,8 @@ function PerdasPage() {
       string,
       {
         lojaId: string;
+        numeroNota: string;
+        serie: string;
         sku: string;
         produtoDescricao: string;
         quantidade: number;
@@ -132,14 +140,16 @@ function PerdasPage() {
     for (const p of perdasDoMes) {
       if (lojaId !== "todas" && p.lojaId !== lojaId) continue;
       if (termo) {
-        const alvo = `${p.sku} ${codigoProdutoComDigito(p.sku)} ${p.produtoDescricao} ${nomeLojaPorLocal(p.lojaId)}`.toLowerCase();
+        const alvo = `${rotuloNota(p)} ${p.sku} ${codigoProdutoComDigito(p.sku)} ${p.produtoDescricao} ${nomeLojaPorLocal(p.lojaId)}`.toLowerCase();
         if (!alvo.includes(termo)) continue;
       }
-      const key = `${p.lojaId}\t${p.sku}`;
+      const key = `${p.numeroNota || "sem-nota"}\t${p.serie || ""}\t${p.lojaId}\t${p.sku}`;
       const atual = map.get(key);
       if (!atual) {
         map.set(key, {
           lojaId: p.lojaId,
+          numeroNota: p.numeroNota || "",
+          serie: p.serie || "",
           sku: p.sku,
           produtoDescricao: p.produtoDescricao,
           quantidade: p.quantidade,
@@ -151,10 +161,10 @@ function PerdasPage() {
       }
     }
     return Array.from(map.values())
-      .filter((p) => Object.entries(buscasProdutos).every(([campo, termo]) => !termo || String(campo === "loja" ? nomeLojaPorLocal(p.lojaId) : campo === "sku" ? codigoProdutoComDigito(p.sku) : campo === "produtoDescricao" ? p.produtoDescricao : campo === "quantidade" ? p.quantidade : p.valorTotal).toLowerCase().includes(termo.toLowerCase())))
+      .filter((p) => Object.entries(buscasProdutos).every(([campo, termo]) => !termo || String(campo === "numeroNota" ? rotuloNota(p) : campo === "loja" ? nomeLojaPorLocal(p.lojaId) : campo === "sku" ? codigoProdutoComDigito(p.sku) : campo === "produtoDescricao" ? p.produtoDescricao : campo === "quantidade" ? p.quantidade : p.valorTotal).toLowerCase().includes(termo.toLowerCase())))
       .sort((a, b) => {
-        const av = ordenacaoProdutos.campo === "loja" ? nomeLojaPorLocal(a.lojaId) : ordenacaoProdutos.campo === "sku" ? codigoProdutoComDigito(a.sku) : a[ordenacaoProdutos.campo];
-        const bv = ordenacaoProdutos.campo === "loja" ? nomeLojaPorLocal(b.lojaId) : ordenacaoProdutos.campo === "sku" ? codigoProdutoComDigito(b.sku) : b[ordenacaoProdutos.campo];
+        const av = ordenacaoProdutos.campo === "numeroNota" ? rotuloNota(a) : ordenacaoProdutos.campo === "loja" ? nomeLojaPorLocal(a.lojaId) : ordenacaoProdutos.campo === "sku" ? codigoProdutoComDigito(a.sku) : a[ordenacaoProdutos.campo];
+        const bv = ordenacaoProdutos.campo === "numeroNota" ? rotuloNota(b) : ordenacaoProdutos.campo === "loja" ? nomeLojaPorLocal(b.lojaId) : ordenacaoProdutos.campo === "sku" ? codigoProdutoComDigito(b.sku) : b[ordenacaoProdutos.campo];
         const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
         return ordenacaoProdutos.direcao === "asc" ? cmp : -cmp;
       });
@@ -192,19 +202,18 @@ function PerdasPage() {
                 <Label htmlFor="mes-perda" className="text-[10px] font-bold uppercase tracking-wider">
                   Mês
                 </Label>
-                <Select value={mesSelecionado} onValueChange={setMesSelecionado}>
-                  <SelectTrigger id="mes-perda" className="h-9 w-full sm:w-64 text-xs bg-background">
-                    <SelectValue placeholder="Selecione o mês" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {mesesDisponiveis.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {rotuloMesAno(m)}
-                        {m === mesCorrente ? " (mês corrente)" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <select
+                  id="mes-perda"
+                  value={mesSelecionado}
+                  onChange={(event) => setMesSelecionado(event.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-xs shadow-sm outline-none focus:ring-1 focus:ring-ring sm:w-64"
+                >
+                  {mesesDisponiveis.map((m) => (
+                    <option key={m} value={m}>
+                      {rotuloMesAno(m)}{m === mesCorrente ? " (mês corrente)" : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </CardContent>
@@ -399,12 +408,13 @@ function PerdasPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="border-border bg-muted hover:bg-muted">
-                    {([["loja", "Loja"], ["sku", "SKU"], ["produtoDescricao", "Produto"], ["quantidade", "Quantidade"], ["valorTotal", "Perda (R$)"]] as Array<[typeof ordenacaoProdutos.campo, string]>).map(([campo, titulo]) => <TableHead key={campo} className="text-xs font-semibold"><TableColumnHeader title={titulo} value={buscasProdutos[campo] ?? ""} onChange={(v) => setBuscasProdutos((atual) => ({ ...atual, [campo]: v }))} onSort={() => alterarOrdenacaoProdutos(campo)} direction={ordenacaoProdutos.campo === campo ? ordenacaoProdutos.direcao : null} /></TableHead>)}
+                    {([["numeroNota", "NF"], ["loja", "Loja"], ["sku", "SKU"], ["produtoDescricao", "Produto"], ["quantidade", "Quantidade"], ["valorTotal", "Perda (R$)"]] as Array<[typeof ordenacaoProdutos.campo, string]>).map(([campo, titulo]) => <TableHead key={campo} className="text-xs font-semibold"><TableColumnHeader title={titulo} value={buscasProdutos[campo] ?? ""} onChange={(v) => setBuscasProdutos((atual) => ({ ...atual, [campo]: v }))} onSort={() => alterarOrdenacaoProdutos(campo)} direction={ordenacaoProdutos.campo === campo ? ordenacaoProdutos.direcao : null} /></TableHead>)}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtradas.map((p) => (
-                    <TableRow key={`${p.lojaId}-${p.sku}`} className="border-border hover:bg-muted/30">
+                    <TableRow key={`${p.numeroNota}-${p.serie}-${p.lojaId}-${p.sku}`} className="border-border hover:bg-muted/30">
+                      <TableCell className="font-mono text-xs py-3">{rotuloNota(p)}</TableCell>
                       <TableCell className="text-xs py-3">{nomeLojaPorLocal(p.lojaId)}</TableCell>
                       <TableCell className="font-mono text-xs py-3">{codigoProdutoComDigito(p.sku)}</TableCell>
                       <TableCell className="max-w-[280px] truncate text-xs py-3">{p.produtoDescricao}</TableCell>
@@ -416,7 +426,7 @@ function PerdasPage() {
                   ))}
                   {filtradas.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
                         Nenhuma perda 520 em {rotuloMesAno(mesSelecionado)} nesta visão.
                       </TableCell>
                     </TableRow>

@@ -10,11 +10,12 @@ import {
 
 import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
 import {
+  agendamentos as agendamentosMock,
   fornecedor,
   type Agendamento,
+  type FornecedorType,
   setActiveSupplierCode,
   getActiveSupplierCode,
-  clearActiveSupplierContext,
   globalDbCache,
 } from "@/lib/mock-data";
 import {
@@ -102,13 +103,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [autenticado, setAutenticado] = useState(false);
   const [primeiroAcessoConcluido, setPrimeiroAcessoConcluido] = useState(false);
   const [mfaAtivo, setMfaAtivo] = useState(false);
-  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>(agendamentosMock);
   const [antecipacoes, setAntecipacoes] = useState<Antecipacao[]>([]);
   const [carregandoSessao, setCarregandoSessao] = useState(true);
-  const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState("");
+  const [codigoFornecedorAtivo, setCodigoFornecedorAtivo] = useState(getActiveSupplierCode());
   const [dadosFornecedorVersao, setDadosFornecedorVersao] = useState(0);
   const [usuarioInterno, setUsuarioInterno] = useState<UsuarioInternoDB | null>(null);
   const [usuarioFornecedor, setUsuarioFornecedor] = useState<ContaFornecedorSessao | null>(null);
+  const [fornecedorAtual, setFornecedorAtual] = useState<FornecedorType>(fornecedor);
   const [classificacaoDados, setClassificacaoDados] = useState<string>("departamento");
   const [filtroMercadologico, setFiltroMercadologicoState] =
     useState<FiltroMercadologico>(FILTRO_VAZIO);
@@ -124,117 +126,63 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const carregarDadosReaisFornecedor = useCallback(async (code: string) => {
-    code = normalizarCodigoFornecedor(code);
-    if (!code) return;
     try {
       setCodigoFornecedorAtivo(code);
-      // Nunca exibir indicadores do fornecedor anterior enquanto o novo cadastro
-      // é hidratado. A sessão permanece ativa; apenas o cache de dados é limpo.
-      globalDbCache.fornecedor = null;
-      globalDbCache.produtos = null;
-      globalDbCache.perdas = null;
-      globalDbCache.vendas = null;
-      globalDbCache.estoque = null;
-      globalDbCache.vendasMensais = null;
-      globalDbCache.bloqueios = null;
-      globalDbCache.pedidos = null;
-      globalDbCache.faturas = null;
-      globalDbCache.contasReceber = null;
-      globalDbCache.nfePendentes = null;
-      globalDbCache.docas = null;
-      globalDbCache.conciliacao = null;
-      globalDbCache.transferenciasCdam = null;
-      setDadosFornecedorVersao((versao) => versao + 1);
-      // A tela inicial não precisa esperar a série detalhada de vendas e os dados
-      // de menus secundários. Reutilizamos as mesmas promessas para não duplicar
-      // chamadas, mas liberamos o cadastro, catálogo e estoque primeiro.
-      const fornecedorPromise = fetchFornecedor({ data: code });
-      const produtosPromise = fetchProdutos({ data: code });
-      const perdasPromise = fetchPerdas({ data: code });
-      const vendasPromise = fetchVendas({ data: code }).catch((err) => {
-        console.error("Erro ao carregar vendas do fornecedor:", err);
-        return [] as Awaited<ReturnType<typeof fetchVendas>>;
-      });
-      const bloqueiosPromise = fetchProdutosBloqueios({ data: code });
-      const estoquePromise = fetchEstoque({ data: code });
-      const pedidosPromise = fetchPedidos({ data: code });
-      const faturasPromise = fetchFaturas({ data: code });
-      const contasReceberPromise = fetchContasReceber({ data: code });
-      const nfePendentesPromise = fetchNfePendentes({ data: code });
-      const docasPromise = fetchDocas();
-      const conciliacaoPromise = fetchConciliacaoNfePedido({ data: code });
-      const transferenciasPromise = fetchTransferenciasCdam({ data: code }).catch((err) => {
-        console.error("Erro ao carregar transferencias CDAM:", err);
-        return [] as Awaited<ReturnType<typeof fetchTransferenciasCdam>>;
-      });
-
-      const [fornecedorInicial, produtosIniciais, estoqueInicial] = await Promise.all([
-        fornecedorPromise,
-        produtosPromise,
-        estoquePromise,
-      ]);
-      if (getActiveSupplierCode() !== code) return;
-      if (fornecedorInicial) {
-        globalDbCache.fornecedor = {
-          codigo: fornecedorInicial.codigo,
-          nome: fornecedorInicial.nome,
-          cnpj: fornecedorInicial.cnpj,
-          cnpjSenhaInicial: fornecedorInicial.cnpjSenhaInicial,
-          destinatario: fornecedorInicial.destinatario,
-          modeloEntrega: fornecedorInicial.modeloEntrega as any,
-          agendaRecebimentoCdam: fornecedorInicial.agendaRecebimentoCdam as any,
-          filialEntregaPadrao: fornecedorInicial.filialEntregaPadrao,
-          isentoCobranca: fornecedorInicial.isentoCobranca as any,
-          taxaAcessoPct: fornecedorInicial.taxaAcessoPct as any,
-          acessoDataInicio: fornecedorInicial.acessoDataInicio ?? null,
-          acessoDataFim: fornecedorInicial.acessoDataFim ?? null,
-          ...(fornecedorInicial.fornecedorComercialCodigo
-            ? { fornecedorComercialCodigo: fornecedorInicial.fornecedorComercialCodigo }
-            : {}),
-          ...(fornecedorInicial.fornecedorComercialNome
-            ? { fornecedorComercialNome: fornecedorInicial.fornecedorComercialNome }
-            : {}),
-          cadastroFinanceiro: {
-            prazoPagamentoDias: fornecedorInicial.prazoPagamentoDias,
-            prazoTipo: fornecedorInicial.prazoTipo ?? null,
-            descontoFinanceiroPct: fornecedorInicial.descontoFinanceiroPct,
-            descontoFinanceiroAteDias: null,
-            condicaoPagamentoLabel: fornecedorInicial.condicaoPagamentoLabel,
-            anticipationEnabled: true,
-          },
-        };
-        globalDbCache.produtos = produtosIniciais.map((p) => ({
-          ...p,
-          papelMercadologico: p.papelMercadologico as any,
-        }));
-        globalDbCache.estoque = (estoqueInicial ?? []).map((e) => ({
-          sku: e.sku,
-          lojaId: e.lojaId,
-          estoqueAtual: e.estoqueAtual,
-          estoqueMinimo: 0,
-        }));
-        setDadosFornecedorVersao((versao) => versao + 1);
-      }
       const [forn, prods, pds, vds, bloqs, estq, peds, fats, crs, nfes, docas, concil, transfs] =
         await Promise.all([
-          fornecedorPromise,
-          produtosPromise,
-          perdasPromise,
-          vendasPromise,
-          bloqueiosPromise,
-          estoquePromise,
-          pedidosPromise,
-          faturasPromise,
-          contasReceberPromise,
-          nfePendentesPromise,
-          docasPromise,
-          conciliacaoPromise,
-          transferenciasPromise,
+          fetchFornecedor({ data: code }),
+          fetchProdutos({ data: code }).catch((err) => {
+            console.error("Erro ao carregar produtos do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchProdutos>>;
+          }),
+          fetchPerdas({ data: code }).catch((err) => {
+            console.error("Erro ao carregar perdas do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchPerdas>>;
+          }),
+          fetchVendas({ data: code }).catch((err) => {
+            console.error("Erro ao carregar vendas do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchVendas>>;
+          }),
+          fetchProdutosBloqueios({ data: code }).catch((err) => {
+            console.error("Erro ao carregar bloqueios do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchProdutosBloqueios>>;
+          }),
+          fetchEstoque({ data: code }).catch((err) => {
+            console.error("Erro ao carregar estoque do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchEstoque>>;
+          }),
+          fetchPedidos({ data: code }).catch((err) => {
+            console.error("Erro ao carregar pedidos do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchPedidos>>;
+          }),
+          fetchFaturas({ data: code }).catch((err) => {
+            console.error("Erro ao carregar faturas do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchFaturas>>;
+          }),
+          fetchContasReceber({ data: code }).catch((err) => {
+            console.error("Erro ao carregar contas a receber do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchContasReceber>>;
+          }),
+          fetchNfePendentes({ data: code }).catch((err) => {
+            console.error("Erro ao carregar NF-es do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchNfePendentes>>;
+          }),
+          fetchDocas().catch((err) => {
+            console.error("Erro ao carregar docas:", err);
+            return [] as Awaited<ReturnType<typeof fetchDocas>>;
+          }),
+          fetchConciliacaoNfePedido({ data: code }).catch((err) => {
+            console.error("Erro ao carregar conciliação do fornecedor:", err);
+            return [] as Awaited<ReturnType<typeof fetchConciliacaoNfePedido>>;
+          }),
+          fetchTransferenciasCdam({ data: code }).catch((err) => {
+            console.error("Erro ao carregar transferencias CDAM:", err);
+            return [] as Awaited<ReturnType<typeof fetchTransferenciasCdam>>;
+          }),
         ]);
 
-      if (getActiveSupplierCode() !== code) return;
       if (forn) {
-        globalDbCache.fornecedor = {
+        const fornecedorCarregado = {
           codigo: forn.codigo,
           nome: forn.nome,
           cnpj: forn.cnpj,
@@ -244,7 +192,6 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           agendaRecebimentoCdam: forn.agendaRecebimentoCdam as any,
           filialEntregaPadrao: forn.filialEntregaPadrao,
           isentoCobranca: forn.isentoCobranca as any,
-          taxaAcessoPct: forn.taxaAcessoPct as any,
           acessoDataInicio: forn.acessoDataInicio,
           acessoDataFim: forn.acessoDataFim,
           ...(forn.fornecedorComercialCodigo
@@ -262,6 +209,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
             anticipationEnabled: true,
           },
         };
+        globalDbCache.fornecedor = fornecedorCarregado;
+        setFornecedorAtual(fornecedorCarregado);
         globalDbCache.produtos = prods.map((p) => ({
           ...p,
           papelMercadologico: p.papelMercadologico as any,
@@ -274,6 +223,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           lojaId: e.lojaId,
           estoqueAtual: e.estoqueAtual,
           estoqueMinimo: 0,
+          dataEstoque: e.dataEstoque ?? null,
+          dataInventario: e.dataInventario ?? null,
         }));
         globalDbCache.pedidos = (peds ?? []).map((p) => {
           const { entradaCdam, ...rest } = p;
@@ -325,32 +276,14 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       }
       setDadosFornecedorVersao((versao) => versao + 1);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error ?? "");
-      if (message.includes("Server function info not found") && typeof window !== "undefined") {
-        const recoveryKey = "portal-build-recovery-attempt";
-        if (window.sessionStorage.getItem(recoveryKey) !== "1") {
-          window.sessionStorage.setItem(recoveryKey, "1");
-          window.location.reload();
-          return;
-        }
-      }
       console.error("Erro ao carregar dados do SQLite no Contexto:", error);
       setDadosFornecedorVersao((versao) => versao + 1);
     }
   }, []);
 
-  const limparFornecedorAtivo = useCallback(() => {
-    clearActiveSupplierContext();
-    setCodigoFornecedorAtivo("");
-    setAntecipacoes([]);
-    setFiltroMercadologicoStore(FILTRO_VAZIO);
-    setFiltroMercadologicoState(FILTRO_VAZIO);
-    setDadosFornecedorVersao((versao) => versao + 1);
-  }, []);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const bruto = window.localStorage.getItem(CHAVE_SESSAO);
+    const bruto = window.sessionStorage.getItem(CHAVE_SESSAO);
     if (!bruto) {
       setCarregandoSessao(false);
       return;
@@ -398,15 +331,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         }
         if (dados.autenticado) {
           const code = getActiveSupplierCode();
-          if (dados.usuarioInterno) {
-            limparFornecedorAtivo();
-          } else if (code) {
-            setCodigoFornecedorAtivo(code);
-            await carregarDadosReaisFornecedor(code);
-          }
+          setCodigoFornecedorAtivo(code);
+          await carregarDadosReaisFornecedor(code);
         }
       } catch {
-        window.localStorage.removeItem(CHAVE_SESSAO);
+        window.sessionStorage.removeItem(CHAVE_SESSAO);
       } finally {
         if (!cancelado) setCarregandoSessao(false);
       }
@@ -418,40 +347,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined" || carregandoSessao) return;
-    if (!autenticado) {
-      window.localStorage.removeItem(CHAVE_SESSAO);
-      return;
-    }
-    window.localStorage.setItem(
+    window.sessionStorage.setItem(
       CHAVE_SESSAO,
       JSON.stringify({ autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor }),
     );
   }, [autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor, carregandoSessao]);
-
-  useEffect(() => {
-    if (!autenticado || !usuarioFornecedor || typeof window === "undefined") return;
-    let cancelado = false;
-    const validarUsuarioAtivo = async () => {
-      try {
-        const conta = await fetchMinhaContaFornecedor();
-        if (!conta && !cancelado) {
-          window.localStorage.removeItem(CHAVE_SESSAO);
-          setAutenticado(false);
-          setUsuarioFornecedor(null);
-          setUsuarioInterno(null);
-          void encerrarSessaoPortal();
-        }
-      } catch {
-        // Erro transitório de rede não encerra uma sessão válida.
-      }
-    };
-    void validarUsuarioAtivo();
-    const intervalo = window.setInterval(() => void validarUsuarioAtivo(), 30_000);
-    return () => {
-      cancelado = true;
-      window.clearInterval(intervalo);
-    };
-  }, [autenticado, usuarioFornecedor]);
 
   useEffect(() => {
     if (codigoFornecedorAtivo) {
@@ -472,7 +372,10 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       if (userInterno) {
         setUsuarioInterno(userInterno);
         setUsuarioFornecedor(null);
-        limparFornecedorAtivo();
+        const jaAtivo = getActiveSupplierCode();
+        setActiveSupplierCode(jaAtivo);
+        setCodigoFornecedorAtivo(jaAtivo);
+        void carregarDadosReaisFornecedor(jaAtivo);
         setPrimeiroAcessoConcluido(true);
       } else if (codigoFornecedor) {
         setUsuarioInterno(null);
@@ -484,19 +387,20 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       }
       setAutenticado(true);
     },
-    [carregarDadosReaisFornecedor, limparFornecedorAtivo],
+    [carregarDadosReaisFornecedor],
   );
   const sair = useCallback(() => {
     setAutenticado(false);
     setUsuarioInterno(null);
     setUsuarioFornecedor(null);
-    limparFornecedorAtivo();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("portal-lider-sessao-fornecedor");
+    }
     void encerrarSessaoPortal();
-  }, [limparFornecedorAtivo]);
+  }, []);
 
   const mudarFornecedorAtivo = useCallback(
     (code: string) => {
-      if (!code) return;
       setActiveSupplierCode(code);
       setCodigoFornecedorAtivo(code);
       setFiltroMercadologicoStore(FILTRO_VAZIO);
@@ -525,9 +429,6 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   const registrarAntecipacao = useCallback(
     async (dados: Omit<Antecipacao, "codigoAuditoria" | "criadoEm">) => {
-      if (!codigoFornecedorAtivo) {
-        throw new Error("Selecione um fornecedor antes de registrar uma antecipação.");
-      }
       const res = await solicitarAntecipacao({
         data: {
           fornecedorCodigo: codigoFornecedorAtivo,
@@ -564,11 +465,12 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       marcarSenhaCorrigida,
       adicionarAgendamento,
       registrarAntecipacao,
-      fornecedor,
+      fornecedor: fornecedorAtual,
       classificacaoDados,
       setClassificacaoDados,
       filtroMercadologico,
       setFiltroMercadologico,
+      fornecedorAtual,
     }),
     [
       carregandoSessao,
@@ -594,6 +496,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
       setClassificacaoDados,
       filtroMercadologico,
       setFiltroMercadologico,
+      fornecedorAtual,
     ],
   );
 

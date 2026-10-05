@@ -50,6 +50,7 @@ import {
 import { usePortal } from "@/context/portal-context";
 import { TAXAS_ACESSO_PORTAL_PCT } from "@/lib/acordo-acesso";
 import { formatarCodigoFornecedorComDigito } from "@/lib/fornecedor-codigo";
+import { RebaixaDestinatariosTab } from "@/components/rebaixa-destinatarios-tab";
 
 const dataIsoCompleta = (valor: string) => /^\d{4}-\d{2}-\d{2}$/.test(valor);
 
@@ -79,7 +80,6 @@ function CampoDataVigencia({
     />
   );
 }
-
 export const Route = createFileRoute("/_portal/admin-fornecedores")({
   head: () => ({
     meta: [
@@ -431,8 +431,9 @@ function AdminFornecedoresPage() {
       descricao="Gerenciamento de acessos de fornecedores, política de fill rate e logs de auditoria do Grupo Líder."
     >
       <Tabs defaultValue="acesso" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+        <TabsList className="grid w-full max-w-[600px] grid-cols-3">
           <TabsTrigger value="acesso">Controle de Acesso</TabsTrigger>
+          <TabsTrigger value="rebaixa-destinatarios">Destinatários de rebaixa</TabsTrigger>
           <TabsTrigger value="politica-log">Fill Rate & Logs</TabsTrigger>
         </TabsList>
 
@@ -783,6 +784,10 @@ function AdminFornecedoresPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="rebaixa-destinatarios" className="space-y-6">
+          <RebaixaDestinatariosTab />
         </TabsContent>
 
         <TabsContent value="politica-log" className="space-y-6">
