@@ -565,10 +565,14 @@ function LogisticaPage() {
               </CardTitle>
               <CardDescription>
                 A solicitação será enviada para agendamento.lider@lidernet.com.br e ficará pendente de confirmação.
-                O Portal preserva quatro portas para emergências.
+                As portas abaixo são portas cadastradas na unidade; a disponibilidade real é validada pela logística.
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-950 md:col-span-2">
+                <strong>Disponibilidade:</strong> os agendamentos já confirmados ainda não são retornados pela fonte integrada ao Portal.
+                A porta escolhida nesta tela é apenas preferencial. A logística confirmará a porta, o horário e a preservação das quatro portas de emergência.
+              </div>
               <label className="space-y-1 text-sm">
                 <span className="font-medium">Loja/CDAM</span>
                 <select
@@ -583,17 +587,17 @@ function LogisticaPage() {
                 </select>
               </label>
               <label className="space-y-1 text-sm">
-                <span className="font-medium">Porta</span>
+                <span className="font-medium">Porta preferencial</span>
                 <select
                   value={solicitacao.doca}
                   onChange={(evento) => setSolicitacao((atual) => ({ ...atual, doca: evento.target.value }))}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                   disabled={!solicitacao.lojaId}
                 >
-                  <option value="">Selecione a porta</option>
+                  <option value="">Selecione uma porta cadastrada</option>
                   {docasDaLoja.map((doca) => (
                     <option key={`${doca.lojaId}-${doca.doca}`} value={doca.doca}>
-                      {doca.doca} · {doca.horaInicio}–{doca.horaFim}
+                      {doca.doca} · janela {doca.horaInicio}–{doca.horaFim}
                     </option>
                   ))}
                 </select>
@@ -636,10 +640,10 @@ function LogisticaPage() {
               </label>
               <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm md:col-span-2">
                 <p><strong>Resumo:</strong> {solicitacao.tipoCarga === "paletizada" ? "2" : "4"} horas · {portasNecessarias} porta(s) · término previsto {horaFimCalculada || "—"}</p>
-                <p className="mt-1 text-xs text-muted-foreground">A disponibilidade final e o conflito com o Reforço de Faturamento serão confirmados pela logística.</p>
+                <p className="mt-1 text-xs text-muted-foreground">A porta não está reservada neste momento. A disponibilidade final, os agendamentos existentes e o conflito com o Reforço de Faturamento serão confirmados pela logística.</p>
               </div>
               <Button type="button" onClick={() => void enviarSolicitacao()} disabled={enviandoSolicitacao} className="gap-2 md:col-span-2">
-                <Mail className="size-4" /> {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
+                <Mail className="size-4" /> {enviandoSolicitacao ? "Enviando..." : "Enviar para análise da logística"}
               </Button>
             </CardContent>
           </Card>
