@@ -1676,7 +1676,7 @@ export const submitSolicitacaoAgendamento = createServerFn({ method: "POST" })
       throw new Error("Preencha loja, doca, data e horário da solicitação.");
     }
     if (!LOJAS_AGENDAMENTO_PERMITIDAS.includes(data.lojaId as (typeof LOJAS_AGENDAMENTO_PERMITIDAS)[number])) {
-      throw new Error("O agendamento está disponível somente para as lojas 201 e 203.");
+      throw new Error("O agendamento está disponível somente para as lojas 201 (CDAM) e 203 (Farmalíder).");
     }
     const gruposBloqueados = faturamentoBloqueiaData(data.secoes, data.dataSolicitada);
     if (gruposBloqueados.length) {

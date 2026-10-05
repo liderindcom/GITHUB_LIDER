@@ -10,7 +10,12 @@ export const GRUPOS_REFORCO: Record<number, string[]> = {
   8: ["057"],
 };
 
-export const LOJAS_AGENDAMENTO_PERMITIDAS = ["201", "203"] as const;
+/** Código exibido ao usuário -> código operacional RMS (loja + dígito). */
+export const LOJAS_AGENDAMENTO_PERMITIDAS = ["2011", "2038"] as const;
+export const ROTULO_LOJA_AGENDAMENTO: Record<string, string> = {
+  "2011": "201 · CDAM",
+  "2038": "203 · Farmalíder",
+};
 
 const DIA_FATURAMENTO_POR_GRUPO: Record<number, number> = {
   1: 2,

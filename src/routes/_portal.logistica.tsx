@@ -29,7 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePortal } from "@/context/portal-context";
 import { brl, dataBR, numero } from "@/lib/format";
-import { faturamentoBloqueiaData, LOJAS_AGENDAMENTO_PERMITIDAS } from "@/lib/reforco-faturamento";
+import { faturamentoBloqueiaData, LOJAS_AGENDAMENTO_PERMITIDAS, ROTULO_LOJA_AGENDAMENTO } from "@/lib/reforco-faturamento";
 import {
   globalDbCache,
   lojaPorCodigo,
@@ -583,7 +583,7 @@ function LogisticaPage() {
                 >
                   <option value="">Selecione a unidade</option>
                   {LOJAS_AGENDAMENTO_PERMITIDAS.filter((lojaId) => docasPermitidas.some((doca) => doca.lojaId === lojaId)).map((lojaId) => (
-                    <option key={lojaId} value={lojaId}>{nomeLoja(lojaId)}</option>
+                    <option key={lojaId} value={lojaId}>{ROTULO_LOJA_AGENDAMENTO[lojaId] ?? nomeLoja(lojaId)}</option>
                   ))}
                 </select>
               </label>
