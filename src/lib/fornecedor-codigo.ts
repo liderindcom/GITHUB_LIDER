@@ -1,3 +1,6 @@
+/** Código fiscal RMS, sem prefixo. Aceita FORN- legado e hífen do dígito (100561-8). */
+export const DEMO_FORNECEDOR_CODIGO = "704894";
+
 export function soDigitos(code: string | null | undefined): string {
   return String(code ?? "")
     .trim()

@@ -1,8 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-
-import { usePortal } from "@/context/portal-context";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
@@ -50,7 +48,6 @@ const hojeISO = new Date().toISOString().slice(0, 10);
 const inicioPadrao = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
 
 function VendasPage() {
-  const { dadosFornecedorVersao } = usePortal();
   const [de, setDe] = useState(inicioPadrao);
   const [ate, setAte] = useState(hojeISO);
   const [loja, setLoja] = useState("todas");
@@ -75,7 +72,7 @@ function VendasPage() {
         }
         return true;
       }),
-    [de, ate, loja, sku, busca, dadosFornecedorVersao],
+    [de, ate, loja, sku, busca],
   );
 
   // 2. Agrupamento dinâmico obrigatório (mínimo: diário)

@@ -16,14 +16,7 @@ import { fetchVendasAnual, type VendasAnualDB } from "@/api";
 import { PortalLayout } from "@/components/portal-layout";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePortal } from "@/context/portal-context";
 import { brl, numero, percentual } from "@/lib/format";
 
@@ -57,8 +50,6 @@ const corDelta = (valor: number | null) => {
   return "text-destructive";
 };
 
-const brlComSinal = (valor: number) => (valor >= 0 ? "+" : "−") + brl(Math.abs(valor));
-
 function precoMedio(valor: number, volume: number) {
   if (!volume) return 0;
   return valor / volume;
@@ -66,27 +57,15 @@ function precoMedio(valor: number, volume: number) {
 
 type Direcao = "asc" | "desc" | null;
 
-function ordenar<T>(
-  linhas: T[],
-  busca: string,
-  texto: (linha: T) => string,
-  direcao: Direcao,
-  valor: (linha: T) => string | number,
-) {
-  const filtradas = linhas.filter(
-    (linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()),
-  );
+function ordenar<T>(linhas: T[], busca: string, texto: (linha: T) => string, direcao: Direcao, valor: (linha: T) => string | number) {
+  const filtradas = linhas.filter((linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()));
   if (!direcao) return filtradas;
   return [...filtradas].sort((a, b) => {
     const esquerda = valor(a);
     const direita = valor(b);
-    const comparacao =
-      typeof esquerda === "number" && typeof direita === "number"
-        ? esquerda - direita
-        : String(esquerda).localeCompare(String(direita), "pt-BR", {
-            numeric: true,
-            sensitivity: "base",
-          });
+    const comparacao = typeof esquerda === "number" && typeof direita === "number"
+      ? esquerda - direita
+      : String(esquerda).localeCompare(String(direita), "pt-BR", { numeric: true, sensitivity: "base" });
     return direcao === "asc" ? comparacao : -comparacao;
   });
 }
@@ -108,10 +87,8 @@ const codigoItemComDigito = (item: {
 
 function eixoCompacto(valor: number) {
   const abs = Math.abs(valor);
-  if (abs >= 1_000_000)
-    return `${(valor / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}M`;
-  if (abs >= 1_000)
-    return `${(valor / 1_000).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}k`;
+  if (abs >= 1_000_000) return `${(valor / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}M`;
+  if (abs >= 1_000) return `${(valor / 1_000).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}k`;
   return valor.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 }
 
@@ -133,9 +110,7 @@ function GraficoLinha({
   const eixo = formatarEixo ?? formatar;
   return (
     <div className="space-y-1">
-      <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
-        {titulo}
-      </p>
+      <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">{titulo}</p>
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
@@ -144,22 +119,8 @@ function GraficoLinha({
             <YAxis tick={{ fontSize: 10 }} width={48} tickFormatter={(v) => eixo(Number(v))} />
             <Tooltip formatter={(v) => formatar(Number(v))} />
             <Legend />
-            <Line
-              type="monotone"
-              dataKey="base"
-              name={String(anoBase)}
-              stroke="var(--muted-foreground)"
-              strokeWidth={2}
-              dot={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="atual"
-              name={String(anoAtual)}
-              stroke="var(--primary)"
-              strokeWidth={2}
-              dot={false}
-            />
+            <Line type="monotone" dataKey="base" name={String(anoBase)} stroke="var(--muted-foreground)" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="atual" name={String(anoAtual)} stroke="var(--primary)" strokeWidth={2} dot={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -168,8 +129,7 @@ function GraficoLinha({
 }
 
 function VendasAnualPage() {
-  const { codigoFornecedorAtivo, dadosFornecedorVersao, fornecedor, filtroMercadologico } =
-    usePortal();
+  const { codigoFornecedorAtivo, dadosFornecedorVersao, fornecedor } = usePortal();
   const [dados, setDados] = useState<VendasAnualDB | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [buscaMes, setBuscaMes] = useState("");
@@ -178,18 +138,11 @@ function VendasAnualPage() {
   const [ordemMes, setOrdemMes] = useState<Direcao>(null);
   const [ordemSecao, setOrdemSecao] = useState<Direcao>(null);
   const [ordemItem, setOrdemItem] = useState<Direcao>(null);
-  const [tipoGrafico, setTipoGrafico] = useState<"valor" | "volume" | "preco">("valor");
 
   useEffect(() => {
     let ativo = true;
     setErro(null);
-    const payload: { fornecedorCodigo: string; segmento?: string } = {
-      fornecedorCodigo: codigoFornecedorAtivo,
-    };
-    if (filtroMercadologico.segmento && filtroMercadologico.segmento !== "__todos__") {
-      payload.segmento = filtroMercadologico.segmento;
-    }
-    fetchVendasAnual({ data: payload })
+    fetchVendasAnual({ data: codigoFornecedorAtivo })
       .then((payload) => {
         if (ativo) setDados(payload);
       })
@@ -203,39 +156,9 @@ function VendasAnualPage() {
   }, [codigoFornecedorAtivo, dadosFornecedorVersao]);
 
   const abaixo = (dados?.fornecedor?.pontos ?? 0) < 0;
-  const mesesTabela = useMemo(
-    () =>
-      ordenar(
-        dados?.meses ?? [],
-        buscaMes,
-        (m) => m.nome,
-        ordemMes,
-        (m) => m.nome,
-      ),
-    [dados?.meses, buscaMes, ordemMes],
-  );
-  const secoesTabela = useMemo(
-    () =>
-      ordenar(
-        dados?.secoes ?? [],
-        buscaSecao,
-        (s) => s.secao,
-        ordemSecao,
-        (s) => s.secao,
-      ),
-    [dados?.secoes, buscaSecao, ordemSecao],
-  );
-  const itensTabela = useMemo(
-    () =>
-      ordenar(
-        dados?.itens ?? [],
-        buscaItem,
-        (i) => `${codigoItemComDigito(i)} ${i.descricao} ${i.secao}`,
-        ordemItem,
-        (i) => i.descricao,
-      ),
-    [dados?.itens, buscaItem, ordemItem],
-  );
+  const mesesTabela = useMemo(() => ordenar(dados?.meses ?? [], buscaMes, (m) => m.nome, ordemMes, (m) => m.nome), [dados?.meses, buscaMes, ordemMes]);
+  const secoesTabela = useMemo(() => ordenar(dados?.secoes ?? [], buscaSecao, (s) => s.secao, ordemSecao, (s) => s.secao), [dados?.secoes, buscaSecao, ordemSecao]);
+  const itensTabela = useMemo(() => ordenar(dados?.itens ?? [], buscaItem, (i) => `${codigoItemComDigito(i)} ${i.descricao} ${i.secao}`, ordemItem, (i) => i.descricao), [dados?.itens, buscaItem, ordemItem]);
   const redeAbaixo = (dados?.rede?.pontos ?? 0) < 0;
 
   return (
@@ -262,17 +185,15 @@ function VendasAnualPage() {
             <Card className="border-border bg-card shadow-panel lg:col-span-1">
               <CardHeader className="pb-2">
                 <span className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">
-                  Farol {dados.segmento} · {dados.corte.dia}/
-                  {String(dados.corte.mes).padStart(2, "0")}/{dados.corte.anoAtual}
+                  Farol {dados.segmento} · {dados.corte.dia}/{String(dados.corte.mes).padStart(2, "0")}/{dados.corte.anoAtual}
                 </span>
                 <CardTitle className="font-mono text-4xl font-bold text-primary">
                   {percentual(dados.farolPct)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-xs text-muted-foreground">
-                Até esta data, no ano passado, a rede {dados.segmento} já tinha feito{" "}
-                {percentual(dados.farolPct)} da venda anual de {dados.corte.anoBase}. Esta é a
-                referência do segmento.
+                Até esta data, no ano passado, a rede {dados.segmento} já tinha feito {percentual(dados.farolPct)} da
+                venda anual de {dados.corte.anoBase}. Esta é a referência do segmento.
               </CardContent>
             </Card>
 
@@ -334,8 +255,7 @@ function VendasAnualPage() {
                   {pontos(dados.rede.pontos)} contra o farol
                 </p>
                 <p className="text-muted-foreground">
-                  YTD {brl(dados.rede.ytdAtual)} · anual {dados.corte.anoBase}{" "}
-                  {brl(dados.rede.anualBase)} · rede {dados.segmento}
+                  YTD {brl(dados.rede.ytdAtual)} · anual {dados.corte.anoBase} {brl(dados.rede.anualBase)} · rede {dados.segmento}
                 </p>
                 {redeAbaixo && dados.rede.pontos !== null && (
                   <p className="flex items-center gap-1 font-bold text-destructive">
@@ -347,88 +267,47 @@ function VendasAnualPage() {
           </div>
 
           <Card className="border-border bg-card shadow-panel">
-            <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold uppercase tracking-wider">
-                Desempenho de Vendas Anual
+                Vendas, volume e preço médio · {dados.corte.anoBase} × {dados.corte.anoAtual}
               </CardTitle>
-              <div className="flex gap-1.5 rounded-lg border border-primary/20 bg-muted/50 p-1">
-                <button
-                  type="button"
-                  onClick={() => setTipoGrafico("valor")}
-                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all ${
-                    tipoGrafico === "valor"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  Valor (R$)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTipoGrafico("volume")}
-                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all ${
-                    tipoGrafico === "volume"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  Volume
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTipoGrafico("preco")}
-                  className={`rounded-md px-3 py-1 text-[11px] font-bold transition-all ${
-                    tipoGrafico === "preco"
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  Preço Médio
-                </button>
-              </div>
             </CardHeader>
-            <CardContent className="pt-2">
-              {tipoGrafico === "valor" && (
-                <GraficoLinha
-                  titulo="Vendas (R$)"
-                  anoBase={dados.corte.anoBase}
-                  anoAtual={dados.corte.anoAtual}
-                  formatar={(v) => brl(v)}
-                  formatarEixo={eixoCompacto}
-                  data={dados.meses.map((m) => ({
-                    nome: m.nome.slice(0, 3),
-                    base: m.fornValorBase,
-                    atual: m.fornValorAtual,
-                  }))}
-                />
-              )}
-              {tipoGrafico === "volume" && (
-                <GraficoLinha
-                  titulo="Volume"
-                  anoBase={dados.corte.anoBase}
-                  anoAtual={dados.corte.anoAtual}
-                  formatar={(v) => numero(Math.round(v))}
-                  formatarEixo={eixoCompacto}
-                  data={dados.meses.map((m) => ({
-                    nome: m.nome.slice(0, 3),
-                    base: m.fornVolumeBase,
-                    atual: m.fornVolumeAtual,
-                  }))}
-                />
-              )}
-              {tipoGrafico === "preco" && (
-                <GraficoLinha
-                  titulo="Preço médio"
-                  anoBase={dados.corte.anoBase}
-                  anoAtual={dados.corte.anoAtual}
-                  formatar={(v) => brl(v)}
-                  data={dados.meses.map((m) => ({
-                    nome: m.nome.slice(0, 3),
-                    base: precoMedio(m.fornValorBase, m.fornVolumeBase),
-                    atual: precoMedio(m.fornValorAtual, m.fornVolumeAtual),
-                  }))}
-                />
-              )}
+            <CardContent className="grid gap-6">
+              <GraficoLinha
+                titulo="Vendas (R$)"
+                anoBase={dados.corte.anoBase}
+                anoAtual={dados.corte.anoAtual}
+                formatar={(v) => brl(v)}
+                formatarEixo={eixoCompacto}
+                data={dados.meses.map((m) => ({
+                  nome: m.nome.slice(0, 3),
+                  base: m.fornValorBase,
+                  atual: m.fornValorAtual,
+                }))}
+              />
+              <GraficoLinha
+                titulo="Volume"
+                anoBase={dados.corte.anoBase}
+                anoAtual={dados.corte.anoAtual}
+                formatar={(v) => numero(Math.round(v))}
+                formatarEixo={eixoCompacto}
+                data={dados.meses.map((m) => ({
+                  nome: m.nome.slice(0, 3),
+                  base: m.fornVolumeBase,
+                  atual: m.fornVolumeAtual,
+                }))}
+              />
+              <GraficoLinha
+                titulo="Preço médio"
+                anoBase={dados.corte.anoBase}
+                anoAtual={dados.corte.anoAtual}
+                formatar={(v) => brl(v)}
+                data={dados.meses.map((m) => ({
+                  nome: m.nome.slice(0, 3),
+                  base: precoMedio(m.fornValorBase, m.fornVolumeBase),
+                  atual: precoMedio(m.fornValorAtual, m.fornVolumeAtual),
+                }))}
+              />
             </CardContent>
           </Card>
 
@@ -443,29 +322,9 @@ function VendasAnualPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider">
-                      <TableHead>
-                        <TableColumnHeader
-                          title="Mês"
-                          value={buscaMes}
-                          onChange={setBuscaMes}
-                          onSort={() => setOrdemMes(alternarDirecao(ordemMes))}
-                          direction={ordemMes}
-                        />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <TableColumnHeader
-                          title={`Peso ${dados.corte.anoBase}`}
-                          onSort={() => setOrdemMes(alternarDirecao(ordemMes))}
-                          direction={ordemMes}
-                        />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <TableColumnHeader
-                          title="Farol acum."
-                          onSort={() => setOrdemMes(alternarDirecao(ordemMes))}
-                          direction={ordemMes}
-                        />
-                      </TableHead>
+                      <TableHead><TableColumnHeader title="Mês" value={buscaMes} onChange={setBuscaMes} onSort={() => setOrdemMes(alternarDirecao(ordemMes))} direction={ordemMes} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title={`Peso ${dados.corte.anoBase}`} onSort={() => setOrdemMes(alternarDirecao(ordemMes))} direction={ordemMes} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title="Farol acum." onSort={() => setOrdemMes(alternarDirecao(ordemMes))} direction={ordemMes} /></TableHead>
                       <TableHead className="text-right">Forn. {dados.corte.anoBase}</TableHead>
                       <TableHead className="text-right">Forn. {dados.corte.anoAtual}</TableHead>
                       <TableHead className="text-right">Vol. {dados.corte.anoBase}</TableHead>
@@ -477,13 +336,9 @@ function VendasAnualPage() {
                   </TableHeader>
                   <TableBody>
                     {mesesTabela.map((m) => {
-                      const cres =
-                        m.fornValorBase > 0 ? (m.fornValorAtual / m.fornValorBase - 1) * 100 : null;
+                      const cres = m.fornValorBase > 0 ? (m.fornValorAtual / m.fornValorBase - 1) * 100 : null;
                       return (
-                        <TableRow
-                          key={m.mes}
-                          className={`font-mono text-xs ${m.aberto ? "bg-primary/5" : ""}`}
-                        >
+                        <TableRow key={m.mes} className={`font-mono text-xs ${m.aberto ? "bg-primary/5" : ""}`}>
                           <TableCell className="font-sans font-medium">
                             {m.nome}
                             {m.aberto ? ` · até dia ${dados.corte.dia}` : ""}
@@ -492,18 +347,10 @@ function VendasAnualPage() {
                           <TableCell className="text-right">{percentual(m.farolAcumPct)}</TableCell>
                           <TableCell className="text-right">{brl(m.fornValorBase)}</TableCell>
                           <TableCell className="text-right">{brl(m.fornValorAtual)}</TableCell>
-                          <TableCell className="text-right">
-                            {numero(Math.round(m.fornVolumeBase))}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {numero(Math.round(m.fornVolumeAtual))}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {brl(precoMedio(m.fornValorBase, m.fornVolumeBase))}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {brl(precoMedio(m.fornValorAtual, m.fornVolumeAtual))}
-                          </TableCell>
+                          <TableCell className="text-right">{numero(Math.round(m.fornVolumeBase))}</TableCell>
+                          <TableCell className="text-right">{numero(Math.round(m.fornVolumeAtual))}</TableCell>
+                          <TableCell className="text-right">{brl(precoMedio(m.fornValorBase, m.fornVolumeBase))}</TableCell>
+                          <TableCell className="text-right">{brl(precoMedio(m.fornValorAtual, m.fornVolumeAtual))}</TableCell>
                           <TableCell className={`text-right font-bold ${corDelta(cres)}`}>
                             {pctOuTraco(cres)}
                           </TableCell>
@@ -527,22 +374,8 @@ function VendasAnualPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider">
-                      <TableHead>
-                        <TableColumnHeader
-                          title="Seção"
-                          value={buscaSecao}
-                          onChange={setBuscaSecao}
-                          onSort={() => setOrdemSecao(alternarDirecao(ordemSecao))}
-                          direction={ordemSecao}
-                        />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <TableColumnHeader
-                          title={`YTD ${dados.corte.anoBase}`}
-                          onSort={() => setOrdemSecao(alternarDirecao(ordemSecao))}
-                          direction={ordemSecao}
-                        />
-                      </TableHead>
+                      <TableHead><TableColumnHeader title="Seção" value={buscaSecao} onChange={setBuscaSecao} onSort={() => setOrdemSecao(alternarDirecao(ordemSecao))} direction={ordemSecao} /></TableHead>
+                      <TableHead className="text-right"><TableColumnHeader title={`YTD ${dados.corte.anoBase}`} onSort={() => setOrdemSecao(alternarDirecao(ordemSecao))} direction={ordemSecao} /></TableHead>
                       <TableHead className="text-right">YTD {dados.corte.anoAtual}</TableHead>
                       <TableHead className="text-right">% valor</TableHead>
                       <TableHead className="text-right">Vol. {dados.corte.anoBase}</TableHead>
@@ -563,9 +396,7 @@ function VendasAnualPage() {
                           <TableCell className="font-sans font-medium">{s.secao}</TableCell>
                           <TableCell className="text-right">{brl(s.valorBaseYtd)}</TableCell>
                           <TableCell className="text-right">{brl(s.valorAtual)}</TableCell>
-                          <TableCell
-                            className={`text-right font-bold ${corDelta(s.crescimentoValorPct)}`}
-                          >
+                          <TableCell className={`text-right font-bold ${corDelta(s.crescimentoValorPct)}`}>
                             {s.crescimentoValorPct === null ? (
                               <span className="inline-flex items-center gap-1">
                                 {s.valorAtual > 0 ? <TrendingUp className="size-3" /> : null}
@@ -575,15 +406,9 @@ function VendasAnualPage() {
                               pctOuTraco(s.crescimentoValorPct)
                             )}
                           </TableCell>
-                          <TableCell className="text-right">
-                            {numero(Math.round(s.volumeBaseYtd))}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {numero(Math.round(s.volumeAtual))}
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-bold ${corDelta(s.crescimentoVolumePct)}`}
-                          >
+                          <TableCell className="text-right">{numero(Math.round(s.volumeBaseYtd))}</TableCell>
+                          <TableCell className="text-right">{numero(Math.round(s.volumeAtual))}</TableCell>
+                          <TableCell className={`text-right font-bold ${corDelta(s.crescimentoVolumePct)}`}>
                             {pctOuTraco(s.crescimentoVolumePct)}
                           </TableCell>
                         </TableRow>
@@ -606,29 +431,9 @@ function VendasAnualPage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 font-mono text-[0.7rem] uppercase tracking-wider">
-                      <TableHead>
-                        <TableColumnHeader
-                          title="SKU"
-                          value={buscaItem}
-                          onChange={setBuscaItem}
-                          onSort={() => setOrdemItem(alternarDirecao(ordemItem))}
-                          direction={ordemItem}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <TableColumnHeader
-                          title="Descrição"
-                          onSort={() => setOrdemItem(alternarDirecao(ordemItem))}
-                          direction={ordemItem}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <TableColumnHeader
-                          title="Seção"
-                          onSort={() => setOrdemItem(alternarDirecao(ordemItem))}
-                          direction={ordemItem}
-                        />
-                      </TableHead>
+                      <TableHead><TableColumnHeader title="SKU" value={buscaItem} onChange={setBuscaItem} onSort={() => setOrdemItem(alternarDirecao(ordemItem))} direction={ordemItem} /></TableHead>
+                      <TableHead><TableColumnHeader title="Descrição" onSort={() => setOrdemItem(alternarDirecao(ordemItem))} direction={ordemItem} /></TableHead>
+                      <TableHead><TableColumnHeader title="Seção" onSort={() => setOrdemItem(alternarDirecao(ordemItem))} direction={ordemItem} /></TableHead>
                       <TableHead className="text-right">Anual {dados.corte.anoBase}</TableHead>
                       <TableHead className="text-right">YTD {dados.corte.anoAtual}</TableHead>
                       <TableHead className="text-right">% valor</TableHead>
@@ -645,26 +450,16 @@ function VendasAnualPage() {
                     ) : (
                       itensTabela.map((item) => (
                         <TableRow key={item.sku} className="font-mono text-xs">
-                          <TableCell className="font-bold text-primary">
-                            {codigoItemComDigito(item)}
-                          </TableCell>
-                          <TableCell className="max-w-[280px] truncate font-sans">
-                            {item.descricao}
-                          </TableCell>
-                          <TableCell className="font-sans text-muted-foreground">
-                            {item.secao}
-                          </TableCell>
+                          <TableCell className="font-bold text-primary">{codigoItemComDigito(item)}</TableCell>
+                          <TableCell className="max-w-[280px] truncate font-sans">{item.descricao}</TableCell>
+                          <TableCell className="font-sans text-muted-foreground">{item.secao}</TableCell>
                           <TableCell className="text-right">{brl(item.valorBase)}</TableCell>
                           <TableCell className="text-right">{brl(item.valorAtual)}</TableCell>
-                          <TableCell
-                            className={`text-right font-bold ${corDelta(item.crescimentoValorPct)}`}
-                          >
+                          <TableCell className={`text-right font-bold ${corDelta(item.crescimentoValorPct)}`}>
                             {pctOuTraco(item.crescimentoValorPct)}
                           </TableCell>
-                          <TableCell
-                            className={`text-right font-bold ${corDelta(item.contribuicaoFuro)}`}
-                          >
-                            {brlComSinal(item.contribuicaoFuro)}
+                          <TableCell className={`text-right font-bold ${corDelta(-item.contribuicaoFuro)}`}>
+                            {brl(item.contribuicaoFuro)}
                           </TableCell>
                         </TableRow>
                       ))

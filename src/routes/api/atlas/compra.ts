@@ -19,6 +19,9 @@ type ItemCompra = {
   precoFaixa2: number | null;
   precoFaixa3: number | null;
   qtdAtacado: number | null;
+  margemCadastrada: number | null;
+  custoUltimaEntrada: number | null;
+  custoUltimaEntradaBruto: number | null;
 };
 
 type EstoqueOperacional = {
@@ -91,7 +94,9 @@ export const Route = createFileRoute("/api/atlas/compra")({
                  precoTabela AS "precoTabela", cmvUnit AS "cmvUnit", precoOferta AS "precoOferta",
                  ofertaVigente AS "ofertaVigente", precoMinSubgrupo AS "precoMinSubgrupo",
                  precoMaxSubgrupo AS "precoMaxSubgrupo", precoFaixa2 AS "precoFaixa2",
-                 precoFaixa3 AS "precoFaixa3", qtdAtacado AS "qtdAtacado"
+                 precoFaixa3 AS "precoFaixa3", qtdAtacado AS "qtdAtacado",
+                 margemCadastrada AS "margemCadastrada", custoUltimaEntrada AS "custoUltimaEntrada",
+                 custoUltimaEntradaBruto AS "custoUltimaEntradaBruto"
             FROM produtos
            WHERE btrim(fornecedorCodigo)=? AND compradorCodigo=? AND COALESCE(emlinha,0)=1
            ORDER BY lower(descricao), sku LIMIT 1000
@@ -106,6 +111,12 @@ export const Route = createFileRoute("/api/atlas/compra")({
         }
 
         const produto = items.find((item) => item.sku === skuSolicitado) ?? items[0];
+        if (!produto) {
+          return Response.json(
+            { error: "Nenhum produto em linha encontrado para esta carteira." },
+            { status: 404 },
+          );
+        }
         const estoque = db
           .prepare(
             `
@@ -137,7 +148,7 @@ export const Route = createFileRoute("/api/atlas/compra")({
         `,
           )
           .all(produto.sku)
-          .reverse();
+          .reverse() as Array<{ anoMes: string; quantidade: number; valor: number }>;
         const filiais = db
           .prepare(
             `
@@ -172,6 +183,65 @@ export const Route = createFileRoute("/api/atlas/compra")({
           )
           .get(fornecedorCodigo, produto.sku) as FluxoOperacionalCompacto | undefined;
 
+        const vendas30dias = db
+          .prepare(
+            `
+          SELECT COALESCE(sum(quantidade),0) AS quantidade,
+                 COALESCE(sum(quantidade*valorUnitario),0) AS valor
+            FROM vendas WHERE sku=? AND data >= to_char(now() - interval '30 days', 'YYYY-MM-DD')
+        `,
+          )
+          .get(produto.sku) as { quantidade: number; valor: number };
+
+        // Preços e margens reais:
+        // - Técnico (teórico): custo medio / (1 - margem alvo/100); margem = margem alvo do RMS.
+        // - Demais margens calculadas sobre o custo BRUTO da última entrada.
+        // - Médio: média dos últimos 30 dias de vendas (valor / quantidade).
+        const numOrNull = (value: number | null | undefined): number | null =>
+          value == null || Number.isNaN(Number(value)) ? null : Number(value);
+        const margemSobreUltimaEntrada = (preco: number | null): number | null => {
+          const p = numOrNull(preco);
+          const custo = numOrNull(produto.custoUltimaEntradaBruto) ?? numOrNull(produto.custoUltimaEntrada);
+          if (p == null || custo == null || p <= 0) return null;
+          const margem = ((p - custo) / p) * 100;
+          return margem < -1000 || margem > 1000 ? null : Number(margem.toFixed(1));
+        };
+        const margemAlvo = numOrNull(produto.margemCadastrada);
+        const custoMedio = numOrNull(produto.cmvUnit);
+        const precoTeorico =
+          margemAlvo != null && custoMedio != null && margemAlvo < 100
+            ? Number((custoMedio / (1 - margemAlvo / 100)).toFixed(2))
+            : null;
+        const precoMedio30dias =
+          Number(vendas30dias.quantidade) > 0
+            ? Number(vendas30dias.valor) / Number(vendas30dias.quantidade)
+            : null;
+        const precoAtacado = numOrNull(produto.precoFaixa3) ?? numOrNull(produto.precoFaixa2);
+        const precisos = {
+          tecnico: {
+            preco: precoTeorico,
+            margem: margemAlvo,
+          },
+          medio: {
+            preco: precoMedio30dias != null ? Number(precoMedio30dias.toFixed(2)) : null,
+            margem: margemSobreUltimaEntrada(precoMedio30dias),
+          },
+          venda: {
+            preco: numOrNull(produto.precoTabela),
+            margem: margemSobreUltimaEntrada(produto.precoTabela),
+          },
+          oferta: {
+            preco: Number(produto.ofertaVigente) ? numOrNull(produto.precoOferta) : null,
+            margem: Number(produto.ofertaVigente)
+              ? margemSobreUltimaEntrada(produto.precoOferta)
+              : null,
+          },
+          atacado: {
+            preco: precoAtacado,
+            margem: margemSobreUltimaEntrada(precoAtacado),
+          },
+        };
+
         return Response.json(
           {
             fornecedor: {
@@ -186,6 +256,7 @@ export const Route = createFileRoute("/api/atlas/compra")({
               vendasMensais,
               filiais,
             },
+            precosMargens: precisos,
             fluxoOperacional: fluxoOperacional ?? null,
             observedAt: new Date().toISOString(),
             source: "atlas_postgresql",
@@ -193,6 +264,7 @@ export const Route = createFileRoute("/api/atlas/compra")({
             limitations: [
               "CMV unitário é exibido como cadastro de custo; não equivale a custo final com impostos.",
               "PIC, margem de contribuição, prazo, fill rate, última nota e recomendação dependem de contratos ainda não sincronizados.",
+              "Margens de venda, oferta, atacado e preço médio são calculadas sobre o custo BRUTO da última entrada; o preço teórico é custo médio ÷ (1 − margem alvo).",
             ],
           },
           { headers: { "cache-control": "no-store" } },

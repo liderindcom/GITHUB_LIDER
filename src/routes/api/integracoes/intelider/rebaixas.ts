@@ -29,21 +29,55 @@ function jsonError(message: string, status: number) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
 }
 
-function tokenValido(request: Request): boolean {
+type CompradorIntegracao = { codigo: string; segmentos: Set<string> };
+
+function normalizarTexto(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase();
+}
+
+function configuracaoCompradores(): Map<string, Set<string>> | null {
+  const raw = process.env["INTELIDER_REBAIXA_COMPRADORES_JSON"]?.trim();
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const mapa = new Map<string, Set<string>>();
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const candidato = item as { codigo?: unknown; segmentos?: unknown };
+      const codigo = String(candidato.codigo ?? "").trim();
+      const segmentos = Array.isArray(candidato.segmentos)
+        ? candidato.segmentos.map(normalizarTexto).filter(Boolean)
+        : [];
+      if (codigo && segmentos.length) mapa.set(codigo, new Set(segmentos));
+    }
+    return mapa.size ? mapa : null;
+  } catch {
+    return null;
+  }
+}
+
+function integracaoAutorizada(request: Request): CompradorIntegracao | null {
   const esperado = process.env["INTELIDER_INTEGRATION_TOKEN"]?.trim();
-  if (!esperado) return false;
+  const comprador = request.headers.get("x-intelider-comprador")?.trim();
+  const compradores = configuracaoCompradores();
+  if (!esperado || !comprador || !compradores) return null;
 
   const recebido = request.headers
     .get("authorization")
     ?.match(/^Bearer\s+(.+)$/i)?.[1]
     ?.trim();
-  if (!recebido) return false;
+  if (!recebido) return null;
 
   const esperadoBytes = Buffer.from(esperado);
   const recebidoBytes = Buffer.from(recebido);
-  return (
-    esperadoBytes.length === recebidoBytes.length && timingSafeEqual(esperadoBytes, recebidoBytes)
-  );
+  const tokenValido =
+    esperadoBytes.length === recebidoBytes.length && timingSafeEqual(esperadoBytes, recebidoBytes);
+  if (!tokenValido) return null;
+  const segmentos = compradores.get(comprador);
+  return segmentos ? { codigo: comprador, segmentos } : null;
 }
 
 function jsonArray(value: string): unknown[] {
@@ -70,7 +104,14 @@ export const Route = createFileRoute("/api/integracoes/intelider/rebaixas")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        if (!tokenValido(request)) return jsonError("Não autorizado.", 401);
+        const integracao = integracaoAutorizada(request);
+        if (!integracao) {
+          const configurado = Boolean(process.env["INTELIDER_REBAIXA_COMPRADORES_JSON"]?.trim());
+          return jsonError(
+            configurado ? "Não autorizado." : "Integração sem escopo configurado.",
+            configurado ? 401 : 503,
+          );
+        }
 
         ensureSolicitacoesTable();
         const url = new URL(request.url);
@@ -104,13 +145,22 @@ export const Route = createFileRoute("/api/integracoes/intelider/rebaixas")({
                FROM rebaixa_solicitacoes
                ${where}
                ORDER BY criadoEm ASC
-               LIMIT ?`,
+            `,
           )
-          .all(...parametros, limite) as RebaixaRow[];
+          .all(...parametros) as RebaixaRow[];
+
+        const visiveis = rows
+          .filter((row) =>
+            jsonArray(row.segmentos).some((segmento) =>
+              integracao.segmentos.has(normalizarTexto(segmento)),
+            ),
+          )
+          .slice(0, limite);
 
         return Response.json(
           {
-            items: rows.map((row) => ({
+            compradorCodigo: integracao.codigo,
+            items: visiveis.map((row) => ({
               id: row.id,
               fornecedorCodigo: row.fornecedorCodigo,
               titulo: row.titulo,
@@ -123,7 +173,7 @@ export const Route = createFileRoute("/api/integracoes/intelider/rebaixas")({
               criadoEm: row.criadoEm,
               enviadoEm: row.enviadoEm,
             })),
-            count: rows.length,
+            count: visiveis.length,
             limit: limite,
           },
           {

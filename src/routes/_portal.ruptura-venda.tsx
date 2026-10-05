@@ -1,8 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, Download, Search, TrendingDown } from "lucide-react";
 import { useMemo, useState } from "react";
-
-import { usePortal } from "@/context/portal-context";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -66,7 +64,6 @@ const coberturaTexto = (dias: number | null) =>
   dias === null ? "Sem venda" : `${numero(Math.round(dias))}d`;
 
 function RupturaVendaPage() {
-  const { dadosFornecedorVersao } = usePortal();
   const [lojaId, setLojaId] = useState("todas");
   const [situacao, setSituacao] = useState<FiltroSituacao>("todas");
   const [busca, setBusca] = useState("");
@@ -107,7 +104,7 @@ function RupturaVendaPage() {
         };
       })
       .filter((linha): linha is NonNullable<typeof linha> => linha !== null);
-  }, [dadosFornecedorVersao]);
+  }, []);
 
   const linhas = useMemo(() => {
     return linhasBase

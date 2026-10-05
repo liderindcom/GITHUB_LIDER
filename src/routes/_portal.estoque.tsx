@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PackageCheck, Settings2, TrendingUp } from "lucide-react";
+import { PackageCheck, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { TableColumnHeader } from "@/components/table-column-header";
 
 import { usePortal } from "@/context/portal-context";
 import { PortalLayout } from "@/components/portal-layout";
-import { EstoqueMixTabs } from "@/components/estoque-mix-tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -24,18 +23,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { numero, brl, dataBR } from "@/lib/format";
-import { calcularSugestoesCompraCdam } from "@/lib/sugestao-compra";
+import { numero, brl } from "@/lib/format";
 import {
   codigoProdutoComDigito,
-  marcaProduto,
-  descricaoComercial,
   estoque,
   lojas,
   mapaVendaMediaMensal,
   mesmoCodigoLoja,
+  normalizarParaFilial,
   produtos,
   vendas,
 } from "@/lib/mock-data";
@@ -43,7 +38,7 @@ import {
 export const Route = createFileRoute("/_portal/estoque")({
   head: () => ({
     meta: [
-      { title: "Visão de Estoque | Portal do Fornecedor" },
+      { title: "Estoque Ideal | Portal do Fornecedor" },
       {
         name: "description",
         content: "Acompanhe o estoque real x estoque ideal baseado na classificação ABC do Líder.",
@@ -54,142 +49,37 @@ export const Route = createFileRoute("/_portal/estoque")({
 });
 
 type SituacaoEstoque = "Falta" | "Excesso" | "Equilibrado";
-type OrdenacaoEstoque =
-  | "sku"
-  | "ean"
-  | "referencia"
-  | "marca"
-  | "descricao"
-  | "saida"
-  | "subgrupo"
-  | "classe"
-  | "vendaDiaria"
-  | "vendaMensal"
-  | "pedidoAberto"
-  | "pendencia"
-  | "coberturaCdam"
-  | "estoqueCdam"
-  | "estoqueAtual"
-  | "qtdLojas"
-  | "estoqueIdeal"
-  | "diferenca"
-  | "situacao";
+type OrdenacaoEstoque = "sku" | "descricao" | "lojaNome" | "classe" | "sistematica" | "vendaMensal" | "estoqueAtual" | "estoqueIdeal" | "diferenca" | "situacao";
 
-const filtros: Array<SituacaoEstoque | "Todos"> = ["Todos", "Falta", "Excesso", "Equilibrado"];
+const filtros: Array<SituacaoEstoque | "Todos"> = [
+  "Todos",
+  "Falta",
+  "Excesso",
+  "Equilibrado",
+];
 
 const LINHAS_POR_PAGINA = 120;
 
 function chaveClasseCard(classe: string, topStar = false): "TOP STAR" | "A" | "B" | "C" | "D" {
   if (topStar || classe === "Aa") return "TOP STAR";
-  const letra =
-    String(classe || "D")
-      .toUpperCase()
-      .trim()[0] || "D";
+  const letra = String(classe || "D").toUpperCase().trim()[0] || "D";
   if (letra === "A" || letra === "B" || letra === "C") return letra;
   return "D";
 }
 
 function EstoquePage() {
-  const { fornecedor, dadosFornecedorVersao } = usePortal();
+  const { dadosFornecedorVersao } = usePortal();
   const [filtro, setFiltro] = useState<SituacaoEstoque | "Todos">("Todos");
   const [loja, setLoja] = useState("todas");
   const [viewMode, setViewMode] = useState<"qtd" | "vlr">("qtd");
   const [classeCard, setClasseCard] = useState<"TOP STAR" | "A" | "B" | "C" | "D" | null>(null);
   const [pagina, setPagina] = useState(1);
   const [buscas, setBuscas] = useState<Record<string, string>>({});
-  const [ordenacao, setOrdenacao] = useState<{ campo: OrdenacaoEstoque; direcao: "asc" | "desc" }>({
-    campo: "classe",
-    direcao: "asc",
-  });
-  const colunasDimensionamento: Array<[OrdenacaoEstoque, string]> = [
-    ["sku", "SKU"],
-    ["ean", "EAN"],
-    ["referencia", "Referência"],
-    ["marca", "Marca"],
-    ["descricao", "Descrição"],
-    ["saida", "Saiu de linha"],
-    ["subgrupo", "Subgrupo"],
-    ["vendaDiaria", "Venda média diária"],
-    ["vendaMensal", "Venda média mensal"],
-    ["classe", "Classe"],
-    ["pedidoAberto", "Pedido aberto"],
-    ["pendencia", "Pendência"],
-    ["coberturaCdam", "Cobertura CDAM"],
-    ["estoqueCdam", "Estoque CDAM"],
-    ["estoqueAtual", "Estoque Real"],
-    ["qtdLojas", "Estoque nas lojas"],
-    ["estoqueIdeal", "Estoque Ideal"],
-    ["diferenca", "Diferença"],
-    ["situacao", "Situação"],
-  ];
-  const colunasPadrao = colunasDimensionamento.map(([campo]) => campo);
-  const [colunasVisiveis, setColunasVisiveis] = useState<OrdenacaoEstoque[]>(colunasPadrao);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const chave = "portal-estoque-colunas-" + fornecedor.codigo;
-    const salvo = window.localStorage.getItem(chave);
-    if (salvo) {
-      try {
-        const valores = JSON.parse(salvo) as OrdenacaoEstoque[];
-        setColunasVisiveis(valores.filter((valor) => colunasPadrao.includes(valor)));
-        return;
-      } catch {
-        window.localStorage.removeItem(chave);
-      }
-    }
-    setColunasVisiveis(colunasPadrao);
-  }, [fornecedor.codigo]);
-
-  const alternarColuna = (campo: OrdenacaoEstoque) => {
-    setColunasVisiveis((atual) => {
-      const novasColunas = atual.includes(campo)
-        ? atual.length > 1
-          ? atual.filter((item) => item !== campo)
-          : atual
-        : colunasPadrao.filter((item) => atual.includes(item) || item === campo);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          "portal-estoque-colunas-" + fornecedor.codigo,
-          JSON.stringify(novasColunas),
-        );
-      }
-      return novasColunas;
-    });
-  };
-
-  const aplicarPresetColunas = (preset: "completo" | "resumido" | "abastecimento") => {
-    const presets: Record<typeof preset, OrdenacaoEstoque[]> = {
-      completo: colunasPadrao,
-      resumido: ["sku", "descricao", "vendaMensal", "estoqueAtual", "situacao"],
-      abastecimento: [
-        "sku",
-        "descricao",
-        "classe",
-        "vendaMensal",
-        "estoqueAtual",
-        "estoqueIdeal",
-        "diferenca",
-      ],
-    };
-    const novasColunas = presets[preset];
-    setColunasVisiveis(novasColunas);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        "portal-estoque-colunas-" + fornecedor.codigo,
-        JSON.stringify(novasColunas),
-      );
-    }
-  };
-
-  const colunaVisivel = (campo: OrdenacaoEstoque) =>
-    colunasVisiveis.includes(campo) ? "" : "hidden";
+  const [ordenacao, setOrdenacao] = useState<{ campo: OrdenacaoEstoque; direcao: "asc" | "desc" }>({ campo: "classe", direcao: "asc" });
 
   // Helper for meta calculation based on Systematic, Class, and CDAM/Store type (Lider Official spreadsheet)
   const getMetasCobertura = (sistematica: string, classe: string, isCdam: boolean): number => {
-    const s = String(sistematica || "ESTOCADO")
-      .toUpperCase()
-      .trim();
+    const s = String(sistematica || "ESTOCADO").toUpperCase().trim();
     const cl = String(classe || "Dd").trim() || "Dd";
     const isTopStar = cl === "Aa";
     const clV = (cl[0] || "D").toUpperCase();
@@ -228,16 +118,30 @@ function EstoquePage() {
     return 30; // fallback
   };
 
-  const sugestoesPorSku = useMemo(
-    () => new Map(calcularSugestoesCompraCdam("30").map((item) => [item.produto.sku, item])),
-    [dadosFornecedorVersao],
-  );
-
   const listaCompleta = useMemo(() => {
     const produtoPorSkuMap = new Map(produtos.map((p) => [p.sku, p]));
     const lojaPorId = new Map(lojas.map((l) => [l.id, l]));
     const lojaPorLocal = new Map(lojas.map((l) => [l.idLocal, l]));
     const salesMap = mapaVendaMediaMensal();
+    const venda30Map = new Map<string, { quantidade: number; cmv: number }>();
+    const maxData = Array.from(vendas)
+      .map((venda) => venda.data)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    const inicio30 = maxData
+      ? new Date(`${maxData}T12:00:00Z`)
+      : null;
+    if (inicio30) inicio30.setUTCDate(inicio30.getUTCDate() - 29);
+    for (const venda of vendas) {
+      if (inicio30 && venda.data < inicio30.toISOString().slice(0, 10)) continue;
+      const produto = produtoPorSkuMap.get(venda.sku);
+      const chave = venda.sku + "_" + normalizarParaFilial(venda.lojaId);
+      const atual = venda30Map.get(chave) ?? { quantidade: 0, cmv: 0 };
+      atual.quantidade += Number(venda.quantidade) || 0;
+      atual.cmv += (Number(venda.quantidade) || 0) * (Number(produto?.cmvUnit) || 0);
+      venda30Map.set(chave, atual);
+    }
     const stockMap = new Map<string, number>();
     for (const e of estoque) {
       stockMap.set(e.sku + "_" + e.lojaId, Number(e.estoqueAtual) || 0);
@@ -249,23 +153,15 @@ function EstoquePage() {
       lojaNome: string;
       descricao: string;
       estoqueAtual: number;
-      qtdLojas: number;
-      ean: string;
-      referencia: string;
-      marca: string;
-      saiu: string;
-      subgrupo: string;
-      vendaDiaria: number;
       vendaMensal: number;
-      pedidoAberto: number;
-      pendencia: boolean;
-      coberturaCdam: number | null;
-      estoqueCdam: number;
+      venda30Quantidade: number;
+      venda30Cmv: number;
       estoqueIdeal: number;
       diferenca: number;
       situacao: SituacaoEstoque;
       classe: string;
       topStar: boolean;
+      sistematica: string;
       preco: number;
     }> = [];
     const visto = new Set<string>();
@@ -281,14 +177,7 @@ function EstoquePage() {
       if (visto.has(chave)) return;
       visto.add(chave);
       const produto = produtoPorSkuMap.get(sku);
-      const sugestao = sugestoesPorSku.get(sku);
-      const pedidoAberto = sugestao?.pedidoAberto || 0;
-      const coberturaCdam = sugestao?.coberturaAtual ?? null;
-      const leadTime = sugestao?.leadTimeEntregaDias || 0;
-      const estoqueCdam = sugestao?.estoqueCdam || 0;
-      const pendencia =
-        (estoqueCdam === 0 && pedidoAberto > 0) ||
-        (coberturaCdam !== null && coberturaCdam < leadTime - 3);
+      const venda30 = venda30Map.get(sku + "_" + lojaItem.id) ?? { quantidade: 0, cmv: 0 };
       const cls = produto?.classeComposta || "Dd";
       const topStar = (produto?.classeTopStar || cls) === "Aa";
       const diasCobertura = getMetasCobertura(
@@ -303,29 +192,16 @@ function EstoquePage() {
         lojaId: lojaItem.idLocal,
         lojaNome: lojaItem.nome,
         descricao: produto?.descricao || sku,
-        ean: produto?.ean || "",
-        referencia: produto?.referencia || "",
-        marca: produto ? marcaProduto(produto) : "",
-        saiu:
-          produto?.emLinha === 0
-            ? produto.datSaiLin
-              ? dataBR(produto.datSaiLin)
-              : "Fora"
-            : "Em linha",
-        subgrupo: produto?.subgrupo || "",
         estoqueAtual,
-        qtdLojas: estoqueAtual,
-        vendaDiaria: sugestao?.vendaMediaDiaria || vendaMensal / 30,
         vendaMensal,
-        pedidoAberto,
-        pendencia,
-        coberturaCdam,
-        estoqueCdam,
+        venda30Quantidade: venda30.quantidade,
+        venda30Cmv: venda30.cmv,
         estoqueIdeal,
         diferenca,
         situacao: diferenca < 0 ? "Falta" : diferenca > 0 ? "Excesso" : "Equilibrado",
         classe: cls,
         topStar,
+        sistematica: produto?.sistematica || "ESTOCADO",
         preco: produto?.precoTabela || 1.0,
       });
     };
@@ -350,57 +226,31 @@ function EstoquePage() {
     }
 
     return arr;
-  }, [produtos, lojas, estoque, vendas, sugestoesPorSku, dadosFornecedorVersao]);
-
-  const listaVisivel = useMemo(() => {
-    if (loja !== "todas") return listaCompleta;
-
-    const agrupado = new Map<string, (typeof listaCompleta)[number]>();
-    for (const item of listaCompleta) {
-      const atual = agrupado.get(item.sku);
-      if (!atual) {
-        agrupado.set(item.sku, {
-          ...item,
-          lojaId: "todas",
-          lojaNome: "Todas as lojas",
-        });
-        continue;
-      }
-
-      atual.estoqueAtual += item.estoqueAtual;
-      atual.qtdLojas += item.estoqueAtual;
-      atual.vendaMensal += item.vendaMensal;
-      atual.vendaDiaria = atual.vendaMensal / 30;
-      atual.estoqueIdeal += item.estoqueIdeal;
-      atual.diferenca = atual.estoqueAtual - atual.estoqueIdeal;
-      atual.situacao =
-        atual.diferenca < 0 ? "Falta" : atual.diferenca > 0 ? "Excesso" : "Equilibrado";
-    }
-
-    return Array.from(agrupado.values());
-  }, [listaCompleta, loja]);
+  }, [produtos, lojas, estoque, vendas, dadosFornecedorVersao]);
 
   // Aggregate stats of actual vs ideal stock per ABC class + Top Star (Aa)
   const resumoPorClasse = useMemo(() => {
     const keys = ["TOP STAR", "A", "B", "C", "D"] as const;
     const map = new Map();
     for (const k of keys) {
-      map.set(k, { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0 });
+      map.set(k, { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0, venda30Qtd: 0, venda30Cmv: 0 });
     }
 
-    for (const item of listaVisivel) {
+    for (const item of listaCompleta) {
       const key = chaveClasseCard(item.classe, item.topStar);
 
-      const current = map.get(key) || { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0 };
+      const current = map.get(key) || { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0, venda30Qtd: 0, venda30Cmv: 0 };
       current.realQtd += Number(item.estoqueAtual) || 0;
       current.idealQtd += Number(item.estoqueIdeal) || 0;
       current.realVlr += (Number(item.estoqueAtual) || 0) * (Number(item.preco) || 0);
       current.idealVlr += (Number(item.estoqueIdeal) || 0) * (Number(item.preco) || 0);
+      current.venda30Qtd += Number(item.venda30Quantidade) || 0;
+      current.venda30Cmv += Number(item.venda30Cmv) || 0;
       map.set(key, current);
     }
 
     return keys.map((key) => {
-      const vals = map.get(key) || { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0 };
+      const vals = map.get(key) || { realQtd: 0, idealQtd: 0, realVlr: 0, idealVlr: 0, venda30Qtd: 0, venda30Cmv: 0 };
       const real = viewMode === "vlr" ? vals.realVlr : vals.realQtd;
       const ideal = viewMode === "vlr" ? vals.idealVlr : vals.idealQtd;
       const diffQty = real - ideal;
@@ -409,57 +259,69 @@ function EstoquePage() {
         key,
         real,
         ideal,
+        venda30: viewMode === "vlr" ? vals.venda30Cmv : vals.venda30Qtd,
         diffPct,
         semMeta: ideal <= 0 && real > 0,
       };
     });
-  }, [listaVisivel, viewMode]);
+  }, [listaCompleta, viewMode]);
 
   const listaFiltrada = useMemo(() => {
-    return listaVisivel
+    const porClasseELoja = listaCompleta.filter((item) => {
+      if (classeCard && chaveClasseCard(item.classe, item.topStar) !== classeCard) return false;
+      if (loja !== "todas" && !mesmoCodigoLoja(item.lojaId, loja)) return false;
+      return true;
+    });
+
+    const linhas =
+      loja === "todas"
+        ? Array.from(
+            porClasseELoja.reduce((mapa, item) => {
+              const atual = mapa.get(item.sku);
+              if (!atual) {
+                mapa.set(item.sku, {
+                  ...item,
+                  lojaId: "todas",
+                  lojaNome: "Todas as lojas",
+                });
+                return mapa;
+              }
+              atual.vendaMensal += item.vendaMensal;
+              atual.estoqueAtual += item.estoqueAtual;
+              atual.venda30Quantidade += item.venda30Quantidade;
+              atual.venda30Cmv += item.venda30Cmv;
+              atual.estoqueIdeal += item.estoqueIdeal;
+              atual.diferenca += item.diferenca;
+              atual.situacao =
+                atual.diferenca < 0
+                  ? "Falta"
+                  : atual.diferenca > 0
+                    ? "Excesso"
+                    : "Equilibrado";
+              mapa.set(item.sku, atual);
+              return mapa;
+            }, new Map<string, (typeof listaCompleta)[number]>()).values(),
+          )
+        : porClasseELoja;
+
+    return linhas
       .filter((item) => {
-        if (classeCard && chaveClasseCard(item.classe, item.topStar) !== classeCard) return false;
-        if (loja !== "todas" && !mesmoCodigoLoja(item.lojaId, loja)) return false;
         if (filtro !== "Todos" && item.situacao !== filtro) return false;
         const campos: Record<string, string> = {
-          sku: codigoProdutoComDigito(item.sku),
-          ean: item.ean,
-          referencia: item.referencia,
-          marca: item.marca,
-          descricao: item.descricao,
-          saida: item.saiu,
-          subgrupo: item.subgrupo,
-          vendaDiaria: String(item.vendaDiaria),
-          vendaMensal: String(item.vendaMensal),
-          pedidoAberto: String(item.pedidoAberto),
-          pendencia: item.pendencia ? "sim" : "não",
-          coberturaCdam: String(item.coberturaCdam ?? ""),
-          estoqueCdam: String(item.estoqueCdam),
-          classe: item.classe === "Aa" ? "TOP STAR Aa" : item.classe,
-          estoqueAtual: String(item.estoqueAtual),
-          estoqueIdeal: String(item.estoqueIdeal),
-          diferenca: String(item.diferenca),
-          situacao: item.situacao,
+          sku: codigoProdutoComDigito(item.sku), descricao: item.descricao, lojaNome: item.lojaNome,
+          classe: item.classe === "Aa" ? "TOP STAR Aa" : item.classe, sistematica: item.sistematica,
+          vendaMensal: String(item.vendaMensal), estoqueAtual: String(item.estoqueAtual),
+          estoqueIdeal: String(item.estoqueIdeal), diferenca: String(item.diferenca), situacao: item.situacao,
         };
-        return Object.entries(buscas).every(
-          ([campo, termo]) =>
-            !termo || (campos[campo] ?? "").toLowerCase().includes(termo.toLowerCase()),
-        );
+        return Object.entries(buscas).every(([campo, termo]) => !termo || (campos[campo] ?? "").toLowerCase().includes(termo.toLowerCase()));
       })
       .sort((a, b) => {
-        const valor = (item: (typeof listaVisivel)[number]): string | number => {
-          if (ordenacao.campo === "saida") return item.saiu;
-          return item[ordenacao.campo as keyof typeof item] as string | number;
-        };
-        const av = valor(a);
-        const bv = valor(b);
-        const comparacao =
-          typeof av === "number" && typeof bv === "number"
-            ? av - bv
-            : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
+        const av = a[ordenacao.campo];
+        const bv = b[ordenacao.campo];
+        const comparacao = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "pt-BR", { numeric: true });
         return ordenacao.direcao === "asc" ? comparacao : -comparacao;
       });
-  }, [listaVisivel, loja, filtro, classeCard, buscas, ordenacao]);
+  }, [listaCompleta, loja, filtro, classeCard, buscas, ordenacao]);
 
   const totalPaginas = Math.max(1, Math.ceil(listaFiltrada.length / LINHAS_POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
@@ -472,74 +334,32 @@ function EstoquePage() {
     let falta = 0;
     let excesso = 0;
     let equilibrado = 0;
-    for (const item of listaVisivel) {
+    for (const item of listaCompleta) {
       if (item.situacao === "Falta") falta += 1;
       else if (item.situacao === "Excesso") excesso += 1;
       else equilibrado += 1;
     }
-    return { falta, excesso, equilibrado, total: listaVisivel.length };
-  }, [listaVisivel]);
+    return { falta, excesso, equilibrado, total: listaCompleta.length };
+  }, [listaCompleta]);
 
   useEffect(() => {
     setPagina(1);
   }, [loja, filtro, classeCard, buscas, ordenacao]);
 
-  const alterarOrdenacao = (campo: OrdenacaoEstoque) =>
-    setOrdenacao((atual) => ({
-      campo,
-      direcao: atual.campo === campo && atual.direcao === "asc" ? "desc" : "asc",
-    }));
-  const buscaColuna = (campo: string) => (valor: string) =>
-    setBuscas((atual) => ({ ...atual, [campo]: valor }));
+  const alterarOrdenacao = (campo: OrdenacaoEstoque) => setOrdenacao((atual) => ({ campo, direcao: atual.campo === campo && atual.direcao === "asc" ? "desc" : "asc" }));
+  const buscaColuna = (campo: string) => (valor: string) => setBuscas((atual) => ({ ...atual, [campo]: valor }));
 
   return (
     <PortalLayout
-      titulo="Visão de Estoque"
-      descricao="Acompanhe estoque, vendas e cobertura dos itens do fornecedor"
+      titulo="Estoque Ideal"
+      descricao="Gerencie o abastecimento ideal com base na classificação de giro oficial do Grupo Líder"
     >
-      <EstoqueMixTabs />
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-4">
-          <Resumo
-            titulo="Falta de Estoque"
-            valor={contagem.falta}
-            tom="danger"
-            ativo={filtro === "Falta"}
-            onClick={() => {
-              setClasseCard(null);
-              setFiltro((atual) => (atual === "Falta" ? "Todos" : "Falta"));
-            }}
-          />
-          <Resumo
-            titulo="Com Excesso"
-            valor={contagem.excesso}
-            tom="primary"
-            ativo={filtro === "Excesso"}
-            onClick={() => {
-              setClasseCard(null);
-              setFiltro((atual) => (atual === "Excesso" ? "Todos" : "Excesso"));
-            }}
-          />
-          <Resumo
-            titulo="Equilibrados"
-            valor={contagem.equilibrado}
-            tom="success"
-            ativo={filtro === "Equilibrado"}
-            onClick={() => {
-              setClasseCard(null);
-              setFiltro((atual) => (atual === "Equilibrado" ? "Todos" : "Equilibrado"));
-            }}
-          />
-          <Resumo
-            titulo="Total de Posições"
-            valor={contagem.total}
-            tom="warning"
-            ativo={filtro === "Todos"}
-            onClick={() => {
-              setClasseCard(null);
-              setFiltro("Todos");
-            }}
-          />
+          <Resumo titulo="Falta de Estoque" valor={contagem.falta} tom="danger" />
+          <Resumo titulo="Com Excesso" valor={contagem.excesso} tom="primary" />
+          <Resumo titulo="Equilibrados" valor={contagem.equilibrado} tom="success" />
+          <Resumo titulo="Total de Posições" valor={contagem.total} tom="warning" />
         </div>
 
         {/* Qualidade do Estoque por Classe */}
@@ -548,15 +368,13 @@ function EstoquePage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <TrendingUp className="size-4 text-primary" /> Qualidade e Desvio de Estoque por
-                  Classe ABC
+                  <TrendingUp className="size-4 text-primary" /> Qualidade e Desvio de Estoque por Classe ABC
                 </CardTitle>
                 <CardDescription className="text-2xs">
-                  Análise agregada da saúde do inventário. Desvios negativos indicam risco de
-                  ruptura; desvios positivos indicam sobre-abastecimento de capital.
+                  Análise agregada da saúde do inventário. Desvios negativos indicam risco de ruptura; desvios positivos indicam sobre-abastecimento de capital.
                 </CardDescription>
               </div>
-
+              
               {/* Toggle Switch with High Contrast */}
               <div className="flex items-center gap-1 rounded-lg border border-primary/20 bg-muted/50 p-1">
                 <button
@@ -605,12 +423,9 @@ function EstoquePage() {
 
               const isTop = item.key === "TOP STAR";
               const selecionado = classeCard === item.key;
-              const cardBg = isTop
-                ? "bg-amber-950/20 border-amber-500/30"
-                : "bg-background/35 border-border/50";
+              const cardBg = isTop ? "bg-amber-950/20 border-amber-500/30" : "bg-background/35 border-border/50";
               const titleColor = isTop ? "text-amber-500 font-extrabold" : "text-muted-foreground";
-              const fmt = (n: number) =>
-                viewMode === "vlr" ? brl(n) : `${numero(Math.round(n))} un`;
+              const fmt = (n: number) => (viewMode === "vlr" ? brl(n) : `${numero(Math.round(n))} un`);
 
               return (
                 <button
@@ -628,20 +443,28 @@ function EstoquePage() {
                     <span className={`text-xs font-mono ${titleColor}`}>
                       {isTop ? "⭐ TOP STAR" : `CLASSE ${item.key}`}
                     </span>
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted border border-border/50 ${color}`}
-                    >
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted border border-border/50 ${color}`}>
                       {label}
                     </span>
                   </div>
                   <div className="flex items-baseline justify-between pt-1">
                     <span className="text-xs text-muted-foreground">Estoque Real</span>
-                    <span className="font-mono text-sm font-semibold">{fmt(item.real)}</span>
+                    <span className="font-mono text-sm font-semibold">
+                      {fmt(item.real)}
+                    </span>
                   </div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-xs text-muted-foreground">Estoque Ideal</span>
                     <span className="font-mono text-sm font-semibold text-muted-foreground/80">
                       {fmt(item.ideal)}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs text-muted-foreground">Venda 30 dias (CMV)</span>
+                    <span className="font-mono text-sm font-semibold text-primary">
+                      {viewMode === "vlr"
+                        ? brl(item.venda30)
+                        : `${numero(Math.round(item.venda30))} un`}
                     </span>
                   </div>
                   <div className="flex items-baseline justify-between border-t border-dashed border-border/50 pt-1.5 mt-1.5">
@@ -661,8 +484,7 @@ function EstoquePage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <PackageCheck className="size-4 text-primary" /> Dimensionamento de Estoque por
-                  Loja
+                  <PackageCheck className="size-4 text-primary" /> Dimensionamento de Estoque por Loja
                 </CardTitle>
                 <CardDescription>
                   {classeCard
@@ -671,87 +493,16 @@ function EstoquePage() {
                 </CardDescription>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold hover:bg-muted"
-                    >
-                      <Settings2 className="size-3.5" />
-                      Colunas ({colunasVisiveis.length})
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-80">
-                    <div className="space-y-3">
-                      <div>
-                        <p className="text-xs font-semibold">Personalizar visão</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          Escolha as colunas exibidas para este fornecedor.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        <button
-                          type="button"
-                          className="rounded border px-2 py-1 text-[11px] hover:bg-muted"
-                          onClick={() => aplicarPresetColunas("completo")}
-                        >
-                          Completo
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded border px-2 py-1 text-[11px] hover:bg-muted"
-                          onClick={() => aplicarPresetColunas("resumido")}
-                        >
-                          Resumido
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded border px-2 py-1 text-[11px] hover:bg-muted"
-                          onClick={() => aplicarPresetColunas("abastecimento")}
-                        >
-                          Abastecimento
-                        </button>
-                      </div>
-                      <div className="grid gap-2">
-                        {colunasDimensionamento.map(([campo, titulo]) => (
-                          <label
-                            key={campo}
-                            className="flex cursor-pointer items-center gap-2 text-xs"
-                          >
-                            <Checkbox
-                              checked={colunasVisiveis.includes(campo)}
-                              onCheckedChange={() => alternarColuna(campo)}
-                            />
-                            {titulo}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
                 <div className="flex items-center gap-2">
                   <Label className="text-xs font-semibold">Situação</Label>
-                  <Select
-                    value={filtro}
-                    onValueChange={(v) => {
-                      if (filtros.includes(v as (typeof filtros)[number])) {
-                        setFiltro(v as SituacaoEstoque | "Todos");
-                      }
-                    }}
-                  >
+                  <Select value={filtro} onValueChange={(v) => setFiltro(v)}>
                     <SelectTrigger className="h-8 w-36 text-xs bg-background">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {filtros.map((f) => (
                         <SelectItem key={f} value={f} className="text-xs">
-                          {f === "Todos"
-                            ? "Todas as Situações"
-                            : f === "Falta"
-                              ? "Falta"
-                              : f === "Excesso"
-                                ? "Excesso"
-                                : "Equilibrado"}
+                          {f === "Todos" ? "Todas as Situações" : f === "Falta" ? "Falta" : f === "Excesso" ? "Excesso" : "Equilibrado"}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -786,200 +537,87 @@ function EstoquePage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="bg-muted/60">
-                  {colunasDimensionamento.map(([campo, titulo]) => (
-                    <TableHead
-                      key={campo}
-                      className={
-                        "min-w-[110px] whitespace-normal leading-tight " + colunaVisivel(campo)
-                      }
-                    >
-                      <TableColumnHeader
-                        title={titulo}
-                        value={buscas[campo] ?? ""}
-                        onChange={buscaColuna(campo)}
-                        onSort={() => alterarOrdenacao(campo)}
-                        direction={ordenacao.campo === campo ? ordenacao.direcao : null}
-                        placeholder={titulo}
-                      />
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {listaPagina.map((item) => {
-                  let badgeClass = "bg-success text-success-foreground";
-                  let label = "Equilibrado";
-                  let diffText = "-";
-                  let diffColor = "text-muted-foreground";
+                    {([["sku", "SKU"], ["descricao", "Produto"], ["lojaNome", "Loja"], ["classe", "Classe"], ["sistematica", "Sistemática"], ["vendaMensal", "Venda Média Mensal"], ["estoqueAtual", "Estoque Real"], ["estoqueIdeal", "Estoque Ideal"], ["diferenca", "Diferença"], ["situacao", "Situação"]] as Array<[OrdenacaoEstoque, string]>).map(([campo, titulo]) => (
+                      <TableHead key={campo} className="min-w-[110px]">
+                        <TableColumnHeader title={titulo} value={buscas[campo] ?? ""} onChange={buscaColuna(campo)} onSort={() => alterarOrdenacao(campo)} direction={ordenacao.campo === campo ? ordenacao.direcao : null} placeholder={titulo.toLowerCase()} />
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {listaPagina.map((item) => {
+                    let badgeClass = "bg-success text-success-foreground";
+                    let label = "Equilibrado";
+                    let diffText = "-";
+                    let diffColor = "text-muted-foreground";
 
-                  const realVal =
-                    viewMode === "vlr" ? item.estoqueAtual * item.preco : item.estoqueAtual;
-                  const idealVal =
-                    viewMode === "vlr" ? item.estoqueIdeal * item.preco : item.estoqueIdeal;
-                  const diffAmt = realVal - idealVal;
+                    const realVal = viewMode === "vlr" ? item.estoqueAtual * item.preco : item.estoqueAtual;
+                    const idealVal = viewMode === "vlr" ? item.estoqueIdeal * item.preco : item.estoqueIdeal;
+                    const diffAmt = realVal - idealVal;
 
-                  if (item.diferenca < 0) {
-                    badgeClass = "bg-danger text-danger-foreground animate-pulse";
-                    label = "Falta";
-                    diffText =
-                      viewMode === "vlr"
-                        ? `Falta ${brl(Math.abs(diffAmt))}`
-                        : `Falta ${numero(Math.abs(item.diferenca))} un`;
-                    diffColor = "text-danger font-semibold";
-                  } else if (item.diferenca > 0) {
-                    badgeClass = "bg-primary text-primary-foreground";
-                    label = "Excesso";
-                    diffText =
-                      viewMode === "vlr"
-                        ? `Sobra ${brl(diffAmt)}`
-                        : `Sobra ${numero(item.diferenca)} un`;
-                    diffColor = "text-primary";
-                  }
+                    if (item.diferenca < 0) {
+                      badgeClass = "bg-danger text-danger-foreground animate-pulse";
+                      label = "Falta";
+                      diffText = viewMode === "vlr" ? `Falta ${brl(Math.abs(diffAmt))}` : `Falta ${numero(Math.abs(item.diferenca))} un`;
+                      diffColor = "text-danger font-semibold";
+                    } else if (item.diferenca > 0) {
+                      badgeClass = "bg-primary text-primary-foreground";
+                      label = "Excesso";
+                      diffText = viewMode === "vlr" ? `Sobra ${brl(diffAmt)}` : `Sobra ${numero(item.diferenca)} un`;
+                      diffColor = "text-primary";
+                    }
 
-                  return (
-                    <TableRow
-                      key={`${item.sku}-${item.lojaId}`}
-                      className={
-                        item.situacao === "Falta"
-                          ? "bg-danger-soft/40"
-                          : item.situacao === "Excesso"
-                            ? "bg-primary/5"
-                            : ""
-                      }
-                    >
-                      <TableCell className={"font-mono text-xs " + colunaVisivel("sku")}>
-                        {codigoProdutoComDigito(item.sku)}
-                      </TableCell>
-                      <TableCell className={"font-mono text-[11px] " + colunaVisivel("ean")}>
-                        {item.ean || "—"}
-                      </TableCell>
-                      <TableCell className={"font-mono text-[11px] " + colunaVisivel("referencia")}>
-                        {item.referencia || "—"}
-                      </TableCell>
-                      <TableCell className={"text-xs " + colunaVisivel("marca")}>
-                        {item.marca || "—"}
-                      </TableCell>
-                      <TableCell
-                        className={
-                          "max-w-[220px] truncate font-medium " + colunaVisivel("descricao")
-                        }
+                    return (
+                      <TableRow
+                        key={`${item.sku}-${item.lojaId}`}
+                        className={item.situacao === "Falta" ? "bg-danger-soft/40" : item.situacao === "Excesso" ? "bg-primary/5" : ""}
                       >
-                        {item.descricao}
-                      </TableCell>
-                      <TableCell className={"text-xs " + colunaVisivel("saida")}>
-                        {item.saiu}
-                      </TableCell>
-                      <TableCell
-                        className={
-                          "max-w-[150px] truncate text-xs text-muted-foreground " +
-                          colunaVisivel("subgrupo")
-                        }
-                      >
-                        {item.subgrupo || "—"}
-                      </TableCell>
-                      <TableCell
-                        className={"text-right font-mono text-xs " + colunaVisivel("vendaDiaria")}
-                      >
-                        {numero(Math.round(item.vendaDiaria * 100) / 100)} un
-                      </TableCell>
-                      <TableCell
-                        className={"text-right font-mono text-xs " + colunaVisivel("vendaMensal")}
-                      >
-                        {viewMode === "vlr"
-                          ? brl(item.vendaMensal * item.preco)
-                          : numero(Math.round(item.vendaMensal)) + " un"}
-                      </TableCell>
-                      <TableCell className={"text-center " + colunaVisivel("classe")}>
-                        {item.classe === "Aa" ? (
-                          <span className="inline-flex items-center justify-center gap-1 rounded bg-amber-950 border border-amber-500/40 px-2 py-1 text-2xs font-extrabold text-amber-300">
-                            ⭐ Aa{" "}
-                            <span className="text-[8px] uppercase tracking-wider text-amber-200">
-                              Top Star
+                        <TableCell className="font-mono text-xs">{codigoProdutoComDigito(item.sku)}</TableCell>
+                        <TableCell className="max-w-[220px] truncate font-medium">
+                          {item.descricao}
+                        </TableCell>
+                        <TableCell>{item.lojaNome}</TableCell>
+                        <TableCell className="text-center">
+                          {item.classe === "Aa" ? (
+                            <span className="inline-flex items-center justify-center gap-1 rounded bg-amber-950 border border-amber-500/40 px-2 py-1 text-2xs font-extrabold text-amber-300">
+                              ⭐ Aa <span className="text-[8px] uppercase tracking-wider text-amber-200">Top Star</span>
                             </span>
+                          ) : (
+                            <span className="font-mono text-xs font-semibold">{item.classe}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-xs text-muted-foreground">{item.sistematica}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {viewMode === "vlr" ? brl(item.vendaMensal * item.preco) : `${numero(Math.round(item.vendaMensal))} un`}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {viewMode === "vlr" ? brl(item.estoqueAtual * item.preco) : `${numero(item.estoqueAtual)} un`}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs font-semibold text-muted-foreground">
+                          {viewMode === "vlr" ? brl(item.estoqueIdeal * item.preco) : `${numero(item.estoqueIdeal)} un`}
+                        </TableCell>
+                        <TableCell className={`text-right font-mono text-xs ${diffColor}`}>
+                          {diffText}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${badgeClass}`}>
+                            {label}
                           </span>
-                        ) : (
-                          <span className="font-mono text-xs font-semibold">{item.classe}</span>
-                        )}
-                      </TableCell>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {listaPagina.length === 0 && (
+                    <TableRow>
                       <TableCell
-                        className={"text-right font-mono text-xs " + colunaVisivel("pedidoAberto")}
+                        colSpan={10}
+                        className="py-10 text-center text-sm text-muted-foreground"
                       >
-                        {item.pedidoAberto > 0 ? numero(item.pedidoAberto) : "-"}
-                      </TableCell>
-                      <TableCell className={"text-center " + colunaVisivel("pendencia")}>
-                        <span
-                          className={
-                            item.pendencia ? "text-warning font-semibold" : "text-muted-foreground"
-                          }
-                        >
-                          {item.pendencia ? "Sim" : "Não"}
-                        </span>
-                      </TableCell>
-                      <TableCell
-                        className={"text-right font-mono text-xs " + colunaVisivel("coberturaCdam")}
-                      >
-                        {item.coberturaCdam !== null
-                          ? numero(Math.round(item.coberturaCdam)) + "d"
-                          : "Sem venda"}
-                      </TableCell>
-                      <TableCell
-                        className={"text-right font-mono text-xs " + colunaVisivel("estoqueCdam")}
-                      >
-                        {numero(item.estoqueCdam)}
-                      </TableCell>
-                      <TableCell
-                        className={"text-right font-mono text-xs " + colunaVisivel("estoqueAtual")}
-                      >
-                        {viewMode === "vlr"
-                          ? brl(item.estoqueAtual * item.preco)
-                          : `${numero(item.estoqueAtual)} un`}
-                      </TableCell>
-                      <TableCell
-                        className={"text-center font-mono text-xs " + colunaVisivel("qtdLojas")}
-                      >
-                        {numero(item.qtdLojas)}
-                      </TableCell>
-                      <TableCell
-                        className={
-                          "text-right font-mono text-xs font-semibold text-muted-foreground " +
-                          colunaVisivel("estoqueIdeal")
-                        }
-                      >
-                        {viewMode === "vlr"
-                          ? brl(item.estoqueIdeal * item.preco)
-                          : `${numero(item.estoqueIdeal)} un`}
-                      </TableCell>
-                      <TableCell
-                        className={
-                          "text-right font-mono text-xs " +
-                          diffColor +
-                          " " +
-                          colunaVisivel("diferenca")
-                        }
-                      >
-                        {diffText}
-                      </TableCell>
-                      <TableCell className={colunaVisivel("situacao")}>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${badgeClass}`}
-                        >
-                          {label}
-                        </span>
+                        Nenhuma posição ativa encontrada com esses filtros.
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-                {listaPagina.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={colunasVisiveis.length}
-                      className="py-10 text-center text-sm text-muted-foreground"
-                    >
-                      Nenhuma posição ativa encontrada com esses filtros.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
+                  )}
+                </TableBody>
             </Table>
             {listaFiltrada.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -1011,13 +649,12 @@ function EstoquePage() {
                 </div>
               </div>
             )}
-
+            
             {/* Visual High-Signal Diagnostic Panel */}
             <div className="flex justify-between items-center text-[10px] text-muted-foreground mt-4 pt-4 border-t border-border">
               <span>Sincronizado reativamente com o ERP RMS (Líder)</span>
               <span>
-                Catálogo: {produtos.length} SKUs | Estoques: {estoque.length} registros | Vendas:{" "}
-                {vendas.length} registros | Versão: {dadosFornecedorVersao}
+                Catálogo: {produtos.length} SKUs | Estoques: {estoque.length} registros | Vendas: {vendas.length} registros | Versão: {dadosFornecedorVersao}
               </span>
             </div>
           </CardContent>
@@ -1031,14 +668,10 @@ function Resumo({
   titulo,
   valor,
   tom,
-  ativo = false,
-  onClick,
 }: {
   titulo: string;
   valor: number;
   tom: "danger" | "warning" | "success" | "primary";
-  ativo?: boolean;
-  onClick: () => void;
 }) {
   const tons = {
     danger: "border-danger/30 bg-danger-soft text-danger",
@@ -1046,21 +679,10 @@ function Resumo({
     success: "border-success/30 bg-success-soft text-success",
     primary: "border-primary/30 bg-primary/10 text-primary",
   };
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={ativo}
-      className={[
-        "w-full rounded-xl border p-4 text-left shadow-panel transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-        tons[tom],
-        ativo ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
-      ].join(" ")}
-    >
+    <div className={`rounded-xl border p-4 shadow-panel ${tons[tom]}`}>
       <p className="text-[10px] font-bold uppercase tracking-wider opacity-75">{titulo}</p>
       <p className="mt-1 font-display text-2xl font-bold">{numero(valor)}</p>
-      <p className="mt-1 text-[10px] font-medium opacity-70">Clique para filtrar</p>
-    </button>
+    </div>
   );
 }

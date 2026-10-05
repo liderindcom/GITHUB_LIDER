@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 import { LiderLogo } from "@/components/lider-logo";
 import { PortalLayout } from "@/components/portal-layout";
-import { EstoqueMixTabs } from "@/components/estoque-mix-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -37,7 +36,7 @@ import {
 export const Route = createFileRoute("/_portal/relatorio-mix")({
   head: () => ({
     meta: [
-      { title: "Mix por Loja | Portal do Fornecedor" },
+      { title: "Relatório MIX | Portal do Fornecedor" },
       {
         name: "description",
         content: "Relatório de produtos nas filiais com vendas, estoque e cobertura.",
@@ -415,10 +414,9 @@ function RelatorioMixPage() {
 
   return (
     <PortalLayout
-      titulo="Mix por Loja"
-      descricao="Analise o mix de produtos por loja, com vendas, estoque e cobertura"
+      titulo="Relatório MIX"
+      descricao="Produtos nas filiais com vendas, estoque real e cobertura"
     >
-      <EstoqueMixTabs />
       <div className="space-y-4">
         <Card className="shadow-panel">
           <CardHeader className="gap-4 border-b border-border">

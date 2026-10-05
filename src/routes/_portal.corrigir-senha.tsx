@@ -61,8 +61,7 @@ function CorrigirSenhaPage() {
       toast.success("Senha corrigida", {
         description: "Use esta senha no próximo acesso, com o mesmo e-mail.",
       });
-      const retornarAoAppCom = window.location.hostname.toLowerCase() === "appcom.intelider.com.br";
-      navigate({ to: retornarAoAppCom ? "/comunicacao" : "/dashboard" });
+      navigate({ to: "/dashboard" });
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "";
