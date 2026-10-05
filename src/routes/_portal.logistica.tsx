@@ -427,7 +427,7 @@ function LogisticaPage() {
         value={abaAtual}
         onValueChange={(value) => {
           navigate({
-            search: value === "agenda" ? { aba: "agenda" } : {},
+            search: value === "agenda" || value === "solicitar" ? { aba: value } : {},
             replace: true,
           });
         }}
