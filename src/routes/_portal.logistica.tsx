@@ -29,7 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePortal } from "@/context/portal-context";
 import { brl, dataBR, numero } from "@/lib/format";
-import { faturamentoBloqueiaData } from "@/lib/reforco-faturamento";
+import { faturamentoBloqueiaData, LOJAS_AGENDAMENTO_PERMITIDAS } from "@/lib/reforco-faturamento";
 import {
   globalDbCache,
   lojaPorCodigo,
@@ -259,7 +259,8 @@ function LogisticaPage() {
   const [enviandoSolicitacao, setEnviandoSolicitacao] = useState(false);
 
   const docas = globalDbCache.docas ?? [];
-  const docasDaLoja = docas.filter((doca) => !solicitacao.lojaId || doca.lojaId === solicitacao.lojaId);
+  const docasPermitidas = docas.filter((doca) => LOJAS_AGENDAMENTO_PERMITIDAS.includes(doca.lojaId as (typeof LOJAS_AGENDAMENTO_PERMITIDAS)[number]));
+  const docasDaLoja = docasPermitidas.filter((doca) => !solicitacao.lojaId || doca.lojaId === solicitacao.lojaId);
   const docaSelecionada = docas.find(
     (doca) => doca.lojaId === solicitacao.lojaId && doca.doca === solicitacao.doca,
   );
@@ -581,7 +582,7 @@ function LogisticaPage() {
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">Selecione a unidade</option>
-                  {[...new Set(docas.map((doca) => doca.lojaId))].map((lojaId) => (
+                  {LOJAS_AGENDAMENTO_PERMITIDAS.filter((lojaId) => docasPermitidas.some((doca) => doca.lojaId === lojaId)).map((lojaId) => (
                     <option key={lojaId} value={lojaId}>{nomeLoja(lojaId)}</option>
                   ))}
                 </select>

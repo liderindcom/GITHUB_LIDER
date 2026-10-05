@@ -10,6 +10,8 @@ export const GRUPOS_REFORCO: Record<number, string[]> = {
   8: ["057"],
 };
 
+export const LOJAS_AGENDAMENTO_PERMITIDAS = ["201", "203"] as const;
+
 const DIA_FATURAMENTO_POR_GRUPO: Record<number, number> = {
   1: 2,
   2: 3,
