@@ -203,6 +203,7 @@ export const globalDbCache: {
     tipo: string;
     horaInicio: string;
     horaFim: string;
+    diasUteis?: string;
   }> | null;
   conciliacao: Array<{
     id: string;

@@ -41,6 +41,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { usePortal } from "@/context/portal-context";
+import { prefetchVendasAnual } from "@/lib/vendas-anual-cache";
 
 const itens = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -78,11 +79,24 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
-  const { fornecedor, sair, usuarioInterno, usuarioFornecedor } = usePortal();
+  const {
+    fornecedor,
+    sair,
+    usuarioInterno,
+    usuarioFornecedor,
+    codigoFornecedorAtivo,
+    dadosFornecedorVersao,
+  } = usePortal();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    void prefetchVendasAnual(codigoFornecedorAtivo, dadosFornecedorVersao).catch((erro) => {
+      console.error("Erro ao pré-carregar vendas anual do fornecedor:", erro);
+    });
+  }, [codigoFornecedorAtivo, dadosFornecedorVersao]);
 
   const displayNome = mounted ? fornecedor.nome : "Carregando fornecedor...";
   const displayCodigo = mounted ? fornecedor.codigo : "—";

@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarCheck, CalendarDays, ExternalLink, Truck } from "lucide-react";
+import { CalendarCheck, CalendarDays, ExternalLink, Mail, Truck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { fetchItensNfe } from "@/api";
+import { fetchItensNfe, submitSolicitacaoAgendamento } from "@/api";
 
 import { AgendaEntradaCalendario } from "@/components/agenda-entrada";
 import { PortalLayout } from "@/components/portal-layout";
@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePortal } from "@/context/portal-context";
 import { brl, dataBR, numero } from "@/lib/format";
+import { faturamentoBloqueiaData } from "@/lib/reforco-faturamento";
 import {
   globalDbCache,
   lojaPorCodigo,
@@ -87,12 +88,28 @@ const dentroDaJanela = (raw?: string | null) => {
   return iso >= corteJanelaIso();
 };
 
-type AbaLogistica = "fila" | "agenda";
+const DIAS_NUMERO = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+function diaDocaHabilitado(dias: string | undefined, data: string) {
+  if (!dias || !data) return true;
+  const dia = new Date(`${data}T12:00:00`).getDay();
+  const texto = dias.toLowerCase();
+  return texto.includes(String(dia === 0 ? 7 : dia)) || texto.includes(DIAS_NUMERO[dia].toLowerCase());
+}
+
+function somarHoras(hora: string, horas: number) {
+  const [h, m] = hora.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+  const total = h * 60 + m + horas * 60;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+type AbaLogistica = "fila" | "agenda" | "solicitar";
 
 export const Route = createFileRoute("/_portal/logistica")({
   validateSearch: (search: Record<string, unknown>): { aba?: AbaLogistica } => {
     const aba = search["aba"];
-    if (aba === "agenda" || aba === "fila") return { aba };
+    if (aba === "agenda" || aba === "fila" || aba === "solicitar") return { aba };
     return {};
   },
   head: () => ({
@@ -222,11 +239,84 @@ function LogisticaPage() {
   const { dadosFornecedorVersao } = usePortal();
   const { aba } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const abaAtual: AbaLogistica = aba === "agenda" ? "agenda" : "fila";
+  const abaAtual: AbaLogistica = aba === "agenda" ? "agenda" : aba === "solicitar" ? "solicitar" : "fila";
   const [tipo, setTipo] = useState<TipoFila>("todos");
   const [selecionado, setSelecionado] = useState<SelecionadoFila | null>(null);
   const [filtrosTabela, setFiltrosTabela] = useState<Record<string, string>>({});
   const [ordenacao, setOrdenacao] = useState<{ campo: keyof LinhaLogistica; asc: boolean }>({ campo: "dataIso", asc: false });
+  const [solicitacao, setSolicitacao] = useState({
+    lojaId: "",
+    doca: "",
+    data: "",
+    horaInicio: "",
+    tipoCarga: "paletizada" as "paletizada" | "batida",
+    paletes: "",
+    secoes: "",
+    numeroNota: "",
+    chaveNfe: "",
+    observacoes: "",
+  });
+  const [enviandoSolicitacao, setEnviandoSolicitacao] = useState(false);
+
+  const docas = globalDbCache.docas ?? [];
+  const docasDaLoja = docas.filter((doca) => !solicitacao.lojaId || doca.lojaId === solicitacao.lojaId);
+  const docaSelecionada = docas.find(
+    (doca) => doca.lojaId === solicitacao.lojaId && doca.doca === solicitacao.doca,
+  );
+  const paletes = Number(solicitacao.paletes) || 0;
+  const portasNecessarias = paletes >= 24 ? 2 : 1;
+  const duracaoHoras = solicitacao.tipoCarga === "paletizada" ? 2 : 4;
+  const horaFimCalculada = somarHoras(solicitacao.horaInicio, duracaoHoras);
+
+  const enviarSolicitacao = async () => {
+    if (!solicitacao.lojaId || !solicitacao.doca || !solicitacao.data || !solicitacao.horaInicio || !paletes) {
+      toast.error("Preencha loja, doca, data, horário e quantidade de paletes.");
+      return;
+    }
+    if (!diaDocaHabilitado(docaSelecionada?.diasUteis, solicitacao.data)) {
+      toast.error("A doca selecionada não recebe nessa data.");
+      return;
+    }
+    const secoes = solicitacao.secoes.split(",").map((secao) => secao.trim()).filter(Boolean);
+    const gruposBloqueados = faturamentoBloqueiaData(secoes, solicitacao.data);
+    if (gruposBloqueados.length) {
+      toast.error(`Não é possível solicitar recebimento nessa data: faturamento do grupo ${gruposBloqueados.join(", ")}.`);
+      return;
+    }
+    if (docaSelecionada?.horaFim && horaFimCalculada > docaSelecionada.horaFim) {
+      toast.error("A duração da carga ultrapassa o horário da doca.");
+      return;
+    }
+    setEnviandoSolicitacao(true);
+    try {
+      const resultado = await submitSolicitacaoAgendamento({
+        data: {
+          lojaId: solicitacao.lojaId,
+          doca: solicitacao.doca,
+          dataSolicitada: solicitacao.data,
+          horaInicio: solicitacao.horaInicio,
+          horaFim: horaFimCalculada,
+          tipoCarga: solicitacao.tipoCarga,
+          paletes,
+          portas: portasNecessarias,
+          secoes,
+          numeroNota: solicitacao.numeroNota,
+          chaveNfe: solicitacao.chaveNfe,
+          observacoes: solicitacao.observacoes,
+        },
+      });
+      if (resultado.emailEnviado) {
+        toast.success("Solicitação enviada para a logística", { description: `Protocolo ${resultado.id}` });
+      } else {
+        toast.warning("Solicitação registrada, mas o e-mail não foi enviado", { description: resultado.erroEmail });
+      }
+      setSolicitacao((atual) => ({ ...atual, numeroNota: "", chaveNfe: "", observacoes: "" }));
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível enviar a solicitação.");
+    } finally {
+      setEnviandoSolicitacao(false);
+    }
+  };
 
   const nfes = useMemo(
     () => (globalDbCache.nfePendentes ?? []).filter((n) => dentroDaJanela(n.agendaPrevisao)),
@@ -343,12 +433,15 @@ function LogisticaPage() {
         }}
         className="space-y-4"
       >
-        <TabsList className="grid w-full max-w-[360px] grid-cols-2">
+        <TabsList className="grid w-full max-w-[520px] grid-cols-3">
           <TabsTrigger value="fila" className="gap-1.5">
             <Truck className="size-3.5" /> Fila de entrada
           </TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5">
             <CalendarDays className="size-3.5" /> Agenda
+          </TabsTrigger>
+          <TabsTrigger value="solicitar" className="gap-1.5">
+            <Mail className="size-3.5" /> Solicitar recebimento
           </TabsTrigger>
         </TabsList>
 
@@ -462,6 +555,94 @@ function LogisticaPage() {
 
         <TabsContent value="agenda">
           <AgendaEntradaCalendario />
+        </TabsContent>
+
+        <TabsContent value="solicitar" className="space-y-4">
+          <Card className="shadow-panel">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Mail className="size-4 text-primary" /> Solicitação de recebimento
+              </CardTitle>
+              <CardDescription>
+                A solicitação será enviada para agendamento.lider@lidernet.com.br e ficará pendente de confirmação.
+                O Portal preserva quatro portas para emergências.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Loja/CDAM</span>
+                <select
+                  value={solicitacao.lojaId}
+                  onChange={(evento) => setSolicitacao((atual) => ({ ...atual, lojaId: evento.target.value, doca: "" }))}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Selecione a unidade</option>
+                  {[...new Set(docas.map((doca) => doca.lojaId))].map((lojaId) => (
+                    <option key={lojaId} value={lojaId}>{nomeLoja(lojaId)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Porta</span>
+                <select
+                  value={solicitacao.doca}
+                  onChange={(evento) => setSolicitacao((atual) => ({ ...atual, doca: evento.target.value }))}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  disabled={!solicitacao.lojaId}
+                >
+                  <option value="">Selecione a porta</option>
+                  {docasDaLoja.map((doca) => (
+                    <option key={`${doca.lojaId}-${doca.doca}`} value={doca.doca}>
+                      {doca.doca} · {doca.horaInicio}–{doca.horaFim}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Data desejada</span>
+                <Input type="date" value={solicitacao.data} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, data: evento.target.value }))} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Horário inicial</span>
+                <Input type="time" value={solicitacao.horaInicio} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, horaInicio: evento.target.value }))} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Tipo de carga</span>
+                <select value={solicitacao.tipoCarga} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, tipoCarga: evento.target.value as "paletizada" | "batida" }))} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="paletizada">Paletizada · 2 horas</option>
+                  <option value="batida">Batida · 4 horas</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Quantidade de paletes</span>
+                <Input type="number" min="1" value={solicitacao.paletes} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, paletes: evento.target.value }))} placeholder="Ex.: 12 ou 24" />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Número da NF</span>
+                <Input value={solicitacao.numeroNota} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, numeroNota: evento.target.value }))} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="font-medium">Chave NF-e</span>
+                <Input value={solicitacao.chaveNfe} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, chaveNfe: evento.target.value }))} maxLength={44} />
+              </label>
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span className="font-medium">Seções da carga</span>
+                <Input value={solicitacao.secoes} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, secoes: evento.target.value }))} placeholder="Ex.: 001, 004, 021" />
+                <span className="text-xs text-muted-foreground">Informe os códigos das seções para evitar recebimento em dia de faturamento.</span>
+              </label>
+              <label className="space-y-1 text-sm md:col-span-2">
+                <span className="font-medium">Observações</span>
+                <Input value={solicitacao.observacoes} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, observacoes: evento.target.value }))} placeholder="Transportadora, veículo ou outras informações" />
+              </label>
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm md:col-span-2">
+                <p><strong>Resumo:</strong> {solicitacao.tipoCarga === "paletizada" ? "2" : "4"} horas · {portasNecessarias} porta(s) · término previsto {horaFimCalculada || "—"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">A disponibilidade final e o conflito com o Reforço de Faturamento serão confirmados pela logística.</p>
+              </div>
+              <Button type="button" onClick={() => void enviarSolicitacao()} disabled={enviandoSolicitacao} className="gap-2 md:col-span-2">
+                <Mail className="size-4" /> {enviandoSolicitacao ? "Enviando..." : "Enviar solicitação"}
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

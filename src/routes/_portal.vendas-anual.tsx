@@ -12,13 +12,14 @@ import {
   YAxis,
 } from "recharts";
 
-import { fetchVendasAnual, type VendasAnualDB } from "@/api";
+import type { VendasAnualDB } from "@/api";
 import { PortalLayout } from "@/components/portal-layout";
 import { TableColumnHeader } from "@/components/table-column-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePortal } from "@/context/portal-context";
 import { brl, numero, percentual } from "@/lib/format";
+import { prefetchVendasAnual } from "@/lib/vendas-anual-cache";
 
 export const Route = createFileRoute("/_portal/vendas-anual")({
   head: () => ({
@@ -144,7 +145,7 @@ function VendasAnualPage() {
   useEffect(() => {
     let ativo = true;
     setErro(null);
-    fetchVendasAnual({ data: codigoFornecedorAtivo })
+    prefetchVendasAnual(codigoFornecedorAtivo, dadosFornecedorVersao)
       .then((payload) => {
         if (ativo) setDados(payload);
       })

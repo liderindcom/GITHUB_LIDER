@@ -8,6 +8,7 @@ import { USUARIOS_FORNECEDOR_MAX } from "@/lib/usuarios-fornecedor";
 import { db } from "./server/db";
 import nodemailer from "nodemailer";
 import { faturasDoFornecedor } from "@/lib/mock-data";
+import { faturamentoBloqueiaData } from "@/lib/reforco-faturamento";
 import {
   DESCONTO_ACESSO_PORTAL_PCT,
   segmentoIntelider,
@@ -1563,6 +1564,7 @@ export type DocaDB = {
   tipo: string;
   horaInicio: string;
   horaFim: string;
+  diasUteis?: string;
 };
 
 export const fetchNfePendentes = createServerFn({ method: "GET" })
@@ -1585,10 +1587,186 @@ export const fetchDocas = createServerFn({ method: "GET" }).handler(async () => 
   if (!tabelaExiste("docas")) return [] as DocaDB[];
   return db
     .prepare(
-      `SELECT lojaId, doca, tipo, horaInicio, horaFim FROM docas WHERE horaInicio <> '' ORDER BY lojaId, doca`,
+      `SELECT lojaId, doca, tipo, horaInicio, horaFim, diasUteis FROM docas WHERE horaInicio <> '' ORDER BY lojaId, doca`,
     )
     .all() as DocaDB[];
 });
+
+export type SolicitacaoAgendamentoDB = {
+  id: string;
+  fornecedorCodigo: string;
+  lojaId: string;
+  doca: string;
+  dataSolicitada: string;
+  horaInicio: string;
+  horaFim: string;
+  tipoCarga: "paletizada" | "batida";
+  paletes: number;
+  portas: number;
+  status: string;
+  criadoEm: string;
+};
+
+function ensureSolicitacoesAgendamento() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS solicitacoes_agendamento (
+      id TEXT PRIMARY KEY,
+      fornecedorCodigo TEXT NOT NULL,
+      numeroNota TEXT,
+      chaveNfe TEXT,
+      lojaId TEXT NOT NULL,
+      doca TEXT NOT NULL,
+      dataSolicitada TEXT NOT NULL,
+      horaInicio TEXT NOT NULL,
+      horaFim TEXT NOT NULL,
+      tipoCarga TEXT NOT NULL,
+      paletes INTEGER NOT NULL,
+      portas INTEGER NOT NULL,
+      prioridade TEXT,
+      secoes TEXT,
+      observacoes TEXT,
+      status TEXT NOT NULL DEFAULT 'Pendente de confirmação',
+      criadoEm TEXT NOT NULL,
+      enviadoEm TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_solicitacoes_agendamento_fornecedor
+      ON solicitacoes_agendamento (fornecedorCodigo, criadoEm);
+  `);
+  try {
+    db.exec("ALTER TABLE solicitacoes_agendamento ADD COLUMN secoes TEXT;");
+  } catch {
+    /* coluna já existe */
+  }
+}
+
+export const submitSolicitacaoAgendamento = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      lojaId: string;
+      doca: string;
+      dataSolicitada: string;
+      horaInicio: string;
+      horaFim: string;
+      tipoCarga: "paletizada" | "batida";
+      paletes: number;
+      portas: number;
+      secoes?: string[];
+      numeroNota?: string;
+      chaveNfe?: string;
+      observacoes?: string;
+    }) => ({
+      ...data,
+      lojaId: String(data.lojaId).trim(),
+      doca: String(data.doca).trim(),
+      dataSolicitada: String(data.dataSolicitada).trim(),
+      horaInicio: String(data.horaInicio).trim(),
+      horaFim: String(data.horaFim).trim(),
+      tipoCarga: data.tipoCarga === "paletizada" ? "paletizada" : "batida",
+      paletes: Math.max(0, Math.floor(Number(data.paletes) || 0)),
+      portas: Math.max(1, Math.min(2, Math.floor(Number(data.portas) || 1))),
+      secoes: Array.isArray(data.secoes) ? data.secoes.map((secao) => String(secao).trim()).filter(Boolean) : [],
+      numeroNota: String(data.numeroNota ?? "").trim(),
+      chaveNfe: String(data.chaveNfe ?? "").trim(),
+      observacoes: String(data.observacoes ?? "").trim(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const sessao = exigirSessaoFornecedor();
+    if (!data.lojaId || !data.doca || !data.dataSolicitada || !data.horaInicio || !data.horaFim) {
+      throw new Error("Preencha loja, doca, data e horário da solicitação.");
+    }
+    const gruposBloqueados = faturamentoBloqueiaData(data.secoes, data.dataSolicitada);
+    if (gruposBloqueados.length) {
+      throw new Error(`A data escolhida coincide com faturamento das seções do grupo ${gruposBloqueados.join(", ")}. Escolha outra data.`);
+    }
+    ensureSolicitacoesAgendamento();
+
+    const fornecedor = db
+      .prepare("SELECT nome FROM fornecedores WHERE codigo = ?")
+      .get(sessao.codigo) as { nome?: string } | undefined;
+    const solicitante = lerSessaoPortal()?.usuarioEmail || "não identificado";
+    const id = `agendamento-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const criadoEm = new Date().toISOString();
+    const prioridade = "Aguardando análise de estoque e reforço de faturamento";
+    const assunto = `[Solicitação de agendamento] ${fornecedor?.nome || sessao.codigo} · ${data.dataSolicitada}`;
+    const texto = [
+      "Solicitação de agendamento de recebimento.",
+      `Fornecedor: ${fornecedor?.nome || sessao.codigo} (${sessao.codigo})`,
+      `Solicitante: ${solicitante}`,
+      `Loja: ${data.lojaId}`,
+      `Doca: ${data.doca}`,
+      `Data: ${data.dataSolicitada}`,
+      `Horário solicitado: ${data.horaInicio}–${data.horaFim}`,
+      `Carga: ${data.tipoCarga === "paletizada" ? "Paletizada" : "Batida"}`,
+      `Paletes: ${data.paletes}`,
+      `Portas necessárias: ${data.portas}`,
+      `Seções: ${data.secoes.length ? data.secoes.join(", ") : "não informadas"}`,
+      `NF: ${data.numeroNota || "não informada"}`,
+      `Chave NF-e: ${data.chaveNfe || "não informada"}`,
+      `Observações: ${data.observacoes || "—"}`,
+      "Status: pendente de confirmação da logística.",
+    ].join("\n");
+
+    db.prepare(
+      `INSERT INTO solicitacoes_agendamento
+       (id, fornecedorCodigo, numeroNota, chaveNfe, lojaId, doca, dataSolicitada,
+        horaInicio, horaFim, tipoCarga, paletes, portas, prioridade, secoes, observacoes,
+        status, criadoEm)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendente de confirmação', ?)`,
+    ).run(
+      id,
+      sessao.codigo,
+      data.numeroNota,
+      data.chaveNfe,
+      data.lojaId,
+      data.doca,
+      data.dataSolicitada,
+      data.horaInicio,
+      data.horaFim,
+      data.tipoCarga,
+      data.paletes,
+      data.portas,
+      prioridade,
+      JSON.stringify(data.secoes),
+      data.observacoes,
+      criadoEm,
+    );
+
+    let emailEnviado = false;
+    let erroEmail: string | undefined;
+    try {
+      const from = process.env["SMTP_FROM"] || "portal@lidernet.com.br";
+      const transporter = nodemailer.createTransport({
+        host: process.env["SMTP_HOST"] || "localhost",
+        port: parseInt(process.env["SMTP_PORT"] || "587", 10),
+        secure: process.env["SMTP_SECURE"] === "true",
+        auth:
+          process.env["SMTP_USER"] && process.env["SMTP_PASS"]
+            ? { user: process.env["SMTP_USER"], pass: process.env["SMTP_PASS"] }
+            : undefined,
+        tls: { rejectUnauthorized: false },
+      });
+      const recipients = ["agendamento.lider@lidernet.com.br"];
+      if (solicitante.includes("@")) recipients.push(solicitante);
+      await transporter.sendMail({
+        from: `Portal do Fornecedor <${from}>`,
+        to: recipients.join(", "),
+        subject: assunto,
+        text: texto,
+      });
+      emailEnviado = true;
+      db.prepare("UPDATE solicitacoes_agendamento SET enviadoEm = ?, status = ? WHERE id = ?").run(
+        new Date().toISOString(),
+        "Solicitação enviada · aguardando confirmação",
+        id,
+      );
+    } catch (erro) {
+      erroEmail = erro instanceof Error ? erro.message : "Falha SMTP";
+      console.error("Falha ao enviar solicitação de agendamento:", erro);
+    }
+
+    return { id, emailEnviado, erroEmail, status: emailEnviado ? "Solicitação enviada · aguardando confirmação" : "Pendente de envio" };
+  });
 
 export type ConciliacaoItemDB = {
   id: string;
