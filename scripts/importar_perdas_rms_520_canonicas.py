@@ -118,8 +118,9 @@ def origem():
         # consulta válida seja interrompida por ORA-00028.
         print(f"consulta_dia={inicio}", flush=True)
         for tentativa in range(1, 4):
-            oracle = connect()
+            oracle = None
             try:
+                oracle = connect()
                 cursor = oracle.cursor()
                 cursor.arraysize = 10_000
                 cursor.execute(SQL_TEMPLATE.format(
@@ -155,7 +156,8 @@ def origem():
                 time.sleep(2)
             finally:
                 try:
-                    oracle.close()
+                    if oracle is not None:
+                        oracle.close()
                 except Exception:
                     pass
 
@@ -176,6 +178,8 @@ CREATE TABLE IF NOT EXISTS perdas_rms_520_controle (
   chave TEXT PRIMARY KEY, loteCarga TEXT NOT NULL, registros INTEGER NOT NULL,
   origem TEXT NOT NULL, atualizadoEm TEXT NOT NULL
 );
+ALTER TABLE perdas_rms_520_canonicas ADD COLUMN IF NOT EXISTS numeronota TEXT NOT NULL DEFAULT '';
+ALTER TABLE perdas_rms_520_canonicas ADD COLUMN IF NOT EXISTS serie TEXT NOT NULL DEFAULT '';
 """
 
 
@@ -197,21 +201,21 @@ def main() -> int:
             cur.execute(DDL)
             cur.executemany(
                 """INSERT INTO perdas_rms_520_canonicas
-                   (loteCarga, fornecedorCodigo, lojaId, lojaNome, numeroNota, serie,
-                    sku, produtoDescricao, quantidade, valorUnitario, valorTotal, data,
-                    ocorrencias, carregadoEm)
+                   (lotecarga, fornecedorcodigo, lojaid, lojanome, numeronota, serie,
+                    sku, produtodescricao, quantidade, valorunitario, valortotal, data,
+                    ocorrencias, carregadoem)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                 [(lot, *row, now) for row in rows],
             )
-            cur.execute("SELECT COUNT(*) FROM perdas_rms_520_canonicas WHERE loteCarga = %s", (lot,))
+            cur.execute("SELECT COUNT(*) FROM perdas_rms_520_canonicas WHERE lotecarga = %s", (lot,))
             inserted = cur.fetchone()[0]
             if inserted != len(rows):
                 raise RuntimeError(f"lote incompleto: RMS={len(rows)} PostgreSQL={inserted}")
             cur.execute(
-                """INSERT INTO perdas_rms_520_controle (chave, loteCarga, registros, origem, atualizadoEm)
+                """INSERT INTO perdas_rms_520_controle (chave, lotecarga, registros, origem, atualizadoem)
                    VALUES ('ativo', %s, %s, 'RMS Agenda 520', %s)
-                   ON CONFLICT (chave) DO UPDATE SET loteCarga = EXCLUDED.loteCarga,
-                     registros = EXCLUDED.registros, origem = EXCLUDED.origem, atualizadoEm = EXCLUDED.atualizadoEm""",
+                   ON CONFLICT (chave) DO UPDATE SET lotecarga = EXCLUDED.lotecarga,
+                     registros = EXCLUDED.registros, origem = EXCLUDED.origem, atualizadoem = EXCLUDED.atualizadoem""",
                 (lot, inserted, now),
             )
     print(f"lote_canonico={lot} registros={inserted}")
