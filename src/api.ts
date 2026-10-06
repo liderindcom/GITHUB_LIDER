@@ -645,8 +645,17 @@ export const fetchPerdas = createServerFn({ method: "GET" })
     inicioJanela.setDate(1);
     inicioJanela.setMonth(inicioJanela.getMonth() - 12);
     const inicioJanelaIso = `${inicioJanela.getFullYear()}-${String(inicioJanela.getMonth() + 1).padStart(2, "0")}-01`;
-    const numeroNotaSql = colunaExiste("perdas", "numeroNota") ? "d.numeroNota" : "NULL";
-    const serieSql = colunaExiste("perdas", "serie") ? "d.serie" : "NULL";
+
+    // O lote canônico é o espelho validado da Agenda 520. Enquanto ele não
+    // estiver carregado, mantemos a leitura compatível com a tabela legada.
+    const temLoteCanonico = tabelaExiste("perdas_rms_520_canonicas") && tabelaExiste("perdas_rms_520_controle")
+      && Boolean(db.prepare("SELECT 1 FROM perdas_rms_520_controle WHERE chave = ? LIMIT 1").get("ativo"));
+    const tabela = temLoteCanonico ? "perdas_rms_520_canonicas" : "perdas";
+    const numeroNotaSql = temLoteCanonico || colunaExiste("perdas", "numeroNota") ? "d.numeroNota" : "NULL";
+    const serieSql = temLoteCanonico || colunaExiste("perdas", "serie") ? "d.serie" : "NULL";
+    const loteJoin = temLoteCanonico
+      ? "JOIN perdas_rms_520_controle c ON c.chave = 'ativo' AND c.loteCarga = d.loteCarga"
+      : "";
     const stmt = db.prepare(
       `SELECT d.*,
               d.fornecedorCodigo AS "fornecedorCodigo",
@@ -660,7 +669,8 @@ export const fetchPerdas = createServerFn({ method: "GET" })
               d.data AS "data",
               d.ocorrencias AS "ocorrencias",
               ${numeroNotaSql} AS "numeroNota", ${serieSql} AS "serie"
-        FROM perdas d
+        FROM ${tabela} d
+        ${loteJoin}
         WHERE d.fornecedorCodigo = ?
           AND d.data >= ?
           AND d.lojaId NOT IN (${sqlLojasForaPortal})`,

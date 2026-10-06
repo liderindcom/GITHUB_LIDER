@@ -22,6 +22,22 @@ from run_portal_fornecedor_dados_mestres_readonly import connect  # noqa: E402
 ROOT = Path("/lider/portal-fornecedor")
 ENV = ROOT / ".env.postgres"
 JERONIMO_LOC = (132, 450, 469, 493, 515, 523, 531, 566, 574, 582, 639, 647, 710, 736, 752, 760, 779, 809, 817, 841, 850, 868, 876, 884, 892, 906, 914, 922)
+
+
+def janela_13_meses() -> tuple[int, int]:
+    """Retorna o primeiro dia do mês de 12 meses atrás e o fim do mês atual."""
+    hoje = date.today()
+    ano = hoje.year
+    mes = hoje.month - 12
+    while mes <= 0:
+        ano -= 1
+        mes += 12
+    inicio = date(ano, mes, 1)
+    fim = date(hoje.year, hoje.month, calendar.monthrange(hoje.year, hoje.month)[1])
+    return int(inicio.strftime("1%y%m%d")), int(fim.strftime("1%y%m%d"))
+
+
+INICIO_RMS, FIM_RMS = janela_13_meses()
 SQL = """
 SELECT f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE, f.DIG_COD_ITEM,
        i.GIT_COD_FOR, i.GIT_DESCRICAO,
@@ -29,11 +45,11 @@ SELECT f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE, f.DIG_COD_ITEM,
 FROM RMS.AG1CDFAT f
 JOIN RMS.AA3CITEM i ON i.GIT_COD_ITEM = f.DIG_COD_ITEM
 WHERE f.DIG_AGENDA = 520
-  AND f.DIG_DATA BETWEEN 1130101 AND 1261231
+  AND f.DIG_DATA BETWEEN {inicio} AND {fim}
   AND f.DIG_LOJA NOT IN ({locais})
 GROUP BY f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE,
          f.DIG_COD_ITEM, i.GIT_COD_FOR, i.GIT_DESCRICAO
-""".format(locais=", ".join(str(item) for item in JERONIMO_LOC))
+""".format(inicio=INICIO_RMS, fim=FIM_RMS, locais=", ".join(str(item) for item in JERONIMO_LOC))
 
 
 def postgres_url() -> str:
@@ -114,6 +130,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="grava novo lote canônico")
     args = parser.parse_args()
+    print(f"janela_13_meses={INICIO_RMS}-{FIM_RMS}")
     rows = list(origem())
     if not rows:
         raise SystemExit("RMS não retornou perdas válidas da Agenda 520")
