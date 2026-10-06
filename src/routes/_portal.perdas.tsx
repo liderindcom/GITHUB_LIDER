@@ -60,13 +60,13 @@ function PerdasPage() {
   };
 
   const mesesDisponiveis = useMemo(() => {
-    const set = new Set<string>([mesCorrente]);
-    for (const p of perdas) {
-      const mes = (p.data || "").slice(0, 7);
-      if (/^\d{4}-\d{2}$/.test(mes)) set.add(mes);
-    }
-    return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
-  }, [dadosFornecedorVersao, mesCorrente]);
+    const referencia = new Date(`${mesCorrente}-01T00:00:00`);
+    return Array.from({ length: 13 }, (_, indice) => {
+      const mes = new Date(referencia);
+      mes.setMonth(referencia.getMonth() - indice);
+      return `${mes.getFullYear()}-${String(mes.getMonth() + 1).padStart(2, "0")}`;
+    });
+  }, [mesCorrente, dadosFornecedorVersao]);
 
   const perdasDoMes = useMemo(
     () => perdas.filter((p) => (p.data || "").slice(0, 7) === mesSelecionado),
