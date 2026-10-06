@@ -16,12 +16,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 import psycopg
-
-sys.path.insert(0, "/home/administrador/rms/scripts")
-# O Oracle Client está instalado no servidor, mas suas dependências nativas
-# precisam estar no caminho dinâmico quando o carregador é executado manualmente.
-os.environ.setdefault("LD_LIBRARY_PATH", "/home/administrador/instantclient_19_25")
-from run_portal_fornecedor_dados_mestres_readonly import connect  # noqa: E402
+import oracledb
 
 ROOT = Path("/lider/portal-fornecedor")
 ENV = ROOT / ".env.postgres"
@@ -43,16 +38,23 @@ def janela_13_meses() -> tuple[int, int]:
 
 INICIO_RMS, FIM_RMS = janela_13_meses()
 SQL_TEMPLATE = """
-SELECT f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE, f.DIG_COD_ITEM,
-       i.GIT_COD_FOR, i.GIT_DESCRICAO,
-       SUM(f.DIG_QTD_FAT), SUM(f.DIG_QTD_FAT * NVL(i.GIT_CUS_MED, 0)), COUNT(*)
-FROM RMS.AG1CDFAT f
-JOIN RMS.AA3CITEM i ON i.GIT_COD_ITEM = f.DIG_COD_ITEM
-WHERE f.DIG_AGENDA = 520
-  AND f.DIG_DATA BETWEEN {inicio} AND {fim}
-  AND f.DIG_LOJA NOT IN ({locais})
-GROUP BY f.DIG_DATA, f.DIG_LOJA, f.DIG_NUM_NFF_PDV, f.DIG_SERIE,
-         f.DIG_COD_ITEM, i.GIT_COD_FOR, i.GIT_DESCRICAO
+SELECT i.I_AG520_DTAGEN, i.I_AG520_CODFORN, i.I_AG520_FORNECEDOR,
+       i.I_AG520_CODORIG, i.I_AG520_NFISCAL, i.I_AG520_SERIE,
+       TO_NUMBER(i.I_AG520_CODIGO || i.I_AG520_DIGITO), i.I_AG520_DESCRICAO,
+       MAX(TRIM(n.N_AG520_ORIGEM)),
+       SUM(i.I_AG520_QTDE), SUM(i.I_AG520_CUSTO), SUM(i.I_AG520_SUBTOTAL), COUNT(*)
+FROM CONSULTA.TB_AG520_ITENS i
+LEFT JOIN CONSULTA.TB_AG520_NF n
+  ON n.N_AG520_DTAGEN = i.I_AG520_DTAGEN
+ AND n.N_AG520_NFISCAL = i.I_AG520_NFISCAL
+ AND n.N_AG520_SERIE = i.I_AG520_SERIE
+ AND n.N_AG520_CODFORN = i.I_AG520_CODFORN
+ AND n.N_AG520_CODORIG = i.I_AG520_CODORIG
+WHERE i.I_AG520_AGENDA = 520
+  AND i.I_AG520_DTAGEN BETWEEN {inicio} AND {fim}
+GROUP BY i.I_AG520_DTAGEN, i.I_AG520_CODFORN, i.I_AG520_FORNECEDOR,
+         i.I_AG520_CODORIG, i.I_AG520_NFISCAL, i.I_AG520_SERIE,
+         i.I_AG520_CODIGO, i.I_AG520_DIGITO, i.I_AG520_DESCRICAO
 """
 
 
@@ -67,19 +69,6 @@ def janelas_rms_13_meses() -> list[tuple[int, int]]:
         fim = date(ano, mes, calendar.monthrange(ano, mes)[1])
         janelas.append((int(inicio.strftime("1%y%m%d")), int(fim.strftime("1%y%m%d"))))
     return janelas
-
-
-def dias_rms_13_meses() -> list[tuple[int, int]]:
-    inicio_rms, fim_rms = janelas_rms_13_meses()[0][0], janelas_rms_13_meses()[-1][1]
-    inicio = date(2000 + int(str(inicio_rms)[1:3]), int(str(inicio_rms)[3:5]), int(str(inicio_rms)[5:7]))
-    fim = date(2000 + int(str(fim_rms)[1:3]), int(str(fim_rms)[3:5]), int(str(fim_rms)[5:7]))
-    dias: list[tuple[int, int]] = []
-    atual = inicio
-    while atual <= fim:
-        encoded = int(atual.strftime("1%y%m%d"))
-        dias.append((encoded, encoded))
-        atual = date.fromordinal(atual.toordinal() + 1)
-    return dias
 
 
 def postgres_url() -> str:
@@ -111,42 +100,72 @@ def parse_rms7(raw: object) -> str | None:
     return date(year, month, min(max(day, 1), calendar.monthrange(year, month)[1])).isoformat()
 
 
+def normalizar_fornecedor(raw: object) -> str:
+    """TB_AG520 traz o código com dígito; o Portal usa o código fiscal base."""
+    text = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if len(text) >= 2:
+        base = text[:-1]
+        peso, soma = 2, 0
+        for char in reversed(base):
+            soma += int(char) * peso
+            peso = 2 if peso == 9 else peso + 1
+        dv = 0 if soma % 11 < 2 else 11 - soma % 11
+        if str(dv) == text[-1]:
+            return base
+    return text
+
+
+def connect_cometnet():
+    """Conexão de leitura usada pelo CometNet para as tabelas consolidadas."""
+    try:
+        oracledb.init_oracle_client(lib_dir="/home/administrador/instantclient_19_25")
+    except oracledb.ProgrammingError:
+        # O carregador abre uma sessão curta por dia para reduzir o impacto
+        # do Resource Manager do Oracle.
+        pass
+    return oracledb.connect(
+        user=os.environ.get("COMETNET_ORACLE_USER", "DESEN"),
+        password=os.environ.get("COMETNET_ORACLE_PASSWORD", "DESEN56"),
+        host=os.environ.get("COMETNET_ORACLE_HOST", "10.15.2.26"),
+        port=int(os.environ.get("COMETNET_ORACLE_PORT", "1521")),
+        sid=os.environ.get("COMETNET_ORACLE_SID", "RMSPRD"),
+    )
+
+
 def origem():
-    for inicio, fim in dias_rms_13_meses():
-        # O Resource Manager do Oracle encerra sessões que acumulam muitas
-        # consultas de histórico. Uma sessão curta por dia evita que uma
-        # consulta válida seja interrompida por ORA-00028.
-        print(f"consulta_dia={inicio}", flush=True)
+    for inicio, fim in janelas_rms_13_meses():
+        print(f"consulta_mes={inicio}-{fim}", flush=True)
         for tentativa in range(1, 4):
             oracle = None
             try:
-                oracle = connect()
+                oracle = connect_cometnet()
                 cursor = oracle.cursor()
                 cursor.arraysize = 10_000
                 cursor.execute(SQL_TEMPLATE.format(
                     inicio=inicio,
                     fim=fim,
-                    locais=", ".join(str(item) for item in JERONIMO_LOC),
                 ))
                 linhas_dia = []
                 while rows := cursor.fetchmany(10_000):
                     linhas_dia.extend(rows)
-                for raw_date, store, nota, serie, item, supplier, description, quantity, amount, occurrences in linhas_dia:
+                for raw_date, supplier, supplier_name, store, nota, serie, item, description, origin_name, quantity, unit_cost, total, occurrences in linhas_dia:
                     day = parse_rms7(raw_date)
                     if not day:
                         continue
                     try:
-                        store_n, supplier_n = int(store), int(supplier)
+                        store_n = int(store)
+                        supplier_n = normalizar_fornecedor(supplier)
                         sku = str(int(item)) if float(item).is_integer() else str(item).strip()
                     except (TypeError, ValueError):
                         continue
-                    qty, total = float(quantity or 0), float(amount or 0)
+                    qty = float(quantity or 0)
+                    total = float(total or 0)
                     yield (
-                        str(supplier_n), str(store_n), f"Loja {store_n}",
+                        supplier_n, str(store_n), (origin_name or "").strip() or f"Loja {store_n}",
                         str(nota).strip() if nota is not None else "",
                         str(serie).strip() if serie is not None else "", sku,
                         (description or "").strip() or f"PRODUTO {sku}", qty,
-                        round(total / qty, 4) if qty else 0.0, round(total, 2), day,
+                        round(float(unit_cost or 0), 4), round(total, 2), day,
                         int(occurrences or 0),
                     )
                 break
