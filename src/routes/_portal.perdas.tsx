@@ -31,7 +31,7 @@ import { mesAtualIso, rotuloMesAno } from "@/lib/pedidos-janela";
 export const Route = createFileRoute("/_portal/perdas")({
   head: () => ({
     meta: [
-      { title: "Perdas por loja | Portal do Fornecedor" },
+      { title: "Avarias operacionais por loja | Portal do Fornecedor" },
       {
         name: "description",
         content:
@@ -183,8 +183,8 @@ function PerdasPage() {
 
   return (
     <PortalLayout
-      titulo="Perdas por loja"
-      descricao="Agenda 520: perda física mensal por filial, para priorizar processo e treinamento. Total do mês por produto, sem lançamento a lançamento."
+      titulo="Avarias operacionais por loja"
+      descricao="Agenda 520: movimentação mensal por filial para avaliar a qualidade do processo e priorizar treinamento. Os valores são estimados pelo custo do RMS e não representam cobrança fiscal."
     >
       <div className="space-y-6">
         <Card className="shadow-panel border-none bg-card/60 backdrop-blur-xl">
@@ -240,7 +240,7 @@ function PerdasPage() {
           <Card className="shadow-panel border-none bg-card/60 backdrop-blur-xl">
             <CardHeader className="pb-2">
               <CardDescription className="text-xs font-medium uppercase tracking-wider">
-                Perda da visão
+                Valor estimado da avaria
               </CardDescription>
               <CardTitle className="text-2xl font-bold">{brl(prejuizoTotal)}</CardTitle>
             </CardHeader>
@@ -352,8 +352,8 @@ function PerdasPage() {
           <CardHeader className="pb-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <TrendingDown className="size-4 text-primary" /> Total do mês por produto
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <TrendingDown className="size-4 text-primary" /> Total operacional do mês por produto
                 </CardTitle>
                 <CardDescription className="text-xs">
                   {rotuloMesAno(mesSelecionado)}
@@ -408,7 +408,7 @@ function PerdasPage() {
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
                 <TableRow className="border-border bg-muted hover:bg-muted">
-                    {([["numeroNota", "NF"], ["loja", "Loja"], ["sku", "SKU"], ["produtoDescricao", "Produto"], ["quantidade", "Quantidade"], ["valorTotal", "Perda (R$)"]] as Array<[typeof ordenacaoProdutos.campo, string]>).map(([campo, titulo]) => <TableHead key={campo} className="text-xs font-semibold"><TableColumnHeader title={titulo} value={buscasProdutos[campo] ?? ""} onChange={(v) => setBuscasProdutos((atual) => ({ ...atual, [campo]: v }))} onSort={() => alterarOrdenacaoProdutos(campo)} direction={ordenacaoProdutos.campo === campo ? ordenacaoProdutos.direcao : null} /></TableHead>)}
+                    {([["numeroNota", "NF (quando houver)"], ["loja", "Loja"], ["sku", "SKU"], ["produtoDescricao", "Produto"], ["quantidade", "Quantidade"], ["valorTotal", "Custo estimado (R$)"]] as Array<[typeof ordenacaoProdutos.campo, string]>).map(([campo, titulo]) => <TableHead key={campo} className="text-xs font-semibold"><TableColumnHeader title={titulo} value={buscasProdutos[campo] ?? ""} onChange={(v) => setBuscasProdutos((atual) => ({ ...atual, [campo]: v }))} onSort={() => alterarOrdenacaoProdutos(campo)} direction={ordenacaoProdutos.campo === campo ? ordenacaoProdutos.direcao : null} /></TableHead>)}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
