@@ -7,6 +7,8 @@
 
 - A origem operacional do Portal é o RMS: `RMS.AG1CDFAT` (movimento da Agenda
   520) relacionado a `RMS.AA3CITEM` (fornecedor e descrição do item).
+- A valorização usa `AG1CDFAT.DIG_QTD_FAT × AA3CITEM.GIT_CUS_MED` (custo médio
+  na unidade de venda), nunca `DIG_PRECO` (preço de venda).
 - O recorte segue a regra observada no CometNet: fornecedor, filial, NF, série
   e item. O CometNet foi usado somente como referência funcional; o Portal não
   consulta Intelider nem as tabelas `TB_AG520_*`.
