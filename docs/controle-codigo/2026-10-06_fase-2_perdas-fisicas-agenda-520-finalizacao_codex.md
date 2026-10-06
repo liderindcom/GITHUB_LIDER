@@ -5,8 +5,11 @@
 
 ## Regra fechada
 
-- A origem segue o mesmo recorte do CometNet: Agenda 520, fornecedor, filial,
-  NF, série e item.
+- A origem operacional do Portal é o RMS: `RMS.AG1CDFAT` (movimento da Agenda
+  520) relacionado a `RMS.AA3CITEM` (fornecedor e descrição do item).
+- O recorte segue a regra observada no CometNet: fornecedor, filial, NF, série
+  e item. O CometNet foi usado somente como referência funcional; o Portal não
+  consulta Intelider nem as tabelas `TB_AG520_*`.
 - A leitura prioriza o lote canônico `perdas_rms_520_canonicas` ativo e mantém
   compatibilidade com a tabela legada `perdas` quando ainda não há lote ativo.
 - A janela exibida e carregada é de 13 meses-calendário: mês atual e os 12
