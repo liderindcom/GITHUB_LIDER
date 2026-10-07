@@ -123,9 +123,15 @@ def connect_cometnet():
         # O carregador abre uma sessão curta por dia para reduzir o impacto
         # do Resource Manager do Oracle.
         pass
+    user = os.environ.get("COMETNET_ORACLE_USER")
+    password = os.environ.get("COMETNET_ORACLE_PASSWORD")
+    if not user or not password:
+        raise RuntimeError(
+            "COMETNET_ORACLE_USER e COMETNET_ORACLE_PASSWORD devem ser configurados no ambiente"
+        )
     return oracledb.connect(
-        user=os.environ.get("COMETNET_ORACLE_USER", "DESEN"),
-        password=os.environ.get("COMETNET_ORACLE_PASSWORD", "DESEN56"),
+        user=user,
+        password=password,
         host=os.environ.get("COMETNET_ORACLE_HOST", "10.15.2.26"),
         port=int(os.environ.get("COMETNET_ORACLE_PORT", "1521")),
         sid=os.environ.get("COMETNET_ORACLE_SID", "RMSPRD"),

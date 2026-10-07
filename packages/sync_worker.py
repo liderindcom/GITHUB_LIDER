@@ -883,9 +883,13 @@ def query_oracle_rms() -> dict:
         print(f"  Erro ao inicializar cliente Oracle Thick: {e}")
         return empty
 
+    rms_user = os.environ.get("RMS_USER")
+    rms_password = os.environ.get("RMS_PASSWORD")
+    if not rms_user or not rms_password:
+        raise RuntimeError("RMS_USER e RMS_PASSWORD devem ser configurados no ambiente")
     connection_params = {
-        "user": "ISAURA",
-        "password": "PRD1Z4UR4",
+        "user": rms_user,
+        "password": rms_password,
         "host": "10.15.2.26",
         "port": 1521,
         "sid": "RMSPRD"
@@ -994,11 +998,18 @@ def query_corpore_rm() -> list:
         print("  pymssql não está instalado. Pulando...")
         return []
 
+    corpore_user = os.environ.get("CORPORE_USER")
+    corpore_password = os.environ.get("CORPORE_PASSWORD")
+    corpore_database = os.environ.get("CORPORE_DATABASE")
+    if not corpore_user or not corpore_password or not corpore_database:
+        raise RuntimeError(
+            "CORPORE_USER, CORPORE_PASSWORD e CORPORE_DATABASE devem ser configurados no ambiente"
+        )
     connection_params = {
         "server": "10.15.2.178",
-        "user": "Isaura",
-        "password": "L!der@2026",
-        "database": "CORPORE_0626",
+        "user": corpore_user,
+        "password": corpore_password,
+        "database": corpore_database,
         "port": 1433
     }
 

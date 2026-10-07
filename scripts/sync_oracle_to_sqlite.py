@@ -136,13 +136,13 @@ def main():
     except Exception as e:
         pass
         
-    user = os.environ.get("RMS_USER", "ISAURA")
-    password = os.environ.get("RMS_PASSWORD", "PRD1Z4UR4")
+    user = os.environ.get("RMS_USER")
+    password = os.environ.get("RMS_PASSWORD")
     host = os.environ.get("RMS_HOST", "10.15.2.26")
     port = int(os.environ.get("RMS_PORT", "1521"))
     sid = os.environ.get("RMS_SID", "RMSPRD")
-    if not password:
-        print("RMS_PASSWORD não definido no ambiente.", file=sys.stderr)
+    if not user or not password:
+        print("RMS_USER e RMS_PASSWORD devem ser configurados no ambiente.", file=sys.stderr)
         sys.exit(1)
     
     # Define SQLite DB path
