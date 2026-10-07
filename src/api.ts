@@ -450,7 +450,16 @@ function nomeUsuarioDoEmail(email: string, fallback: string): string {
 export const fetchFornecedor = createServerFn({ method: "GET" })
   .validator((codigo: string) => soDigitos(codigo) || String(codigo ?? "").trim())
   .handler(async ({ data: ident }) => {
-    return buscarFornecedorPorLogin(ident);
+    const sessao = lerSessaoPortal();
+    if (!sessao) throw new Error("Sessão exigida.");
+    const codigoSolicitado = resolverCodigoFornecedorDados(ident);
+    if (
+      sessao.tipo === "fornecedor" &&
+      codigoSolicitado !== resolverCodigoFornecedorDados(sessao.codigo)
+    ) {
+      throw new Error("Fornecedor não autorizado.");
+    }
+    return buscarFornecedorPorLogin(codigoSolicitado);
   });
 
 let cachedLiderAbcMap: Map<string, string> | null = null;
@@ -3987,16 +3996,8 @@ export const loginUsuarioInterno = createServerFn({ method: "POST" })
 
 export const iniciarSessaoFornecedor = createServerFn({ method: "POST" })
   .validator((data: { codigo: string }) => ({ codigo: String(data.codigo ?? "").trim() }))
-  .handler(async ({ data }) => {
-    const forn = buscarFornecedorPorLogin(data.codigo);
-    if (!forn || forn.acessoLiberado !== 1) {
-      throw new Error("Acesso não liberado.");
-    }
-    if (!vigenciaAcessoOk(forn)) {
-      throw new Error("Acesso fora do período de vigência contratado.");
-    }
-    gravarSessaoPortal("fornecedor", forn.codigo);
-    return { ok: true, codigo: forn.codigo };
+  .handler(async () => {
+    throw new Error("Login descontinuado. Use e-mail e senha.");
   });
 
 export const encerrarSessaoPortal = createServerFn({ method: "POST" }).handler(async () => {
@@ -4004,7 +4005,7 @@ export const encerrarSessaoPortal = createServerFn({ method: "POST" }).handler(a
   return { ok: true };
 });
 
-/** Recoloca o cookie em login antigo (sessionStorage) sem pedir senha de novo. */
+/** Valida a sessão atual; não reemite sessão com dados vindos do navegador. */
 export const restaurarSessaoPortal = createServerFn({ method: "POST" })
   .validator((data: { tipo: "interno" | "fornecedor"; codigo: string }) => ({
     tipo: data.tipo,
@@ -4020,23 +4021,7 @@ export const restaurarSessaoPortal = createServerFn({ method: "POST" })
       }
     }
 
-    if (data.tipo === "interno") {
-      const user = db
-        .prepare("SELECT username FROM usuarios_internos WHERE username = ?")
-        .get(data.codigo) as { username: string } | undefined;
-      if (!user) throw new Error("Sessão interna inválida.");
-      gravarSessaoPortal("interno", user.username);
-      return { ok: true, tipo: "interno" as const, codigo: user.username };
-    }
-    const codigo = resolverCodigoFornecedorDados(data.codigo);
-    const row = db
-      .prepare("SELECT codigo, acessoLiberado FROM fornecedores WHERE codigo = ?")
-      .get(codigo) as { codigo: string; acessoLiberado?: number } | undefined;
-    if (!row || row.acessoLiberado !== 1) {
-      throw new Error("Acesso não liberado.");
-    }
-    gravarSessaoPortal("fornecedor", codigo);
-    return { ok: true, tipo: "fornecedor" as const, codigo };
+    throw new Error("Sessão inválida ou expirada. Entre novamente com suas credenciais.");
   });
 
 export const ATLAS_PERMISSOES = [

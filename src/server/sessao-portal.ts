@@ -66,6 +66,7 @@ export function gravarSessaoPortal(
     path: "/",
     maxAge: TTL_HORAS * 3600,
     sameSite: "lax",
+    secure: true,
   });
   return token;
 }
@@ -127,11 +128,11 @@ export function resolverCodigoFornecedorDados(code: string): string {
   return n;
 }
 
-/** Fornecedor autenticado só vê o próprio código. Interno (lider) pode trocar. Sem cookie, mantém o pedido (compat). */
+/** Fornecedor autenticado só vê o próprio código. Interno pode trocar. Sem cookie, falha fechado. */
 export function codigoFornecedorEfetivo(pedido: string): string {
   const pedidoNorm = resolverCodigoFornecedorDados(pedido);
   const sessao = lerSessaoPortal();
-  if (!sessao) return pedidoNorm;
+  if (!sessao) throw new Error("Sessão exigida.");
   if (sessao.tipo === "interno") return pedidoNorm;
   return resolverCodigoFornecedorDados(sessao.codigo);
 }
