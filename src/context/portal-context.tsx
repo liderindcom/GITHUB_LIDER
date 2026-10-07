@@ -311,7 +311,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         if (cancelado) return;
         setAutenticado(dados.autenticado);
         setPrimeiroAcessoConcluido(dados.primeiroAcessoConcluido);
-        setMfaAtivo(dados.primeiroAcessoConcluido);
+        setMfaAtivo(false);
         if (dados.usuarioInterno) {
           setUsuarioInterno(dados.usuarioInterno);
         }
@@ -412,7 +412,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
 
   const concluirPrimeiroAcesso = useCallback(() => {
     setPrimeiroAcessoConcluido(true);
-    setMfaAtivo(true);
+    setMfaAtivo(false);
   }, []);
 
   const marcarSenhaCorrigida = useCallback(() => {

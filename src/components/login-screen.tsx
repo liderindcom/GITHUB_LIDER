@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Eye, EyeOff, KeyRound, Lock, Mail, ShieldCheck, Truck, User } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Lock, Mail, Truck, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -17,7 +17,7 @@ import {
 
 const destaques = [
   { icone: Truck, titulo: "Agendamento de NF-e", texto: "Janelas de descarga em tempo real" },
-  { icone: ShieldCheck, titulo: "Acesso com MFA", texto: "Senha forte + segundo fator" },
+  { icone: Lock, titulo: "Sessão protegida", texto: "Credenciais e sessão com proteção no servidor" },
   { icone: KeyRound, titulo: "Antecipação", texto: "Simulador de taxas pro-rata dia" },
 ];
 

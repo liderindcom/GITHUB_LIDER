@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from "react";
-import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";
@@ -127,7 +126,6 @@ export function PortalLayout({
                   </Popover>
                 ) : (
                   <div className="hidden items-center gap-2 rounded-full border border-border bg-card/70 px-3 py-1.5 text-xs md:flex">
-                    {mfaAtivo && <ShieldCheck className="size-3.5 text-success" />}
                     <span className="font-semibold font-mono">{formatarCodigoFornecedorComDigito(displayCodigo)}</span>
                     <span className="text-muted-foreground">· {displayNome}</span>
                   </div>
