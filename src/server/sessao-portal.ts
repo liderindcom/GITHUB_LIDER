@@ -144,6 +144,21 @@ export function exigirInterno() {
   }
 }
 
+export function exigirInternoRole(...roles: string[]) {
+  const sessao = lerSessaoPortal();
+  if (!sessao || sessao.tipo !== "interno") {
+    throw new Error("Acesso administrativo exigido.");
+  }
+  const row = db
+    .prepare("SELECT role FROM usuarios_internos WHERE lower(username) = lower(?)")
+    .get(sessao.codigo) as { role?: string } | undefined;
+  const role = String(row?.role ?? "").trim().toLowerCase();
+  if (!role || !roles.map((item) => item.toLowerCase()).includes(role)) {
+    throw new Error("Permissão insuficiente.");
+  }
+  return { ...sessao, role };
+}
+
 export function exigirSessaoFornecedor() {
   const sessao = lerSessaoPortal();
   if (!sessao || sessao.tipo !== "fornecedor") {

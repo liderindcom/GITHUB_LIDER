@@ -25,6 +25,7 @@ import {
   gravarSessaoPortal,
   apagarSessaoPortal,
   exigirInterno,
+  exigirInternoRole,
   exigirSessaoFornecedor,
   lerSessaoPortal,
   resolverCodigoFornecedorDados,
@@ -4071,7 +4072,7 @@ function ensureAtlasAcessos() {
 }
 
 export const fetchAtlasAcessosUsuarios = createServerFn({ method: "GET" }).handler(async () => {
-  exigirInterno();
+  exigirInternoRole("admin");
   ensureAtlasAcessos();
   return (db.prepare("SELECT * FROM atlas_acessos_usuarios ORDER BY username").all() as Array<Record<string, unknown>>).map((row) => ({
     username: String(row.username),
@@ -4085,7 +4086,7 @@ export const fetchAtlasAcessosUsuarios = createServerFn({ method: "GET" }).handl
 export const salvarAtlasAcessoUsuario = createServerFn({ method: "POST" })
   .validator((data: { username: string; papel: string; permissoes: AtlasPermissao[]; segmentos: string[]; compradores: string[] }) => data)
   .handler(async ({ data }) => {
-    exigirInterno();
+    exigirInternoRole("admin");
     ensureAtlasAcessos();
     const username = String(data.username || "").trim().toLowerCase();
     const permissoes = [...new Set(data.permissoes)].filter((item): item is AtlasPermissao => (ATLAS_PERMISSOES as readonly string[]).includes(item));
@@ -4168,7 +4169,7 @@ export const promoverImportacaoScanntech = createServerFn({ method: "POST" })
   });
 
 export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(async () => {
-  exigirInterno();
+  exigirInternoRole("admin");
   const { ensureUsuariosInternos } = await import("./server/usuarios-interno");
   ensureUsuariosInternos();
   const stmt = db.prepare("SELECT username, nome, role FROM usuarios_internos ORDER BY username");
@@ -4178,7 +4179,7 @@ export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(a
 export const createUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; nome: string; senha: string; role: string }) => data)
   .handler(async ({ data }) => {
-    exigirInterno();
+    exigirInternoRole("admin");
     const { criarHashSenhaInterna, ensureUsuariosInternos } = await import("./server/usuarios-interno");
     ensureUsuariosInternos();
     const username = String(data.username ?? "")
@@ -4208,7 +4209,7 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
 export const deleteUsuarioInterno = createServerFn({ method: "POST" })
   .validator((username: string) => username)
   .handler(async ({ data: username }) => {
-    exigirInterno();
+    exigirInternoRole("admin");
     const stmt = db.prepare("DELETE FROM usuarios_internos WHERE username = ?");
     stmt.run(username);
     return { success: true };
