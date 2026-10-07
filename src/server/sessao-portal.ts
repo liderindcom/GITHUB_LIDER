@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 
 import { db } from "./db";
-import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
+import { digitoVerificadorFornecedor, normalizarCodigoFornecedor, soDigitos } from "@/lib/fornecedor-codigo";
 
 const COOKIE = "portal_sessao";
 const TTL_HORAS = 12;
@@ -102,7 +102,12 @@ export function apagarSessaoPortal() {
   deleteCookie(COOKIE, { path: "/" });
 }
 
-type FornecedorCodigoRow = { codigo: string; nome: string | null; cnpj: string | null };
+type FornecedorCodigoRow = {
+  codigo: string;
+  nome: string | null;
+  cnpj: string | null;
+  acessoLiberado?: number | null;
+};
 
 function cadastroFornecedor(codigo: string): FornecedorCodigoRow | undefined {
   return db
@@ -118,12 +123,26 @@ function cadastroEhStub(row: FornecedorCodigoRow) {
 
 /** Se digitarem o código com dígito (100561-8 / 1005618), usa o código RMS sem o DV (100561). */
 export function resolverCodigoFornecedorDados(code: string): string {
+  const raw = soDigitos(code);
   const n = normalizarCodigoFornecedor(code);
   if (!/^\d{5,}$/.test(n)) return n;
+
+  // Quando o código fiscal vier completo (ex.: 10686-0 / 106860), preserve
+  // o cadastro exato. Há fornecedores cujo código-base também existe no RMS.
+  if (raw && raw !== n) {
+    const cadastroCompleto = cadastroFornecedor(raw);
+    if (cadastroCompleto) return cadastroCompleto.codigo;
+  }
+
   const exato = cadastroFornecedor(n);
   const base = n.slice(0, -1);
   const pai = /^\d{4,}$/.test(base) ? cadastroFornecedor(base) : undefined;
   if (pai && (!exato || cadastroEhStub(exato))) return pai.codigo;
+
+  // Se a entrada já foi normalizada antes de chegar aqui e o código-base
+  // estiver bloqueado, prefere o cadastro fiscal completo que está liberado.
+  const candidatoComDigito = cadastroFornecedor(`${n}${digitoVerificadorFornecedor(n)}`);
+  if (candidatoComDigito?.acessoLiberado === 1) return candidatoComDigito.codigo;
   if (exato) return exato.codigo;
   return n;
 }

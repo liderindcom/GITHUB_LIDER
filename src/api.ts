@@ -38,6 +38,21 @@ import { permitirRequisicao } from "./server/request-guard";
 
 const execAsync = promisify(exec);
 
+const RMS_REFRESH_PYTHON = "/home/administrador/deepseek-env/bin/python3";
+const RMS_REFRESH_SCRIPT = "/home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py";
+
+function iniciarCargaRmsAssincrona(codigo: string) {
+  const comando = `LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 ${RMS_REFRESH_PYTHON} ${RMS_REFRESH_SCRIPT} --codigo ${codigo} --json`;
+  exec(comando, { maxBuffer: 20 * 1024 * 1024 }, (erro, stdout, stderr) => {
+    if (erro) {
+      console.error(`Carga RMS assíncrona falhou para ${codigo}:`, erro, stderr);
+      return;
+    }
+    console.log(`Carga RMS assíncrona concluída para ${codigo}:`, stdout, stderr);
+  });
+  return true;
+}
+
 function exigirLimite(escopo: string, maximo: number, janelaMs: number) {
   const request = getStartContext().request;
   const resultado = permitirRequisicao(request, escopo, { maximo, janelaMs });
@@ -407,7 +422,7 @@ function vigenciaAcessoOk(row: {
 
 function buscarFornecedorPorLogin(ident: string): FornecedorDB | undefined {
   ensureFornecedoresColumns();
-  const codigo = resolverCodigoFornecedorDados(normalizarCodigoFornecedor(ident));
+  const codigo = resolverCodigoFornecedorDados(ident);
   const porCodigo = db.prepare("SELECT * FROM fornecedores WHERE codigo = ?").get(codigo) as
     FornecedorDB | undefined;
   if (porCodigo) return porCodigo;
@@ -571,7 +586,7 @@ function mapaNomesComprador(): Map<string, string> {
 }
 
 export const fetchProdutos = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const stmt = db.prepare(`SELECT * FROM produtos p WHERE ${sqlSkuVisivel("p")}`);
@@ -621,7 +636,7 @@ export type FaixaPrecoSubgrupoDB = {
 };
 
 export const fetchFaixasPrecoSubgrupo = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("subgrupo_preco_faixa")) return [] as FaixaPrecoSubgrupoDB[];
@@ -648,7 +663,7 @@ export const fetchFaixasPrecoSubgrupo = createServerFn({ method: "GET" })
   });
 
 export const fetchProdutosBloqueios = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const stmt = db.prepare(
@@ -658,7 +673,7 @@ export const fetchProdutosBloqueios = createServerFn({ method: "GET" })
   });
 
 export const fetchPerdas = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const inicioJanela = new Date();
@@ -699,7 +714,7 @@ export const fetchPerdas = createServerFn({ method: "GET" })
   });
 
 export const fetchEstoque = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const postgresRuntime = (process.env.PORTAL_DB_ENGINE || "").toLowerCase() === "postgres";
@@ -756,7 +771,7 @@ export type ContaReceberDB = {
 };
 
 export const fetchContasReceber = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("contas_receber")) return [] as ContaReceberDB[];
@@ -812,7 +827,7 @@ export const fetchContasReceber = createServerFn({ method: "GET" })
   });
 
 export const fetchFaturas = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("notas_fiscais")) return [] as FaturaDB[];
@@ -949,7 +964,7 @@ function skusPedidoDoFiltroMix(codigo: string, filtro: FiltroMercadologico): str
 
 export const fetchComprasAno = createServerFn({ method: "POST" })
   .validator((data: { fornecedorCodigo: string; ano: number; filtro?: FiltroMercadologico }) => ({
-    fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
+    fornecedorCodigo: soDigitos(data.fornecedorCodigo),
     ano: Number(data.ano),
     filtro: data.filtro ?? FILTRO_VAZIO,
   }))
@@ -1100,7 +1115,7 @@ export const fetchComprasAno = createServerFn({ method: "POST" })
   });
 
 export const fetchPedidos = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("pedidos") || !tabelaExiste("pedido_itens")) {
@@ -1173,7 +1188,7 @@ export const fetchPedidos = createServerFn({ method: "GET" })
   });
 
 export const fetchVendas = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const corte = db
@@ -1202,7 +1217,7 @@ export type TransferenciaCdamDB = {
 };
 
 export const fetchTransferenciasCdam = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     try {
@@ -1229,7 +1244,7 @@ export const fetchTransferenciasCdam = createServerFn({ method: "GET" })
 export const fetchShareFornecedor = createServerFn({ method: "GET" })
   .validator((data: { fornecedorCodigo: string; janela: ShareJanela }) => ({
     ...data,
-    fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
+    fornecedorCodigo: soDigitos(data.fornecedorCodigo),
   }))
   .handler(async ({ data }) => {
     const janela = data.janela;
@@ -1598,7 +1613,7 @@ export type DocaDB = {
 };
 
 export const fetchNfePendentes = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("nfe_pendentes")) return [] as NfePendenteDB[];
@@ -1819,7 +1834,7 @@ export type ConciliacaoItemDB = {
 };
 
 export const fetchConciliacaoNfePedido = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     if (!tabelaExiste("nfe_pedido_conciliacao")) return [] as ConciliacaoItemDB[];
@@ -2023,6 +2038,7 @@ export const includeSupplier = createServerFn({ method: "POST" })
       db.prepare(
         "UPDATE fornecedores SET acessoLiberado = 1, acessoDataInicio = ?, acessoDataFim = ?, acessoStatus = 'DEGUSTACAO', degustacaoUsada = 1 WHERE codigo = ?",
       ).run(inicio, fim, codigo);
+      iniciarCargaRmsAssincrona(codigo);
       return {
         success: true,
         created: false,
@@ -2038,6 +2054,7 @@ export const includeSupplier = createServerFn({ method: "POST" })
     db.prepare(
       "INSERT INTO fornecedores (codigo, nome, cnpj, acessoLiberado, metaFillRatePct, acessoDataInicio, acessoDataFim, acessoStatus, degustacaoUsada) VALUES (?, ?, ?, 1, ?, ?, ?, 'DEGUSTACAO', 1)",
     ).run(codigo, nomeNovo, cnpjNovo, FILLRATE_META_PADRAO, inicio, fim);
+    iniciarCargaRmsAssincrona(codigo);
     return {
       success: true,
       created: true,
@@ -2084,7 +2101,7 @@ export type CompraMesAnteriorDB = {
 };
 
 export const fetchCompraMesAnterior = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const codigo = codigoFornecedorEfetivo(codigoPedido);
     const mes = mesFechadoIso();
@@ -2332,7 +2349,7 @@ export type AcordoAcessoPortalDB = {
 };
 
 export const fetchAcordosAcessoPortal = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     exigirInterno();
     const codigo = codigoFornecedorEfetivo(codigoPedido);
@@ -2520,7 +2537,7 @@ export const updateFillrateTaxa = createServerFn({ method: "POST" })
   });
 
 export const fetchFillrateAcordo = createServerFn({ method: "GET" })
-  .validator((codigo: string) => normalizarCodigoFornecedor(codigo))
+  .validator((codigo: string) => soDigitos(codigo))
   .handler(async ({ data: codigoPedido }) => {
     const codigo = codigoFornecedorEfetivo(codigoPedido);
     ensureFillrateMetaColumn();
@@ -2740,7 +2757,7 @@ function ensureOfertasIntelider() {
 }
 
 export const fetchOfertasIntelider = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     ensureOfertasIntelider();
@@ -3077,7 +3094,7 @@ export const submitSolicitacaoRebaixa = createServerFn({ method: "POST" })
   });
 
 export const fetchVendasAnual = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const fornecedorCodigo = codigoFornecedorEfetivo(codigoPedido);
     const escopo = escopoSegmentoVendas(fornecedorCodigo);
@@ -3587,7 +3604,7 @@ export const solicitarAntecipacao = createServerFn({ method: "POST" })
       valorLiquido: number;
     }) => ({
       ...data,
-      fornecedorCodigo: normalizarCodigoFornecedor(data.fornecedorCodigo),
+      fornecedorCodigo: soDigitos(data.fornecedorCodigo),
     }),
   )
   .handler(async ({ data }) => {
@@ -3669,7 +3686,7 @@ export const solicitarAntecipacao = createServerFn({ method: "POST" })
   });
 
 export const fetchAntecipacoes = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const codigo = codigoFornecedorEfetivo(codigoPedido);
     ensureSolicitacoesAntecipacao();
@@ -3696,7 +3713,7 @@ export const fetchAntecipacoes = createServerFn({ method: "GET" })
   });
 
 export const fetchUsuariosFornecedor = createServerFn({ method: "GET" })
-  .validator((fornecedorCodigo: string) => normalizarCodigoFornecedor(fornecedorCodigo))
+  .validator((fornecedorCodigo: string) => soDigitos(fornecedorCodigo))
   .handler(async ({ data: codigoPedido }) => {
     const codigo = codigoFornecedorEfetivo(codigoPedido);
     ensureUsuariosFornecedor();
@@ -4362,7 +4379,7 @@ export const updateSupplierAccessConfig = createServerFn({ method: "POST" })
   });
 
 export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
-  .validator((data: { codigo: string }) => ({ codigo: normalizarCodigoFornecedor(data.codigo) }))
+  .validator((data: { codigo: string }) => ({ codigo: soDigitos(data.codigo) }))
   .handler(async ({ data }) => {
     exigirInterno();
     const codigo = resolverCodigoFornecedorDados(data.codigo);

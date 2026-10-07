@@ -1,7 +1,7 @@
 import { addDays, format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { lojaForaDoPortalFornecedor } from "@/lib/lojas-excluidas-portal";
-import { DEMO_FORNECEDOR_CODIGO, normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
+import { DEMO_FORNECEDOR_CODIGO, normalizarCodigoFornecedor, soDigitos } from "@/lib/fornecedor-codigo";
 import {
   getFiltroMercadologico,
   produtoPassaFiltro,
@@ -155,7 +155,10 @@ export const fornecedores: FornecedorType[] = [
 
 export const getActiveSupplierCode = (): string => {
   if (typeof window === "undefined") return DEMO_FORNECEDOR_CODIGO;
-  return normalizarCodigoFornecedor(
+  // Preserva o código fiscal completo quando ele foi informado com dígito
+  // (ex.: 10686-0 => 106860). Normalizá-lo aqui mistura fornecedores cujo
+  // código-base também existe no RMS.
+  return soDigitos(
     window.sessionStorage.getItem("portal-lider-sessao-fornecedor") || DEMO_FORNECEDOR_CODIGO,
   );
 };
@@ -164,7 +167,7 @@ export const setActiveSupplierCode = (code: string) => {
   if (typeof window !== "undefined") {
     window.sessionStorage.setItem(
       "portal-lider-sessao-fornecedor",
-      normalizarCodigoFornecedor(code),
+      soDigitos(code),
     );
   }
 };
@@ -681,6 +684,10 @@ const createDynamicArrayProxy = <T>(getSource: () => T[]): T[] => {
 export const produtosTodosDoFornecedor = (): Produto[] => {
   if (globalDbCache.produtos) {
     const fornecedorAtivo = getActiveSupplierCode();
+    const exatos = globalDbCache.produtos.filter(
+      (produto) => String(produto.fornecedorCodigo ?? "") === fornecedorAtivo,
+    );
+    if (exatos.length > 0) return exatos;
     return globalDbCache.produtos.filter(
       (produto) => normalizarCodigoFornecedor(produto.fornecedorCodigo ?? "") === fornecedorAtivo,
     );
@@ -1707,10 +1714,15 @@ const agendasTransferencia = new Set<number>([
  * - se modeloEntrega = somente_cdam: só filial tipo depósito/CD
  */
 export const faturasDoFornecedor = (codigoFornecedor: string = fornecedor.codigo): Fatura[] => {
-  const code = normalizarCodigoFornecedor(codigoFornecedor);
+  const code = soDigitos(codigoFornecedor);
   if (globalDbCache.faturas) {
-    return globalDbCache.faturas.filter(
+    const exatas = globalDbCache.faturas.filter(
       (f) => f.fornecedorCodigo === code && !agendasTransferencia.has(f.agendaRms),
+    );
+    if (exatas.length > 0) return exatas;
+    const base = normalizarCodigoFornecedor(code);
+    return globalDbCache.faturas.filter(
+      (f) => normalizarCodigoFornecedor(f.fornecedorCodigo) === base && !agendasTransferencia.has(f.agendaRms),
     );
   }
   const activeForn = fornecedor;
@@ -1849,7 +1861,7 @@ export const contasReceberFornecedor: ContaReceberFornecedor[] = [
 export const contasReceberDoFornecedor = (
   codigoFornecedor: string = fornecedor.codigo,
 ): ContaReceberFornecedor[] => {
-  const code = normalizarCodigoFornecedor(codigoFornecedor);
+  const code = soDigitos(codigoFornecedor);
   const hoje = new Date();
   const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
   const aberta = (conta: ContaReceberFornecedor) =>

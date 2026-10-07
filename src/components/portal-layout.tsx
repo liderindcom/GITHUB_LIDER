@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from "react";
+import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppSidebar } from "@/components/app-sidebar";

@@ -130,7 +130,7 @@ function Painel({ className = "", children }: { className?: string; children: Re
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { fornecedor, dadosFornecedorVersao, filtroMercadologico } = usePortal();
+  const { fornecedor, codigoFornecedorAtivo, dadosFornecedorVersao, filtroMercadologico } = usePortal();
   const ateMesPadrao = mesFechadoIso();
   const [comprasAno, setComprasAno] = useState<ComprasAnoDB | null>(null);
   const mixAtivo = filtroMercadologicoAtivo(filtroMercadologico);
@@ -149,7 +149,7 @@ function Dashboard() {
     let ativo = true;
     fetchComprasAno({
       data: {
-        fornecedorCodigo: fornecedor.codigo,
+        fornecedorCodigo: codigoFornecedorAtivo,
         ano: Number(ateMesPadrao.slice(0, 4)),
         filtro: filtroMercadologico,
       },
@@ -164,7 +164,7 @@ function Dashboard() {
     return () => {
       ativo = false;
     };
-  }, [fornecedor.codigo, ateMesPadrao, dadosFornecedorVersao, filtroMercadologico]);
+  }, [codigoFornecedorAtivo, ateMesPadrao, dadosFornecedorVersao, filtroMercadologico]);
 
   const pedidoAno = comprasAno?.pedido ?? 0;
   const entregueAno = comprasAno?.entregue ?? 0;

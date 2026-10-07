@@ -187,9 +187,9 @@ try {
 } catch (e) {}
 try {
   db.exec("ALTER TABLE estoque ADD COLUMN dataEstoque TEXT;");
-  try {
-    db.exec("ALTER TABLE estoque ADD COLUMN dataInventario TEXT;");
-  } catch (e) {}
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE estoque ADD COLUMN dataInventario TEXT;");
 } catch (e) {}
 
 try {

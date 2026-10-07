@@ -332,7 +332,11 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         if (dados.autenticado) {
           const code = getActiveSupplierCode();
           setCodigoFornecedorAtivo(code);
-          await carregarDadosReaisFornecedor(code);
+          // A sessão já foi restaurada; não bloqueie a entrada no portal
+          // esperando todas as cargas do fornecedor (vendas, estoque,
+          // perdas, pedidos e financeiro). Elas podem continuar em segundo
+          // plano e atualizar o cache conforme cada tela for usada.
+          void carregarDadosReaisFornecedor(code);
         }
       } catch {
         window.sessionStorage.removeItem(CHAVE_SESSAO);

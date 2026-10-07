@@ -53,6 +53,7 @@ import { Route as ApiAtlasCarteiraRouteImport } from './routes/api/atlas/carteir
 import { Route as ApiAtlasCompraRouteImport } from './routes/api/atlas/compra'
 import { Route as ApiAtlasCompradoresRouteImport } from './routes/api/atlas/compradores'
 import { Route as ApiAtlasFornecedoresRouteImport } from './routes/api/atlas/fornecedores'
+import { Route as ApiConnectorV1IngestRouteImport } from './routes/api/connector/v1/ingest'
 import { Route as ApiIntegracoesInteliderRebaixasRouteImport } from './routes/api/integracoes/intelider/rebaixas'
 
 const IndexRoute = IndexRouteImport.update({
@@ -275,6 +276,11 @@ const ApiAtlasFornecedoresRoute = ApiAtlasFornecedoresRouteImport.update({
   path: '/api/atlas/fornecedores',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiConnectorV1IngestRoute = ApiConnectorV1IngestRouteImport.update({
+  id: '/api/connector/v1/ingest',
+  path: '/api/connector/v1/ingest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiIntegracoesInteliderRebaixasRoute =
   ApiIntegracoesInteliderRebaixasRouteImport.update({
     id: '/api/integracoes/intelider/rebaixas',
@@ -326,6 +332,7 @@ export interface FileRoutesByFullPath {
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
 export interface FileRoutesByTo {
@@ -372,6 +379,7 @@ export interface FileRoutesByTo {
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
 export interface FileRoutesById {
@@ -420,6 +428,7 @@ export interface FileRoutesById {
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
 export interface FileRouteTypes {
@@ -468,6 +477,7 @@ export interface FileRouteTypes {
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
     | '/api/atlas/fornecedores'
+    | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -514,6 +524,7 @@ export interface FileRouteTypes {
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
     | '/api/atlas/fornecedores'
+    | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
   id:
     | '__root__'
@@ -561,6 +572,7 @@ export interface FileRouteTypes {
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
     | '/api/atlas/fornecedores'
+    | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
   fileRoutesById: FileRoutesById
 }
@@ -574,6 +586,7 @@ export interface RootRouteChildren {
   ApiAtlasCompraRoute: typeof ApiAtlasCompraRoute
   ApiAtlasCompradoresRoute: typeof ApiAtlasCompradoresRoute
   ApiAtlasFornecedoresRoute: typeof ApiAtlasFornecedoresRoute
+  ApiConnectorV1IngestRoute: typeof ApiConnectorV1IngestRoute
   ApiIntegracoesInteliderRebaixasRoute: typeof ApiIntegracoesInteliderRebaixasRoute
 }
 
@@ -887,6 +900,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAtlasFornecedoresRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/connector/v1/ingest': {
+      id: '/api/connector/v1/ingest'
+      path: '/api/connector/v1/ingest'
+      fullPath: '/api/connector/v1/ingest'
+      preLoaderRoute: typeof ApiConnectorV1IngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/integracoes/intelider/rebaixas': {
       id: '/api/integracoes/intelider/rebaixas'
       path: '/api/integracoes/intelider/rebaixas'
@@ -986,6 +1006,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAtlasCompraRoute: ApiAtlasCompraRoute,
   ApiAtlasCompradoresRoute: ApiAtlasCompradoresRoute,
   ApiAtlasFornecedoresRoute: ApiAtlasFornecedoresRoute,
+  ApiConnectorV1IngestRoute: ApiConnectorV1IngestRoute,
   ApiIntegracoesInteliderRebaixasRoute: ApiIntegracoesInteliderRebaixasRoute,
 }
 export const routeTree = rootRouteImport
