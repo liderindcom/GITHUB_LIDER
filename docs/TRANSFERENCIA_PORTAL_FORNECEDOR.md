@@ -53,7 +53,7 @@ Server functions / PostgreSQL
    ↓
 Workers e cargas assíncronas
    ├── RMS Oracle (somente leitura)
-   ├── CometNet / Intelider (somente leitura)
+   ├── fontes autorizadas do cliente (somente leitura)
    └── RM SQL Server em fluxos específicos
 ```
 
@@ -123,7 +123,7 @@ Uma NF de perdas pode conter itens de vários fornecedores. A chave operacional 
 data + fornecedor + loja/origem + NF + série + SKU
 ```
 
-O valor usado atualmente é `I_AG520_SUBTOTAL`, reproduzindo o CometNet. O custo unitário vem de `I_AG520_CUSTO`.
+O valor usado atualmente na implantação da Líder é `I_AG520_SUBTOTAL`, reproduzindo o CometNet. O custo unitário vem de `I_AG520_CUSTO`.
 
 A tela é **Avarias operacionais por loja**. Ela serve para identificar lojas que precisam de treinamento; não é cobrança fiscal.
 
@@ -148,7 +148,7 @@ Validação da BRF:
 - demais lojas: R$ 23.059,20;
 - origens: 22.
 
-O carregamento antigo baseado somente em `RMS.AG1CDFAT` mostrava apenas CDAM e R$ 4.056. Essa tabela não deve voltar a ser a fonte principal da visão por loja.
+O carregamento antigo baseado somente em `RMS.AG1CDFAT` mostrava apenas CDAM e R$ 4.056. Essa tabela não deve voltar a ser a fonte principal da visão por loja sem uma regra de origem validada.
 
 ## 6. Carga da Agenda 520
 
@@ -157,7 +157,7 @@ Arquivo: `scripts/importar_perdas_rms_520_canonicas.py`.
 Comportamento:
 
 - consulta últimos 13 meses;
-- lê a base consolidada do CometNet;
+- lê a base consolidada autorizada da implantação da Líder;
 - preserva fornecedor, origem, NF, série, produto e data;
 - cria lote novo;
 - grava no PostgreSQL;
@@ -178,11 +178,15 @@ O horário é 05:00 UTC. Confirmar fuso antes de alterar.
 
 ## 7. Fontes e integrações
 
-O código legado do CometNet está em `/home/administrador/worktrees/cometnet-rebaixa-portal`. A implementação de Agenda 520 está em `src/com/br/metavenda/service/produtovalidade/ProdutoFonecedorService.java`.
+### CometNet / Intelider — somente Líder
 
-O CometNet usa conexão Oracle diferente da conexão antiga do Portal. Não presumir que `ISAURA` tenha acesso às tabelas `CONSULTA.TB_AG520_*`.
+O CometNet é um projeto proprietário do Grupo Líder. O código legado está em `/home/administrador/worktrees/cometnet-rebaixa-portal`. A implementação de Agenda 520 está em `src/com/br/metavenda/service/produtovalidade/ProdutoFonecedorService.java`.
+
+O CometNet pode ser usado apenas dentro da implantação da Líder para homologar resultados. Ele não será instalado, conectado nem distribuído com o produto comercial. Não copiar código, credenciais, tabelas ou endpoints do CometNet para clientes externos.
 
 O RMS Oracle fornece produtos, custos, estoque e vendas em cargas autorizadas. O RM SQL Server participa de fluxos específicos financeiros. RMS, RM e CometNet são domínios diferentes.
+
+Para clientes externos, cada conector deve usar somente fontes autorizadas do próprio cliente. A Agenda 520 comercial deverá ser obtida do RMS, de uma view autorizada ou de uma exportação oficial; nunca do CometNet da Líder.
 
 A API não deve fazer varredura direta nos bancos transacionais.
 
@@ -246,7 +250,7 @@ Cada cliente instalará um conector em seu servidor. Ele:
 1. conecta localmente ao Oracle, SQL Server ou PostgreSQL;
 2. usa somente leitura;
 3. aplica o mapeamento daquele cliente;
-4. normaliza dados para o modelo do Portal;
+4. normaliza dados para o modelo do Portal usando somente fontes autorizadas do próprio cliente;
 5. envia lotes por HTTPS;
 6. mantém fila local para retry.
 
@@ -293,7 +297,7 @@ Não levar para o produto comercial credenciais, logs ou dados reais da Líder.
 4. estoque real/ideal;
 5. pedidos e fill rate;
 6. perdas por loja e fornecedor;
-7. conector Oracle;
+7. conector Oracle/RMS sem dependência do CometNet;
 8. painel de status do conector;
 9. exportação CSV/PDF;
 10. auditoria e suporte.
@@ -302,7 +306,7 @@ Depois: conectores SQL Server/PostgreSQL, logística avançada, acordos financei
 
 ## 11. Não fazer sem validação
 
-- trocar a fonte da Agenda 520 por `AG1CDFAT` sem comparar com CometNet;
+- trocar a fonte da Agenda 520 sem validar origem e total contra uma fonte oficial autorizada do próprio cliente;
 - misturar cobrança fiscal com avaria operacional;
 - usar venda no lugar de custo/subtotal sem aprovação;
 - misturar competências;
@@ -317,7 +321,7 @@ Depois: conectores SQL Server/PostgreSQL, logística avançada, acordos financei
 ### Fase 1 — estabilizar Líder
 
 - monitorar cron da Agenda 520;
-- comparar mensalmente CometNet e Portal;
+- comparar mensalmente a fonte oficial da Líder e o Portal; o CometNet só participa dessa homologação interna;
 - registrar divergências por fornecedor, loja e NF;
 - revisar logs e backups;
 - corrigir os menus atuais.
@@ -371,4 +375,3 @@ Riscos principais:
 - suporte, backup e responsabilidade pelos dados.
 
 Próximo marco: criar a cópia limpa do produto, sem dados da Líder, e iniciar o conector Oracle em uma VPS independente.
-
