@@ -32,8 +32,18 @@ import {
 import { exec } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
+import { getStartContext } from "@tanstack/start-storage-context";
+import { permitirRequisicao } from "./server/request-guard";
 
 const execAsync = promisify(exec);
+
+function exigirLimite(escopo: string, maximo: number, janelaMs: number) {
+  const request = getStartContext().request;
+  const resultado = permitirRequisicao(request, escopo, { maximo, janelaMs });
+  if (!resultado.permitido) {
+    throw new Error(`Muitas tentativas. Aguarde ${resultado.retryAfterSegundos} segundos.`);
+  }
+}
 
 export function ensureFornecedoresColumns() {
   // Safe migrations run on startup in db.ts
@@ -3804,6 +3814,7 @@ export const loginUsuarioFornecedor = createServerFn({ method: "POST" })
     senha: String(data.senha ?? ""),
   }))
   .handler(async ({ data }) => {
+    exigirLimite("login-fornecedor", 10, 15 * 60_000);
     const { senhaFornecedorConfere } = await import("./server/usuarios-fornecedor");
     const { email, senha } = data;
     const forn = buscarFornecedorPorLogin(data.codigo);
@@ -3847,6 +3858,7 @@ export const primeiroAcessoFornecedor = createServerFn({ method: "POST" })
     senha: String(data.senha ?? ""),
   }))
   .handler(async ({ data }) => {
+    exigirLimite("primeiro-acesso-fornecedor", 5, 15 * 60_000);
     const { normalizarEmail, hashSenhaFornecedor, novoIdUsuarioFornecedor } =
       await import("./server/usuarios-fornecedor");
     const email = normalizarEmail(data.email);
@@ -3983,6 +3995,7 @@ export const alterarMinhaSenhaFornecedor = createServerFn({ method: "POST" })
 export const loginUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; senha: string }) => data)
   .handler(async ({ data }) => {
+    exigirLimite("login-interno", 5, 5 * 60_000);
     const { ensureUsuariosInternos, senhaInternaConfere } = await import("./server/usuarios-interno");
     ensureUsuariosInternos();
     const username = String(data.username ?? "")
@@ -4017,6 +4030,7 @@ export const restaurarSessaoPortal = createServerFn({ method: "POST" })
     codigo: String(data.codigo ?? "").trim(),
   }))
   .handler(async ({ data }) => {
+    exigirLimite("restaurar-sessao", 20, 15 * 60_000);
     const sessaoAtual = lerSessaoPortal();
     if (sessaoAtual && sessaoAtual.tipo === data.tipo) {
       const codigoEfetivo =

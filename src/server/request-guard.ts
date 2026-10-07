@@ -5,11 +5,14 @@ const registros = new Map<string, Registro>();
 const MAX_REGISTROS = 10_000;
 
 function identificarCliente(request: Request): string {
-  // Só confiamos em CF-Connecting-IP quando a requisição traz o identificador
-  // da borda Cloudflare. Headers X-Forwarded-For/X-Real-IP podem ser forjados.
+  // Cloudflare e o Nginx local sobrescrevem estes headers antes do runtime.
   const cfRay = request.headers.get("cf-ray")?.trim();
   const cfIp = request.headers.get("cf-connecting-ip")?.trim();
-  return cfRay && cfIp ? "cf:" + cfIp : "origem-nao-verificada";
+  if (cfRay && cfIp) return "cf:" + cfIp;
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) return "proxy:" + realIp;
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded ? "proxy:" + forwarded : "origem-nao-verificada";
 }
 
 function limparExpirados(agora: number) {
