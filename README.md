@@ -2,6 +2,10 @@
 
 Este repositório contém a aplicação unificada para o **Portal do Fornecedor do Grupo Líder**:
 
+Para transferência de contexto, arquitetura, regras da Agenda 520, operação e
+plano do produto comercial, consulte
+[`docs/TRANSFERENCIA_PORTAL_FORNECEDOR.md`](docs/TRANSFERENCIA_PORTAL_FORNECEDOR.md).
+
 1.  **Frontend / UI:** Aplicação interativa desenvolvida usando React, Vite, TailwindCSS, Lucide Icons e TanStack Start, gerada pelo Lovable.
 2.  **Backend / ETL:** Sincronizador assíncrono híbrido em Python que realiza a extração real de dados fiscais e financeiros dos ERPs (Oracle RMS e Totvs RM SQL Server) e gera os caches locais em JSON.
 
