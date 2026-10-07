@@ -3360,6 +3360,7 @@ export type UsuarioInternoDB = {
   username: string;
   nome: string;
   role: string;
+  senhaHash?: string;
 };
 
 export { USUARIOS_FORNECEDOR_MAX };
@@ -3982,16 +3983,20 @@ export const alterarMinhaSenhaFornecedor = createServerFn({ method: "POST" })
 export const loginUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; senha: string }) => data)
   .handler(async ({ data }) => {
+    const { ensureUsuariosInternos, senhaInternaConfere } = await import("./server/usuarios-interno");
+    ensureUsuariosInternos();
     const username = String(data.username ?? "")
       .trim()
       .toLowerCase();
     const senha = String(data.senha ?? "");
     const stmt = db.prepare(
-      "SELECT username, nome, role FROM usuarios_internos WHERE lower(username) = ? AND senha = ?",
+      "SELECT username, nome, role, senhaHash FROM usuarios_internos WHERE lower(username) = ?",
     );
-    const user = stmt.get(username, senha) as UsuarioInternoDB | undefined;
-    if (user) gravarSessaoPortal("interno", user.username);
-    return user;
+    const user = stmt.get(username) as UsuarioInternoDB | undefined;
+    if (!user || !user.senhaHash || !senhaInternaConfere(senha, user.senhaHash)) return undefined;
+    const { senhaHash: _senhaHash, ...publicUser } = user;
+    gravarSessaoPortal("interno", publicUser.username);
+    return publicUser;
   });
 
 export const iniciarSessaoFornecedor = createServerFn({ method: "POST" })
@@ -4150,6 +4155,8 @@ export const promoverImportacaoScanntech = createServerFn({ method: "POST" })
 
 export const fetchUsuariosInternos = createServerFn({ method: "GET" }).handler(async () => {
   exigirInterno();
+  const { ensureUsuariosInternos } = await import("./server/usuarios-interno");
+  ensureUsuariosInternos();
   const stmt = db.prepare("SELECT username, nome, role FROM usuarios_internos ORDER BY username");
   return stmt.all() as UsuarioInternoDB[];
 });
@@ -4158,6 +4165,8 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
   .validator((data: { username: string; nome: string; senha: string; role: string }) => data)
   .handler(async ({ data }) => {
     exigirInterno();
+    const { criarHashSenhaInterna, ensureUsuariosInternos } = await import("./server/usuarios-interno");
+    ensureUsuariosInternos();
     const username = String(data.username ?? "")
       .trim()
       .toLowerCase();
@@ -4177,8 +4186,8 @@ export const createUsuarioInterno = createServerFn({ method: "POST" })
       throw new Error(`O usuário ${username} já está cadastrado.`);
     }
     db.prepare(
-      `INSERT INTO usuarios_internos (username, nome, senha, "role") VALUES (?, ?, ?, ?)`,
-    ).run(username, nome, senha, role);
+      `INSERT INTO usuarios_internos (username, nome, senha, senhaHash, "role") VALUES (?, ?, ?, ?, ?)`,
+    ).run(username, nome, "", criarHashSenhaInterna(senha), role);
     return { success: true, username };
   });
 
