@@ -1,0 +1,22 @@
+[Unit]
+Description=Cerberus portal sensor heartbeat
+After=local-fs.target
+
+[Service]
+Type=simple
+User=administrador
+Group=administrador
+ExecStart=/usr/bin/python3 /lider/portal-fornecedor/scripts/cerberus-portal-heartbeat.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RuntimeDirectory=maoadc/cerberus-portal
+RuntimeDirectoryMode=0750
+ReadWritePaths=/run/maoadc/cerberus-portal
+UMask=007
+
+[Install]
+WantedBy=multi-user.target

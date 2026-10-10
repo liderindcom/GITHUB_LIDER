@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { mkdir, open, rename, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { exigirSessaoFornecedor } from "./sessao-portal";
 
@@ -11,6 +11,7 @@ const ALLOWED_MIME = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 const BLOCKED_EXTENSIONS = new Set([".csv", ".xlsm"]);
+const HEARTBEAT_MAX_AGE_MS = 30_000;
 
 export type CerberusUploadDecision =
   | "staging"
@@ -56,6 +57,27 @@ function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+async function assertSensorHealthy() {
+  const heartbeat = process.env.CERBERUS_SENSOR_HEARTBEAT?.trim() || "/run/maoadc/cerberus-portal/heartbeat.json";
+  let raw: string;
+  try {
+    raw = await readFile(heartbeat, "utf8");
+  } catch {
+    throw new Error("Sensor Cerberus indisponível.");
+  }
+  let data: unknown;
+  try { data = JSON.parse(raw); } catch { throw new Error("Heartbeat Cerberus inválido."); }
+  if (!data || typeof data !== "object") throw new Error("Heartbeat Cerberus inválido.");
+  const record = data as { service?: unknown; state?: unknown; timestamp?: unknown };
+  const timestamp = Number(record.timestamp);
+  if (record.service !== "cerberus-portal-sensor" || record.state !== "ready" || !Number.isFinite(timestamp)) {
+    throw new Error("Sensor Cerberus não está pronto.");
+  }
+  if (Date.now() - timestamp * 1000 > HEARTBEAT_MAX_AGE_MS || timestamp * 1000 > Date.now() + 5_000) {
+    throw new Error("Heartbeat Cerberus expirado.");
+  }
+}
+
 function magicOk(extension: string, bytes: Buffer): boolean {
   if (extension === ".xlsx") return bytes.subarray(0, 2).equals(Buffer.from("PK"));
   if (extension === ".xls") return bytes.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
@@ -83,6 +105,7 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
   }
 
   const root = rootFromEnv();
+  await assertSensorHealthy();
   const sessao = exigirSessaoFornecedor();
   if (!/^[a-z0-9._-]{1,80}$/.test(input.route)) {
     throw new Error("Rota de staging inválida.");
