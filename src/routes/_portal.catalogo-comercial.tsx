@@ -91,7 +91,7 @@ async function arquivoParaBase64(arquivo: File): Promise<string> {
 }
 
 function CatalogoComercialPage() {
-  const { fornecedor } = usePortal();
+  const { fornecedor, codigoFornecedorAtivo } = usePortal();
   const [itens, setItens] = useState<CatalogoComercialDB[]>([]);
   const [form, setForm] = useState<Formulario>(vazio);
   const [carregando, setCarregando] = useState(true);
@@ -103,7 +103,7 @@ function CatalogoComercialPage() {
   const [importando, setImportando] = useState(false);
 
   useEffect(() => {
-    void fetchCatalogoComercial()
+    void fetchCatalogoComercial({ data: { fornecedorCodigo: codigoFornecedorAtivo } })
       .then((dados) => {
         setItens(dados);
         setCarregando(false);
@@ -112,7 +112,7 @@ function CatalogoComercialPage() {
         toast.error("Não foi possível carregar o catálogo.");
         setCarregando(false);
       });
-  }, []);
+  }, [codigoFornecedorAtivo]);
 
   const alterar = (campo: keyof Formulario, valor: string) => {
     const camposNumericos: Array<keyof Formulario> = [
@@ -286,6 +286,7 @@ function CatalogoComercialPage() {
           originalName: arquivoSelecionado.name,
           mimeType,
           bytesBase64: await arquivoParaBase64(arquivoSelecionado),
+          fornecedorCodigo: codigoFornecedorAtivo,
         }),
       });
       const resultadoCerberus = (await respostaCerberus.json().catch(() => ({}))) as {
@@ -299,7 +300,7 @@ function CatalogoComercialPage() {
         const mensagemServidor =
           typeof resultadoCerberus.error === "string" ? resultadoCerberus.error.trim() : "";
         const mensagemSegura =
-          /^(Sessão|Sensor|Heartbeat|Tipo de arquivo|MIME|Nome de arquivo|Arquivo|Conteúdo|Campos obrigatórios|JSON inválido|Corpo inválido|A planilha|Nenhuma linha|Linha \d+)/.test(
+          /^(Sessão|Sensor|Heartbeat|Tipo de arquivo|MIME|Nome de arquivo|Arquivo|Conteúdo|Campos obrigatórios|JSON inválido|Corpo inválido|A planilha|Nenhuma linha|Linha \d+|Fornecedor|Permissão)/.test(
             mensagemServidor,
           );
         if (mensagemSegura) throw new Error(mensagemServidor);

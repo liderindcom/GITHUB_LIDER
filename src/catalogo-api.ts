@@ -1,7 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
 import { persistirCatalogoComercial } from "@/server/catalogo-comercial-persist";
-import { codigoFornecedorEfetivo, lerSessaoPortal } from "@/server/sessao-portal";
+import {
+  codigoFornecedorEfetivo,
+  lerSessaoPortal,
+  resolverCodigoFornecedorDados,
+} from "@/server/sessao-portal";
 import { db } from "@/server/db";
 
 export type CatalogoComercialDB = {
@@ -55,17 +60,34 @@ function exigirSessaoCatalogo() {
   return sessao;
 }
 
-export const fetchCatalogoComercial = createServerFn({ method: "GET" }).handler(async () => {
-  ensureCatalogoComercial();
-  const sessao = exigirSessaoCatalogo();
-  return db
-    .prepare(
-      `SELECT * FROM catalogo_comercial_fornecedor
+function resolverFornecedorCatalogo(
+  codigoSolicitado: string | undefined,
+  sessao: ReturnType<typeof exigirSessaoCatalogo>,
+) {
+  if (sessao.tipo !== "interno") {
+    return codigoFornecedorEfetivo(normalizarCodigoFornecedor(sessao.codigo));
+  }
+  const codigo = resolverCodigoFornecedorDados(normalizarCodigoFornecedor(codigoSolicitado));
+  if (!codigo) throw new Error("Fornecedor de destino exigido.");
+  const cadastro = db.prepare("SELECT codigo FROM fornecedores WHERE codigo = ?").get(codigo) as
+    { codigo?: string } | undefined;
+  if (!cadastro?.codigo) throw new Error("Fornecedor de destino não encontrado.");
+  return cadastro.codigo;
+}
+
+export const fetchCatalogoComercial = createServerFn({ method: "GET" })
+  .validator((data: { fornecedorCodigo?: string }) => data)
+  .handler(async ({ data }) => {
+    ensureCatalogoComercial();
+    const sessao = exigirSessaoCatalogo();
+    return db
+      .prepare(
+        `SELECT * FROM catalogo_comercial_fornecedor
      WHERE fornecedorCodigo = ? AND status <> 'ARQUIVADO'
      ORDER BY atualizadoEm DESC`,
-    )
-    .all(codigoFornecedorEfetivo(sessao.codigo)) as CatalogoComercialDB[];
-});
+      )
+      .all(resolverFornecedorCatalogo(data.fornecedorCodigo, sessao)) as CatalogoComercialDB[];
+  });
 
 export type CatalogoComercialInput = Omit<
   CatalogoComercialDB,

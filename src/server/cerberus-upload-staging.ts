@@ -2,7 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdir, open, readFile, rename, stat } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { exigirSessaoFornecedor } from "./sessao-portal";
+import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
+import { db } from "./db";
+import {
+  exigirInternoRole,
+  exigirSessaoFornecedor,
+  lerSessaoPortal,
+  resolverCodigoFornecedorDados,
+} from "./sessao-portal";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set([".xls", ".xlsx"]);
@@ -13,10 +20,7 @@ const ALLOWED_MIME = new Set([
 const BLOCKED_EXTENSIONS = new Set([".csv", ".xlsm"]);
 const HEARTBEAT_MAX_AGE_MS = 30_000;
 
-export type CerberusUploadDecision =
-  | "staging"
-  | "quarantined"
-  | "rejected";
+export type CerberusUploadDecision = "staging" | "quarantined" | "rejected";
 
 export type CerberusUploadReceipt = {
   uploadId: string;
@@ -24,6 +28,7 @@ export type CerberusUploadReceipt = {
   sha256: string;
   bytes: number;
   internalName: string;
+  fornecedorCodigo: string;
 };
 
 type StageInput = {
@@ -31,6 +36,13 @@ type StageInput = {
   mimeType: string;
   bytesBase64: string;
   route: string;
+  fornecedorCodigo?: string;
+};
+
+type UploadActor = {
+  subject: string;
+  actorType: "fornecedor" | "interno";
+  fornecedorCodigo: string;
 };
 
 function rootFromEnv(): string {
@@ -58,7 +70,8 @@ function sha256(bytes: Buffer): string {
 }
 
 async function assertSensorHealthy() {
-  const heartbeat = process.env.CERBERUS_SENSOR_HEARTBEAT?.trim() || "/run/maoadc/cerberus-portal/heartbeat.json";
+  const heartbeat =
+    process.env.CERBERUS_SENSOR_HEARTBEAT?.trim() || "/run/maoadc/cerberus-portal/heartbeat.json";
   let raw: string;
   try {
     raw = await readFile(heartbeat, "utf8");
@@ -66,21 +79,68 @@ async function assertSensorHealthy() {
     throw new Error("Sensor Cerberus indisponível.");
   }
   let data: unknown;
-  try { data = JSON.parse(raw); } catch { throw new Error("Heartbeat Cerberus inválido."); }
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error("Heartbeat Cerberus inválido.");
+  }
   if (!data || typeof data !== "object") throw new Error("Heartbeat Cerberus inválido.");
   const record = data as { service?: unknown; state?: unknown; timestamp?: unknown };
   const timestamp = Number(record.timestamp);
-  if (record.service !== "cerberus-portal-sensor" || record.state !== "ready" || !Number.isFinite(timestamp)) {
+  if (
+    record.service !== "cerberus-portal-sensor" ||
+    record.state !== "ready" ||
+    !Number.isFinite(timestamp)
+  ) {
     throw new Error("Sensor Cerberus não está pronto.");
   }
-  if (Date.now() - timestamp * 1000 > HEARTBEAT_MAX_AGE_MS || timestamp * 1000 > Date.now() + 5_000) {
+  if (
+    Date.now() - timestamp * 1000 > HEARTBEAT_MAX_AGE_MS ||
+    timestamp * 1000 > Date.now() + 5_000
+  ) {
     throw new Error("Heartbeat Cerberus expirado.");
   }
 }
 
+function resolverAtor(input: StageInput): UploadActor {
+  const sessao = lerSessaoPortal();
+  if (!sessao) throw new Error("Sessão do portal exigida.");
+
+  if (sessao.tipo === "fornecedor") {
+    const fornecedor = exigirSessaoFornecedor();
+    return {
+      subject: fornecedor.codigo,
+      actorType: "fornecedor",
+      fornecedorCodigo: resolverCodigoFornecedorDados(fornecedor.codigo),
+    };
+  }
+
+  if (sessao.tipo !== "interno" || input.route !== "catalogo-comercial") {
+    throw new Error("Sessão do fornecedor exigida.");
+  }
+
+  exigirInternoRole("admin");
+  const fornecedorCodigoInformado = normalizarCodigoFornecedor(input.fornecedorCodigo);
+  if (!fornecedorCodigoInformado) throw new Error("Fornecedor de destino exigido.");
+  const fornecedorCodigo = resolverCodigoFornecedorDados(fornecedorCodigoInformado);
+  const cadastro = db
+    .prepare("SELECT codigo FROM fornecedores WHERE codigo = ?")
+    .get(fornecedorCodigo) as { codigo?: string } | undefined;
+  if (!cadastro?.codigo) throw new Error("Fornecedor de destino não encontrado.");
+
+  return {
+    subject: `interno:${sessao.codigo}`,
+    actorType: "interno",
+    fornecedorCodigo: cadastro.codigo,
+  };
+}
+
 function magicOk(extension: string, bytes: Buffer): boolean {
   if (extension === ".xlsx") return bytes.subarray(0, 2).equals(Buffer.from("PK"));
-  if (extension === ".xls") return bytes.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  if (extension === ".xls")
+    return bytes
+      .subarray(0, 8)
+      .equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
   return false;
 }
 
@@ -90,7 +150,11 @@ async function appendAudit(root: string, record: Record<string, unknown>) {
     timestamp: new Date().toISOString(),
     ...record,
   })}\n`;
-  const handle = await open(audit, constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY, 0o600);
+  const handle = await open(
+    audit,
+    constants.O_APPEND | constants.O_CREAT | constants.O_WRONLY,
+    0o600,
+  );
   try {
     await handle.writeFile(line, "utf8");
     await handle.sync();
@@ -106,7 +170,7 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
 
   const root = rootFromEnv();
   await assertSensorHealthy();
-  const sessao = exigirSessaoFornecedor();
+  const ator = resolverAtor(input);
   if (!/^[a-z0-9._-]{1,80}$/.test(input.route)) {
     throw new Error("Rota de staging inválida.");
   }
@@ -128,10 +192,10 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
   if (!ALLOWED_MIME.has(input.mimeType)) {
     throw new Error("MIME não permitido.");
   }
-  if (!/^[a-zA-Z0-9 ._()\-]{1,180}$/.test(originalName)) {
+  if (!/^[a-zA-Z0-9 ._()-]{1,180}$/.test(originalName)) {
     throw new Error("Nome de arquivo inválido.");
   }
-  if (input.bytesBase64.length > Math.ceil(MAX_BYTES * 4 / 3) + 16) {
+  if (input.bytesBase64.length > Math.ceil((MAX_BYTES * 4) / 3) + 16) {
     throw new Error("Arquivo excede o limite.");
   }
 
@@ -149,9 +213,14 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
     sha256: sha256(bytes),
     bytes: bytes.length,
     internalName,
+    fornecedorCodigo: ator.fornecedorCodigo,
   };
 
-  const handle = await open(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+  const handle = await open(
+    target,
+    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+    0o600,
+  );
   try {
     await handle.writeFile(bytes);
     await handle.sync();
@@ -161,14 +230,21 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
   const observed = await stat(target);
   if (observed.size !== bytes.length || observed.mode & 0o077) {
     await rename(target, join(quarantine, internalName));
-    await appendAudit(root, { type: "upload_rejected", uploadId, reason: "post_effect_mismatch", route: input.route });
+    await appendAudit(root, {
+      type: "upload_rejected",
+      uploadId,
+      reason: "post_effect_mismatch",
+      route: input.route,
+    });
     throw new Error("Falha na verificação pós-efeito.");
   }
   await appendAudit(root, {
     type: "upload_staged",
     uploadId,
     route: input.route,
-    subject: sessao.codigo,
+    subject: ator.subject,
+    actorType: ator.actorType,
+    fornecedorCodigo: ator.fornecedorCodigo,
     bytes: receipt.bytes,
     sha256: receipt.sha256,
     decision: receipt.decision,
@@ -194,7 +270,10 @@ export async function readStagedUpload(uploadId: string, internalName: string) {
 }
 
 async function chmodPrivate(path: string) {
-  const handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  const handle = await open(
+    path,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
   try {
     await handle.chmod(0o700);
   } finally {

@@ -28,10 +28,16 @@ function exigirSessaoCatalogo() {
   return sessao;
 }
 
-export async function persistirCatalogoComercial(data: CatalogoComercialInput) {
+export async function persistirCatalogoComercial(
+  data: CatalogoComercialInput,
+  options: { fornecedorCodigo?: string } = {},
+) {
   ensureCatalogoComercial();
   const sessao = exigirSessaoCatalogo();
-  const fornecedorCodigo = codigoFornecedorEfetivo(normalizarCodigoFornecedor(sessao.codigo));
+  const fornecedorCodigo = options.fornecedorCodigo
+    ? normalizarCodigoFornecedor(options.fornecedorCodigo)
+    : codigoFornecedorEfetivo(normalizarCodigoFornecedor(sessao.codigo));
+  if (!fornecedorCodigo) throw new Error("Fornecedor de destino exigido.");
   const agora = new Date().toISOString();
   const id = randomUUID();
   const status = data.status === "PUBLICADO" ? "PUBLICADO" : "RASCUNHO";

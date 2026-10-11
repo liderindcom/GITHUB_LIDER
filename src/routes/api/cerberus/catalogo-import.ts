@@ -97,6 +97,8 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
           typeof candidate.originalName === "string" ? candidate.originalName : "";
         const mimeType = typeof candidate.mimeType === "string" ? candidate.mimeType : "";
         const bytesBase64 = typeof candidate.bytesBase64 === "string" ? candidate.bytesBase64 : "";
+        const fornecedorCodigo =
+          typeof candidate.fornecedorCodigo === "string" ? candidate.fornecedorCodigo : undefined;
         if (!originalName || !mimeType || !bytesBase64)
           return error("Campos obrigatórios ausentes.", 422);
 
@@ -106,6 +108,7 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
             mimeType,
             bytesBase64,
             route: "catalogo-comercial",
+            fornecedorCodigo,
           });
           const bytes = await readStagedUpload(receipt.uploadId, receipt.internalName);
           const convertido = converterPlanilha(bytes);
@@ -115,7 +118,11 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
 
           const itens: CatalogoComercialDB[] = [];
           for (const linha of convertido.linhas) {
-            itens.push(await persistirCatalogoComercial(linha));
+            itens.push(
+              await persistirCatalogoComercial(linha, {
+                fornecedorCodigo: receipt.fornecedorCodigo,
+              }),
+            );
           }
           return Response.json({ receipt, itens }, { headers: { "cache-control": "no-store" } });
         } catch (cause) {
