@@ -59,6 +59,7 @@ const vazio: Formulario = {
   imagemUrl: "",
   fichaTecnica: "",
   variacoesJson: "",
+  dadosFichaLiderJson: null,
   precoSugerido: null,
   precoValidadeInicio: "",
   precoValidadeFim: "",
@@ -77,6 +78,106 @@ const MIME_POR_EXTENSAO: Record<string, string> = {
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 const MAX_PLANILHA_BYTES = 10 * 1024 * 1024;
+
+const ALIASES_FICHA_LIDER: Record<string, string[]> = {
+  codigoInterno: ["cod interno", "referencia", "codigo produto", "codigo"],
+  descricao: ["descricao do produto", "descricao", "produto", "nome"],
+  embalagemQuantidade: ["embl qtde na cx", "quantidade na caixa", "multiplo de compra"],
+  custoFornecedor: ["custo do fornecedor", "custo", "preco fornecedor"],
+  condicaoFaturamento: ["condicao de entrega", "faturamento"],
+  ipiPct: ["ipi", "ipi percentual"],
+  prazoEntregaDias: ["prazo de entrega", "prazo de entrega dias", "prazo"],
+  freteTipo: ["frete", "tipo frete"],
+  ean13: ["ean13", "ean 13", "codigo de barras"],
+  dun14: ["dun14", "dun 14"],
+  controlaValidade: ["controla validade", "controle validade"],
+  validadeDias: ["validade em dias", "validade dias"],
+  diasValidadeMinima: ["dias validade minima", "validade minima recebimento"],
+  ncm: ["ncm"],
+  cest: ["cest"],
+  caixaComprimentoCm: ["caixa comp", "caixa comprimento", "comp caixa"],
+  caixaLarguraCm: ["caixa larg", "caixa largura", "larg caixa"],
+  caixaAlturaCm: ["caixa alt", "caixa altura", "alt caixa"],
+  caixaPesoBrutoKg: ["caixa p bruto", "caixa peso bruto", "peso bruto caixa"],
+  unidadeComprimentoCm: ["unidade comp", "unidade comprimento", "comp unidade"],
+  unidadeLarguraCm: ["unidade larg", "unidade largura", "larg unidade"],
+  unidadeAlturaCm: ["unidade alt", "unidade altura", "alt unidade"],
+  unidadePesoBrutoKg: ["unidade p bruto", "unidade peso bruto", "peso bruto unidade"],
+  palletBaseCaixas: ["pallet base", "base caixas", "pallet base caixas"],
+  palletAlturaCaixas: ["pallet altura", "altura caixas", "pallet altura caixas"],
+  palletTotalCaixas: ["pallet em caixas", "total pallet", "pallet caixas"],
+};
+
+const CAMPOS_NUMERICOS_FICHA = new Set([
+  "embalagemQuantidade",
+  "custoFornecedor",
+  "ipiPct",
+  "prazoEntregaDias",
+  "validadeDias",
+  "diasValidadeMinima",
+  "caixaComprimentoCm",
+  "caixaLarguraCm",
+  "caixaAlturaCm",
+  "caixaPesoBrutoKg",
+  "unidadeComprimentoCm",
+  "unidadeLarguraCm",
+  "unidadeAlturaCm",
+  "unidadePesoBrutoKg",
+  "palletBaseCaixas",
+  "palletAlturaCaixas",
+  "palletTotalCaixas",
+]);
+
+function normalizarCabecalho(valor: string) {
+  return valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, " ");
+}
+
+function valorTextoFicha(valor: unknown) {
+  if (valor instanceof Date) return valor.toISOString().slice(0, 10);
+  return valor === null || valor === undefined ? "" : String(valor).trim();
+}
+
+function valorNumeroFicha(valor: unknown) {
+  const texto = valorTextoFicha(valor).replace(/\s/g, "");
+  if (!texto) return null;
+  const normalizado =
+    texto.includes(",") && texto.includes(".")
+      ? texto.replace(/\./g, "").replace(",", ".")
+      : texto.replace(",", ".");
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) ? numero : null;
+}
+
+function fichaImportada(linha: Formulario): Record<string, unknown> {
+  if (!linha.dadosFichaLiderJson) return {};
+  try {
+    const valor = JSON.parse(linha.dadosFichaLiderJson);
+    return valor && typeof valor === "object" ? (valor as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function valorFicha(linha: Record<string, unknown>, campo: string) {
+  return Object.entries(linha).find(([chave]) =>
+    (ALIASES_FICHA_LIDER[campo] || []).some(
+      (nome) => normalizarCabecalho(nome) === normalizarCabecalho(chave),
+    ),
+  )?.[1];
+}
+
+function possuiCabecalhoFicha(linha: Record<string, unknown>) {
+  return Object.keys(linha).some((chave) =>
+    Object.values(ALIASES_FICHA_LIDER).some((nomes) =>
+      nomes.some((nome) => normalizarCabecalho(nome) === normalizarCabecalho(chave)),
+    ),
+  );
+}
 
 async function arquivoParaBase64(arquivo: File): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -150,28 +251,35 @@ function CatalogoComercialPage() {
   const baixarModeloCatalogo = () => {
     const planilha = XLSX.utils.json_to_sheet([
       {
-        "Código fornecedor": "",
-        "Descrição comercial": "",
-        Marca: "",
-        Categoria: "",
-        Subcategoria: "",
-        "SKU RMS": "",
-        "Imagem URL": "",
-        "Ficha técnica": "",
-        Variações: "",
-        "Preço sugerido": "",
-        "Início validade preço": "",
-        "Fim validade preço": "",
-        "Estoque disponível": "",
-        "Prazo entrega dias": "",
-        "Pedido mínimo": "",
-        Coleção: "",
-        Estação: "",
-        Evento: "",
+        "Cod Interno": "REF-001",
+        "Descrição do Produto": "Produto exemplo",
+        "Embl. Qtde na Cx": 12,
+        "Custo do Fornecedor": 29.9,
+        "IPI %": 0,
+        "Prazo de Entrega (dias)": 15,
+        Frete: "CIF",
+        EAN13: "",
+        DUN14: "",
+        "Controla validade": "Não",
+        "Validade em dias": "",
+        "Dias validade mínima para recebimento": "",
+        NCM: "",
+        CEST: "",
+        "Caixa Comp (cm)": "",
+        "Caixa Larg (cm)": "",
+        "Caixa Alt (cm)": "",
+        "Caixa P.Bruto (kg)": "",
+        "Unidade Comp (cm)": "",
+        "Unidade Larg (cm)": "",
+        "Unidade Alt (cm)": "",
+        "Unidade P.Bruto (kg)": "",
+        "Pallet Base (caixas)": "",
+        "Pallet Altura (caixas)": "",
+        "Pallet em caixas": "",
       },
     ]);
     const arquivo = XLSX.write(
-      { Sheets: { "Catálogo Comercial": planilha }, SheetNames: ["Catálogo Comercial"] },
+      { Sheets: { "Ficha Produto": planilha }, SheetNames: ["Ficha Produto"] },
       { bookType: "xlsx", type: "array" },
     );
     const url = URL.createObjectURL(
@@ -181,7 +289,7 @@ function CatalogoComercialPage() {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "modelo-catalogo-comercial.xlsx";
+    link.download = "modelo-ficha-tecnica-produto-lider.xlsx";
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -202,64 +310,102 @@ function CatalogoComercialPage() {
       const workbook = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
       const primeiraAba = workbook.Sheets[workbook.SheetNames[0]];
       const linhas = XLSX.utils.sheet_to_json<Record<string, unknown>>(primeiraAba, { defval: "" });
-      const normalizar = (valor: unknown) =>
-        String(valor ?? "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "");
-      const achar = (linha: Record<string, unknown>, nomes: string[]) =>
-        Object.entries(linha).find(([chave]) => nomes.includes(normalizar(chave)))?.[1];
-      const texto = (linha: Record<string, unknown>, nomes: string[]) =>
-        String(achar(linha, nomes) ?? "").trim();
-      const numeroImportado = (linha: Record<string, unknown>, nomes: string[]) => {
-        const bruto = texto(linha, nomes).replace(/[^0-9,.-]/g, "");
-        if (!bruto) return null;
-        const valor = Number(
-          bruto.includes(",") ? bruto.replace(/\./g, "").replace(",", ".") : bruto,
-        );
-        return Number.isFinite(valor) ? valor : null;
-      };
+      if (linhas.length > 500) {
+        setErrosImportacao(["A importação está limitada a 500 linhas por arquivo."]);
+        return;
+      }
+      const fichaTecnica = possuiCabecalhoFicha(linhas[0] || {});
       const importadas: Formulario[] = [];
       const erros: string[] = [];
       linhas.forEach((linha, indice) => {
-        const descricao = texto(linha, ["descricao", "descricaocomercial", "produto", "nome"]);
+        const descricao = fichaTecnica
+          ? valorTextoFicha(valorFicha(linha, "descricao"))
+          : String(
+              Object.entries(linha).find(([chave]) =>
+                ["descricao", "descricaocomercial", "produto", "nome"].includes(
+                  normalizarCabecalho(chave).replace(/ /g, ""),
+                ),
+              )?.[1] ?? "",
+            ).trim();
         if (!descricao) {
           if (Object.values(linha).some((valor) => String(valor).trim()))
-            erros.push(`Linha ${indice + 2}: descrição comercial não informada.`);
+            erros.push(`Linha ${indice + 2}: descrição do produto não informada.`);
           return;
         }
+
+        if (fichaTecnica) {
+          const ficha: Record<string, unknown> = {};
+          Object.keys(ALIASES_FICHA_LIDER).forEach((campo) => {
+            const bruto = valorTextoFicha(valorFicha(linha, campo));
+            ficha[campo] = CAMPOS_NUMERICOS_FICHA.has(campo)
+              ? valorNumeroFicha(valorFicha(linha, campo))
+              : bruto || null;
+            if (CAMPOS_NUMERICOS_FICHA.has(campo) && bruto && ficha[campo] === null) {
+              erros.push(`Linha ${indice + 2}: ${campo} deve ser numérico.`);
+            }
+          });
+          const codigo = String(ficha.codigoInterno || "").trim();
+          importadas.push({
+            ...vazio,
+            codigoFornecedor: codigo,
+            descricao,
+            skuReferencia: codigo,
+            fichaTecnica: "Ficha técnica Líder importada; revisão comercial pendente.",
+            dadosFichaLiderJson: JSON.stringify(ficha),
+            prazoEntregaDias:
+              typeof ficha.prazoEntregaDias === "number" ? ficha.prazoEntregaDias : null,
+          });
+          return;
+        }
+
+        const normalizarLegado = (valor: unknown) =>
+          String(valor ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, "");
+        const acharLegado = (nomes: string[]) =>
+          Object.entries(linha).find(([chave]) => nomes.includes(normalizarLegado(chave)))?.[1];
+        const textoLegado = (nomes: string[]) => String(acharLegado(nomes) ?? "").trim();
+        const numeroLegado = (nomes: string[]) => {
+          const bruto = textoLegado(nomes).replace(/[^0-9,.-]/g, "");
+          if (!bruto) return null;
+          const valor = Number(
+            bruto.includes(",") ? bruto.replace(/\./g, "").replace(",", ".") : bruto,
+          );
+          return Number.isFinite(valor) ? valor : null;
+        };
         importadas.push({
           ...vazio,
-          codigoFornecedor: texto(linha, ["codigo", "codigofornecedor", "referenciafornecedor"]),
+          codigoFornecedor: textoLegado(["codigo", "codigofornecedor", "referenciafornecedor"]),
           descricao,
-          marca: texto(linha, ["marca"]),
-          categoria: texto(linha, ["categoria"]),
-          subcategoria: texto(linha, ["subcategoria"]),
-          skuReferencia: texto(linha, ["sku", "skurms", "skureferencia"]),
-          imagemUrl: texto(linha, ["imagem", "imagemurl", "urlimagem"]),
-          fichaTecnica: texto(linha, ["fichatecnica", "informacoescomerciais"]),
-          variacoesJson: texto(linha, ["variacoes", "variacoesjson"]),
-          precoSugerido: numeroImportado(linha, ["preco", "precosugerido", "valorsugerido"]),
-          precoValidadeInicio: texto(linha, ["iniciovalidade", "iniciovalidadepreco"]),
-          precoValidadeFim: texto(linha, ["fimvalidade", "fimvalidadepreco"]),
-          estoqueDisponivel: numeroImportado(linha, ["estoque", "estoquedisponivel"]),
-          prazoEntregaDias: numeroImportado(linha, ["prazo", "prazoentrega", "prazoentregadias"]),
-          pedidoMinimo: numeroImportado(linha, ["pedidominimo", "quantidademinima"]),
-          colecao: texto(linha, ["colecao", "linha"]),
-          estacao: texto(linha, ["estacao"]),
-          evento: texto(linha, ["evento", "oportunidade"]),
+          marca: textoLegado(["marca"]),
+          categoria: textoLegado(["categoria"]),
+          subcategoria: textoLegado(["subcategoria"]),
+          skuReferencia: textoLegado(["sku", "skurms", "skureferencia"]),
+          imagemUrl: textoLegado(["imagem", "imagemurl", "urlimagem"]),
+          fichaTecnica: textoLegado(["fichatecnica", "informacoescomerciais"]),
+          variacoesJson: textoLegado(["variacoes", "variacoesjson"]),
+          precoSugerido: numeroLegado(["preco", "precosugerido", "valorsugerido"]),
+          precoValidadeInicio: textoLegado(["iniciovalidade", "iniciovalidadepreco"]),
+          precoValidadeFim: textoLegado(["fimvalidade", "fimvalidadepreco"]),
+          estoqueDisponivel: numeroLegado(["estoque", "estoquedisponivel"]),
+          prazoEntregaDias: numeroLegado(["prazo", "prazoentrega", "prazoentregadias"]),
+          pedidoMinimo: numeroLegado(["pedidominimo", "quantidademinima"]),
+          colecao: textoLegado(["colecao", "linha"]),
+          estacao: textoLegado(["estacao"]),
+          evento: textoLegado(["evento", "oportunidade"]),
         });
       });
       setLinhasImportadas(importadas);
       setErrosImportacao(
         linhas.length === 0
           ? [
-              "O arquivo foi lido, mas ainda não há produtos preenchidos. Preencha pelo menos a coluna Descrição comercial e selecione a planilha novamente.",
+              "O arquivo foi lido, mas ainda não há produtos preenchidos. Preencha pelo menos a coluna Descrição do Produto e selecione a planilha novamente.",
             ]
           : importadas.length === 0 && erros.length === 0
             ? [
-                "A planilha foi lida, mas nenhuma linha foi reconhecida. Use o modelo do portal e mantenha a coluna Descrição comercial.",
+                "A planilha foi lida, mas nenhuma linha foi reconhecida. Use o modelo da ficha técnica e mantenha a coluna Descrição do Produto.",
               ]
             : erros,
       );
@@ -518,11 +664,12 @@ function CatalogoComercialPage() {
         <Card className="border-primary/20 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="size-5 text-primary" /> Enviar catálogo por planilha
+              <FileSpreadsheet className="size-5 text-primary" /> Enviar ficha técnica por planilha
             </CardTitle>
             <CardDescription>
-              Envie vários produtos de uma vez. O arquivo será conferido e ficará como rascunho para
-              revisão; ele não publica produtos nem gera pedido automaticamente.
+              Envie vários produtos de uma vez usando os campos de cadastro técnico do Líder. O
+              arquivo será conferido e ficará como rascunho para revisão; ele não publica produtos
+              nem gera pedido automaticamente.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -530,8 +677,8 @@ function CatalogoComercialPage() {
               <div className="flex gap-2">
                 <Info className="mt-0.5 size-4 shrink-0 text-primary" />
                 <span>
-                  <strong className="text-foreground">1. Prepare:</strong> baixe o modelo e preencha
-                  a coluna Descrição comercial.
+                  <strong className="text-foreground">1. Prepare:</strong> baixe o modelo da ficha e
+                  preencha a coluna Descrição do Produto.
                 </span>
               </div>
               <div className="flex gap-2">
@@ -551,8 +698,9 @@ function CatalogoComercialPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               Formatos aceitos: .xlsx e .xls. O campo obrigatório é{" "}
-              <strong className="text-foreground">Descrição comercial</strong>. Para começar, use o
-              modelo abaixo.
+              <strong className="text-foreground">Descrição do Produto</strong>. Código, embalagem,
+              custo, IPI, prazo, frete, EAN, DUN, validade, NCM, CEST e dimensões ficam registrados
+              na ficha técnica. Para começar, use o modelo abaixo.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
@@ -569,7 +717,7 @@ function CatalogoComercialPage() {
                 />
               </label>
               <Button type="button" variant="outline" onClick={baixarModeloCatalogo}>
-                <Download className="mr-2 size-4" /> Baixar modelo
+                <Download className="mr-2 size-4" /> Baixar modelo da ficha técnica
               </Button>
               {arquivoImportado && (
                 <div className="basis-full rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
@@ -603,28 +751,31 @@ function CatalogoComercialPage() {
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-muted">
                       <tr>
+                        <th className="p-2 text-left">Código</th>
                         <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-left">Marca</th>
-                        <th className="p-2 text-left">Categoria</th>
-                        <th className="p-2 text-right">Preço</th>
+                        <th className="p-2 text-left">EAN</th>
+                        <th className="p-2 text-right">Custo</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {linhasImportadas.map((linha, indice) => (
-                        <tr key={`${linha.descricao}-${indice}`} className="border-t">
-                          <td className="p-2">{linha.descricao}</td>
-                          <td className="p-2">{linha.marca || "—"}</td>
-                          <td className="p-2">{linha.categoria || "—"}</td>
-                          <td className="p-2 text-right">
-                            {linha.precoSugerido == null
-                              ? "—"
-                              : linha.precoSugerido.toLocaleString("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                })}
-                          </td>
-                        </tr>
-                      ))}
+                      {linhasImportadas.map((linha, indice) => {
+                        const ficha = fichaImportada(linha);
+                        return (
+                          <tr key={`${linha.descricao}-${indice}`} className="border-t">
+                            <td className="p-2 font-mono">{linha.codigoFornecedor || "—"}</td>
+                            <td className="p-2">{linha.descricao}</td>
+                            <td className="p-2">{String(ficha.ean13 || "—")}</td>
+                            <td className="p-2 text-right">
+                              {typeof ficha.custoFornecedor === "number"
+                                ? ficha.custoFornecedor.toLocaleString("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  })
+                                : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

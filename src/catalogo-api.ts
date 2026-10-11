@@ -21,6 +21,7 @@ export type CatalogoComercialDB = {
   imagemUrl: string | null;
   fichaTecnica: string | null;
   variacoesJson: string | null;
+  dadosFichaLiderJson: string | null;
   precoSugerido: number | null;
   precoValidadeInicio: string | null;
   precoValidadeFim: string | null;
@@ -43,6 +44,7 @@ function ensureCatalogoComercial() {
       id TEXT PRIMARY KEY, fornecedorCodigo TEXT NOT NULL, codigoFornecedor TEXT,
       descricao TEXT NOT NULL, marca TEXT, categoria TEXT, subcategoria TEXT,
       skuReferencia TEXT, imagemUrl TEXT, fichaTecnica TEXT, variacoesJson TEXT,
+      dadosFichaLiderJson TEXT,
       precoSugerido REAL, precoValidadeInicio TEXT, precoValidadeFim TEXT,
       estoqueDisponivel REAL, prazoEntregaDias INTEGER, pedidoMinimo REAL,
       colecao TEXT, estacao TEXT, evento TEXT, status TEXT NOT NULL DEFAULT 'RASCUNHO',
@@ -52,6 +54,12 @@ function ensureCatalogoComercial() {
     CREATE INDEX IF NOT EXISTS idx_catalogo_comercial_fornecedor
       ON catalogo_comercial_fornecedor (fornecedorCodigo, status, atualizadoEm);
   `);
+  const colunas = db.prepare("PRAGMA table_info(catalogo_comercial_fornecedor)").all() as Array<{
+    name: string;
+  }>;
+  if (!colunas.some((coluna) => coluna.name === "dadosFichaLiderJson")) {
+    db.exec("ALTER TABLE catalogo_comercial_fornecedor ADD COLUMN dadosFichaLiderJson TEXT");
+  }
 }
 
 function exigirSessaoCatalogo() {

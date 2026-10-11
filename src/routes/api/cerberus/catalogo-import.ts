@@ -29,23 +29,148 @@ function lerNumero(linha: Record<string, unknown>, nomes: string[]) {
   return Number.isFinite(valor) ? valor : null;
 }
 
+const ALIASES_FICHA_LIDER: Record<string, string[]> = {
+  codigoInterno: ["cod interno", "referencia", "codigo produto", "codigo"],
+  descricao: ["descricao do produto", "descricao", "produto", "nome"],
+  embalagemQuantidade: ["embl qtde na cx", "quantidade na caixa", "multiplo de compra"],
+  custoFornecedor: ["custo do fornecedor", "custo", "preco fornecedor"],
+  condicaoFaturamento: ["condicao de entrega", "faturamento"],
+  ipiPct: ["ipi", "ipi percentual"],
+  prazoEntregaDias: ["prazo de entrega", "prazo de entrega dias", "prazo"],
+  freteTipo: ["frete", "tipo frete"],
+  ean13: ["ean13", "ean 13", "codigo de barras"],
+  dun14: ["dun14", "dun 14"],
+  controlaValidade: ["controla validade", "controle validade"],
+  validadeDias: ["validade em dias", "validade dias"],
+  diasValidadeMinima: ["dias validade minima", "validade minima recebimento"],
+  ncm: ["ncm"],
+  cest: ["cest"],
+  caixaComprimentoCm: ["caixa comp", "caixa comprimento", "comp caixa"],
+  caixaLarguraCm: ["caixa larg", "caixa largura", "larg caixa"],
+  caixaAlturaCm: ["caixa alt", "caixa altura", "alt caixa"],
+  caixaPesoBrutoKg: ["caixa p bruto", "caixa peso bruto", "peso bruto caixa"],
+  unidadeComprimentoCm: ["unidade comp", "unidade comprimento", "comp unidade"],
+  unidadeLarguraCm: ["unidade larg", "unidade largura", "larg unidade"],
+  unidadeAlturaCm: ["unidade alt", "unidade altura", "alt unidade"],
+  unidadePesoBrutoKg: ["unidade p bruto", "unidade peso bruto", "peso bruto unidade"],
+  palletBaseCaixas: ["pallet base", "base caixas", "pallet base caixas"],
+  palletAlturaCaixas: ["pallet altura", "altura caixas", "pallet altura caixas"],
+  palletTotalCaixas: ["pallet em caixas", "total pallet", "pallet caixas"],
+};
+
+const CAMPOS_NUMERICOS_FICHA = new Set([
+  "embalagemQuantidade",
+  "custoFornecedor",
+  "ipiPct",
+  "prazoEntregaDias",
+  "validadeDias",
+  "diasValidadeMinima",
+  "caixaComprimentoCm",
+  "caixaLarguraCm",
+  "caixaAlturaCm",
+  "caixaPesoBrutoKg",
+  "unidadeComprimentoCm",
+  "unidadeLarguraCm",
+  "unidadeAlturaCm",
+  "unidadePesoBrutoKg",
+  "palletBaseCaixas",
+  "palletAlturaCaixas",
+  "palletTotalCaixas",
+]);
+
+function lerFicha(linha: Record<string, unknown>, campo: string) {
+  return Object.entries(linha).find(([chave]) =>
+    (ALIASES_FICHA_LIDER[campo] || []).some((nome) => normalizar(nome) === normalizar(chave)),
+  )?.[1];
+}
+
+function textoFicha(linha: Record<string, unknown>, campo: string) {
+  const valor = lerFicha(linha, campo);
+  if (valor instanceof Date) return valor.toISOString().slice(0, 10);
+  return String(valor ?? "").trim();
+}
+
+function numeroFicha(linha: Record<string, unknown>, campo: string) {
+  const bruto = textoFicha(linha, campo).replace(/\s/g, "");
+  if (!bruto) return null;
+  const normalizado =
+    bruto.includes(",") && bruto.includes(".")
+      ? bruto.replace(/\./g, "").replace(",", ".")
+      : bruto.replace(",", ".");
+  const valor = Number(normalizado);
+  return Number.isFinite(valor) ? valor : null;
+}
+
+function possuiCabecalhoFicha(linha: Record<string, unknown>) {
+  return Object.keys(linha).some((chave) =>
+    Object.values(ALIASES_FICHA_LIDER).some((nomes) =>
+      nomes.some((nome) => normalizar(nome) === normalizar(chave)),
+    ),
+  );
+}
+
 function converterPlanilha(bytes: Buffer): { linhas: CatalogoComercialInput[]; erros: string[] } {
-  const workbook = XLSX.read(bytes, { type: "buffer" });
+  const workbook = XLSX.read(bytes, { type: "buffer", cellDates: true });
   const primeiraAba = workbook.Sheets[workbook.SheetNames[0]];
   if (!primeiraAba) return { linhas: [], erros: ["A planilha não possui uma aba para importar."] };
 
   const linhas = XLSX.utils.sheet_to_json<Record<string, unknown>>(primeiraAba, { defval: "" });
+  if (linhas.length > 500) {
+    return { linhas: [], erros: ["A importação está limitada a 500 linhas por arquivo."] };
+  }
   const importadas: CatalogoComercialInput[] = [];
   const erros: string[] = [];
+  const fichaTecnica = possuiCabecalhoFicha(linhas[0] || {});
 
   linhas.forEach((linha, indice) => {
-    const descricao = lerTexto(linha, ["descricao", "descricaocomercial", "produto", "nome"]);
+    const descricao = fichaTecnica
+      ? textoFicha(linha, "descricao")
+      : lerTexto(linha, ["descricao", "descricaocomercial", "produto", "nome"]);
     if (!descricao) {
       if (Object.values(linha).some((valor) => String(valor).trim())) {
         erros.push(`Linha ${indice + 2}: descrição comercial não informada.`);
       }
       return;
     }
+    if (fichaTecnica) {
+      const ficha: Record<string, unknown> = {};
+      Object.keys(ALIASES_FICHA_LIDER).forEach((campo) => {
+        const bruto = textoFicha(linha, campo);
+        ficha[campo] = CAMPOS_NUMERICOS_FICHA.has(campo)
+          ? numeroFicha(linha, campo)
+          : bruto || null;
+        if (CAMPOS_NUMERICOS_FICHA.has(campo) && bruto && ficha[campo] === null) {
+          erros.push(`Linha ${indice + 2}: ${campo} deve ser numérico.`);
+        }
+      });
+      const codigo = String(ficha.codigoInterno || "").trim();
+      importadas.push({
+        codigoFornecedor: codigo || null,
+        descricao,
+        marca: null,
+        categoria: null,
+        subcategoria: null,
+        skuReferencia: codigo || null,
+        imagemUrl: null,
+        fichaTecnica: "Ficha técnica Líder importada; revisão comercial pendente.",
+        variacoesJson: null,
+        dadosFichaLiderJson: JSON.stringify(ficha),
+        precoSugerido: null,
+        precoValidadeInicio: null,
+        precoValidadeFim: null,
+        estoqueDisponivel: null,
+        prazoEntregaDias:
+          typeof ficha.prazoEntregaDias === "number" ? ficha.prazoEntregaDias : null,
+        pedidoMinimo: null,
+        colecao: null,
+        estacao: null,
+        evento: null,
+        origem: "FORNECEDOR",
+        status: "RASCUNHO",
+      });
+      return;
+    }
+
     importadas.push({
       codigoFornecedor: lerTexto(linha, ["codigo", "codigofornecedor", "referenciafornecedor"]),
       descricao,
@@ -56,6 +181,7 @@ function converterPlanilha(bytes: Buffer): { linhas: CatalogoComercialInput[]; e
       imagemUrl: lerTexto(linha, ["imagem", "imagemurl", "urlimagem"]),
       fichaTecnica: lerTexto(linha, ["fichatecnica", "informacoescomerciais"]),
       variacoesJson: lerTexto(linha, ["variacoes", "variacoesjson"]),
+      dadosFichaLiderJson: null,
       precoSugerido: lerNumero(linha, ["preco", "precosugerido", "valorsugerido"]),
       precoValidadeInicio: lerTexto(linha, ["iniciovalidade", "iniciovalidadepreco"]),
       precoValidadeFim: lerTexto(linha, ["fimvalidade", "fimvalidadepreco"]),
@@ -72,7 +198,7 @@ function converterPlanilha(bytes: Buffer): { linhas: CatalogoComercialInput[]; e
 
   if (!importadas.length && !erros.length) {
     erros.push(
-      "Nenhuma linha válida foi encontrada. Use o modelo e preencha a coluna Descrição comercial.",
+      "Nenhuma linha válida foi encontrada. Use o modelo da ficha e preencha a coluna Descrição do Produto.",
     );
   }
   return { linhas: importadas, erros };

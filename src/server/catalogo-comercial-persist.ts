@@ -11,6 +11,7 @@ function ensureCatalogoComercial() {
       id TEXT PRIMARY KEY, fornecedorCodigo TEXT NOT NULL, codigoFornecedor TEXT,
       descricao TEXT NOT NULL, marca TEXT, categoria TEXT, subcategoria TEXT,
       skuReferencia TEXT, imagemUrl TEXT, fichaTecnica TEXT, variacoesJson TEXT,
+      dadosFichaLiderJson TEXT,
       precoSugerido REAL, precoValidadeInicio TEXT, precoValidadeFim TEXT,
       estoqueDisponivel REAL, prazoEntregaDias INTEGER, pedidoMinimo REAL,
       colecao TEXT, estacao TEXT, evento TEXT, status TEXT NOT NULL DEFAULT 'RASCUNHO',
@@ -20,6 +21,12 @@ function ensureCatalogoComercial() {
     CREATE INDEX IF NOT EXISTS idx_catalogo_comercial_fornecedor
       ON catalogo_comercial_fornecedor (fornecedorCodigo, status, atualizadoEm);
   `);
+  const colunas = db.prepare("PRAGMA table_info(catalogo_comercial_fornecedor)").all() as Array<{
+    name: string;
+  }>;
+  if (!colunas.some((coluna) => coluna.name === "dadosFichaLiderJson")) {
+    db.exec("ALTER TABLE catalogo_comercial_fornecedor ADD COLUMN dadosFichaLiderJson TEXT");
+  }
 }
 
 function exigirSessaoCatalogo() {
@@ -44,11 +51,12 @@ export async function persistirCatalogoComercial(
   db.prepare(
     `INSERT INTO catalogo_comercial_fornecedor
      (id, fornecedorCodigo, codigoFornecedor, descricao, marca, categoria, subcategoria,
-      skuReferencia, imagemUrl, fichaTecnica, variacoesJson, precoSugerido,
+      skuReferencia, imagemUrl, fichaTecnica, variacoesJson, dadosFichaLiderJson,
+      precoSugerido,
       precoValidadeInicio, precoValidadeFim, estoqueDisponivel, prazoEntregaDias,
       pedidoMinimo, colecao, estacao, evento, status, criadoEm, atualizadoEm,
       publicadoEm, origem)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     id,
     fornecedorCodigo,
@@ -61,6 +69,7 @@ export async function persistirCatalogoComercial(
     data.imagemUrl || null,
     data.fichaTecnica || null,
     data.variacoesJson || null,
+    data.dadosFichaLiderJson || null,
     data.precoSugerido ?? null,
     data.precoValidadeInicio || null,
     data.precoValidadeFim || null,
