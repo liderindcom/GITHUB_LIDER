@@ -274,7 +274,7 @@ function CatalogoComercialPage() {
         .slice(arquivoSelecionado.name.lastIndexOf("."))
         .toLowerCase();
       const mimeType = MIME_POR_EXTENSAO[extensao] || arquivoSelecionado.type;
-      const respostaCerberus = await fetch("/api/cerberus/upload", {
+      const respostaCerberus = await fetch("/api/cerberus/catalogo-import", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
@@ -286,6 +286,7 @@ function CatalogoComercialPage() {
       });
       const resultadoCerberus = (await respostaCerberus.json().catch(() => ({}))) as {
         error?: unknown;
+        itens?: CatalogoComercialDB[];
       };
       if (!respostaCerberus.ok) {
         if (respostaCerberus.status === 404) {
@@ -296,16 +297,13 @@ function CatalogoComercialPage() {
         );
       }
       if (typeof resultadoCerberus.error === "string") throw new Error(resultadoCerberus.error);
+      if (!resultadoCerberus.itens?.length) throw new Error("Nenhum produto foi importado.");
 
-      const salvos: CatalogoComercialDB[] = [];
-      for (const linha of linhasImportadas) {
-        salvos.push(await salvarCatalogoComercial({ data: { ...linha, status: "RASCUNHO" } }));
-      }
-      setItens((atual) => [...salvos.reverse(), ...atual]);
+      setItens((atual) => [...resultadoCerberus.itens!.slice().reverse(), ...atual]);
       setArquivoSelecionado(null);
       setLinhasImportadas([]);
       setArquivoImportado(null);
-      toast.success(`${salvos.length} produto(s) importado(s) como rascunho.`);
+      toast.success(`${resultadoCerberus.itens.length} produto(s) importado(s) como rascunho.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível importar o catálogo.");
     } finally {

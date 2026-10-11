@@ -53,6 +53,7 @@ import { Route as ApiAtlasCarteiraRouteImport } from './routes/api/atlas/carteir
 import { Route as ApiAtlasCompraRouteImport } from './routes/api/atlas/compra'
 import { Route as ApiAtlasCompradoresRouteImport } from './routes/api/atlas/compradores'
 import { Route as ApiAtlasFornecedoresRouteImport } from './routes/api/atlas/fornecedores'
+import { Route as ApiCerberusCatalogoImportRouteImport } from './routes/api/cerberus/catalogo-import'
 import { Route as ApiCerberusUploadRouteImport } from './routes/api/cerberus/upload'
 import { Route as ApiConnectorV1IngestRouteImport } from './routes/api/connector/v1/ingest'
 import { Route as ApiIntegracoesInteliderRebaixasRouteImport } from './routes/api/integracoes/intelider/rebaixas'
@@ -277,6 +278,12 @@ const ApiAtlasFornecedoresRoute = ApiAtlasFornecedoresRouteImport.update({
   path: '/api/atlas/fornecedores',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCerberusCatalogoImportRoute =
+  ApiCerberusCatalogoImportRouteImport.update({
+    id: '/api/cerberus/catalogo-import',
+    path: '/api/cerberus/catalogo-import',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiCerberusUploadRoute = ApiCerberusUploadRouteImport.update({
   id: '/api/cerberus/upload',
   path: '/api/cerberus/upload',
@@ -338,6 +345,7 @@ export interface FileRoutesByFullPath {
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/cerberus/catalogo-import': typeof ApiCerberusCatalogoImportRoute
   '/api/cerberus/upload': typeof ApiCerberusUploadRoute
   '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
@@ -386,6 +394,7 @@ export interface FileRoutesByTo {
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/cerberus/catalogo-import': typeof ApiCerberusCatalogoImportRoute
   '/api/cerberus/upload': typeof ApiCerberusUploadRoute
   '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
@@ -436,6 +445,7 @@ export interface FileRoutesById {
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
+  '/api/cerberus/catalogo-import': typeof ApiCerberusCatalogoImportRoute
   '/api/cerberus/upload': typeof ApiCerberusUploadRoute
   '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
@@ -486,6 +496,7 @@ export interface FileRouteTypes {
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
     | '/api/atlas/fornecedores'
+    | '/api/cerberus/catalogo-import'
     | '/api/cerberus/upload'
     | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
@@ -534,6 +545,7 @@ export interface FileRouteTypes {
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
     | '/api/atlas/fornecedores'
+    | '/api/cerberus/catalogo-import'
     | '/api/cerberus/upload'
     | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
@@ -583,6 +595,7 @@ export interface FileRouteTypes {
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
     | '/api/atlas/fornecedores'
+    | '/api/cerberus/catalogo-import'
     | '/api/cerberus/upload'
     | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
@@ -598,6 +611,7 @@ export interface RootRouteChildren {
   ApiAtlasCompraRoute: typeof ApiAtlasCompraRoute
   ApiAtlasCompradoresRoute: typeof ApiAtlasCompradoresRoute
   ApiAtlasFornecedoresRoute: typeof ApiAtlasFornecedoresRoute
+  ApiCerberusCatalogoImportRoute: typeof ApiCerberusCatalogoImportRoute
   ApiCerberusUploadRoute: typeof ApiCerberusUploadRoute
   ApiConnectorV1IngestRoute: typeof ApiConnectorV1IngestRoute
   ApiIntegracoesInteliderRebaixasRoute: typeof ApiIntegracoesInteliderRebaixasRoute
@@ -913,6 +927,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAtlasFornecedoresRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cerberus/catalogo-import': {
+      id: '/api/cerberus/catalogo-import'
+      path: '/api/cerberus/catalogo-import'
+      fullPath: '/api/cerberus/catalogo-import'
+      preLoaderRoute: typeof ApiCerberusCatalogoImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cerberus/upload': {
       id: '/api/cerberus/upload'
       path: '/api/cerberus/upload'
@@ -1026,6 +1047,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAtlasCompraRoute: ApiAtlasCompraRoute,
   ApiAtlasCompradoresRoute: ApiAtlasCompradoresRoute,
   ApiAtlasFornecedoresRoute: ApiAtlasFornecedoresRoute,
+  ApiCerberusCatalogoImportRoute: ApiCerberusCatalogoImportRoute,
   ApiCerberusUploadRoute: ApiCerberusUploadRoute,
   ApiConnectorV1IngestRoute: ApiConnectorV1IngestRoute,
   ApiIntegracoesInteliderRebaixasRoute: ApiIntegracoesInteliderRebaixasRoute,

@@ -1,7 +1,6 @@
-import { randomUUID } from "crypto";
 import { createServerFn } from "@tanstack/react-start";
 
-import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
+import { persistirCatalogoComercial } from "@/server/catalogo-comercial-persist";
 import { codigoFornecedorEfetivo, lerSessaoPortal } from "@/server/sessao-portal";
 import { db } from "@/server/db";
 
@@ -68,7 +67,7 @@ export const fetchCatalogoComercial = createServerFn({ method: "GET" }).handler(
     .all(codigoFornecedorEfetivo(sessao.codigo)) as CatalogoComercialDB[];
 });
 
-type CatalogoComercialInput = Omit<
+export type CatalogoComercialInput = Omit<
   CatalogoComercialDB,
   "id" | "fornecedorCodigo" | "criadoEm" | "atualizadoEm" | "publicadoEm"
 >;
@@ -76,48 +75,5 @@ type CatalogoComercialInput = Omit<
 export const salvarCatalogoComercial = createServerFn({ method: "POST" })
   .validator((data: CatalogoComercialInput) => data)
   .handler(async ({ data }) => {
-    ensureCatalogoComercial();
-    const sessao = exigirSessaoCatalogo();
-    const fornecedorCodigo = codigoFornecedorEfetivo(normalizarCodigoFornecedor(sessao.codigo));
-    const agora = new Date().toISOString();
-    const id = randomUUID();
-    const status = data.status === "PUBLICADO" ? "PUBLICADO" : "RASCUNHO";
-    db.prepare(
-      `INSERT INTO catalogo_comercial_fornecedor
-       (id, fornecedorCodigo, codigoFornecedor, descricao, marca, categoria, subcategoria,
-        skuReferencia, imagemUrl, fichaTecnica, variacoesJson, precoSugerido,
-        precoValidadeInicio, precoValidadeFim, estoqueDisponivel, prazoEntregaDias,
-        pedidoMinimo, colecao, estacao, evento, status, criadoEm, atualizadoEm,
-        publicadoEm, origem)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(
-      id,
-      fornecedorCodigo,
-      data.codigoFornecedor || null,
-      data.descricao.trim(),
-      data.marca || null,
-      data.categoria || null,
-      data.subcategoria || null,
-      data.skuReferencia || null,
-      data.imagemUrl || null,
-      data.fichaTecnica || null,
-      data.variacoesJson || null,
-      data.precoSugerido ?? null,
-      data.precoValidadeInicio || null,
-      data.precoValidadeFim || null,
-      data.estoqueDisponivel ?? null,
-      data.prazoEntregaDias ?? null,
-      data.pedidoMinimo ?? null,
-      data.colecao || null,
-      data.estacao || null,
-      data.evento || null,
-      status,
-      agora,
-      agora,
-      status === "PUBLICADO" ? agora : null,
-      "FORNECEDOR",
-    );
-    return db
-      .prepare("SELECT * FROM catalogo_comercial_fornecedor WHERE id = ?")
-      .get(id) as CatalogoComercialDB;
+    return persistirCatalogoComercial(data);
   });
