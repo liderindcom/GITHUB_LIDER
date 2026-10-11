@@ -20,6 +20,10 @@ const ALLOWED_MIME = new Set([
 ]);
 const BLOCKED_EXTENSIONS = new Set([".csv", ".xlsm"]);
 const HEARTBEAT_MAX_AGE_MS = 30_000;
+const STAGING_TTL_MS = 48 * 60 * 60_000;
+const STAGING_GRACE_MS = 2 * 60 * 60_000;
+const PROCESSING_PROTECTION_MS = 7 * 24 * 60 * 60_000;
+const GC_MAX_ROWS = 100;
 
 export type CerberusUploadDecision = "staging" | "quarantined" | "rejected";
 
@@ -153,6 +157,18 @@ function ensureUploadRegistry() {
     CREATE INDEX IF NOT EXISTS idx_cerberus_uploads_owner
       ON cerberus_uploads (fornecedorCodigo, estado, criadoEm);
   `);
+}
+
+function stagingPath(root: string, internalName: string): string {
+  if (!/^[0-9a-f-]{36}\.(xls|xlsx)$/.test(internalName)) {
+    throw new Error("Nome de staging inválido.");
+  }
+  const stagingRoot = resolve(join(root, "staging"));
+  const candidate = resolve(join(stagingRoot, internalName));
+  if (candidate === stagingRoot || !candidate.startsWith(`${stagingRoot}/`)) {
+    throw new Error("Path fora do staging.");
+  }
+  return candidate;
 }
 
 async function assertSensorHealthy() {
@@ -417,13 +433,71 @@ export function releaseStagedUpload(uploadId: string) {
   );
 }
 
+export type CerberusGcPlan = {
+  dryRun: true;
+  cutoffIso: string;
+  processingProtectionIso: string;
+  candidates: Array<{ uploadId: string; internalName: string; estado: string; path: string }>;
+  rejectedPaths: string[];
+};
+
+/**
+ * Planeja o GC sem mutar banco ou filesystem. A remoção real fica bloqueada
+ * até existir um runner com liderança única, soft-delete transacional e
+ * auditoria operacional próprios.
+ */
+export function planStagedUploadGc(options: { nowMs?: number; limit?: number } = {}): CerberusGcPlan {
+  ensureUploadRegistry();
+  const limite = Math.min(Math.max(options.limit ?? GC_MAX_ROWS, 1), GC_MAX_ROWS);
+  const banco = db.prepare("SELECT CURRENT_TIMESTAMP AS agora").get() as { agora?: string } | undefined;
+  const bancoMs = banco?.agora ? Date.parse(`${banco.agora.replace(" ", "T")}Z`) : NaN;
+  const nowMs = options.nowMs ?? (Number.isFinite(bancoMs) ? bancoMs : Date.now());
+  const cutoffMs = nowMs - STAGING_TTL_MS - STAGING_GRACE_MS;
+  const processingProtectionMs = nowMs - PROCESSING_PROTECTION_MS;
+  const rows = db
+    .prepare(
+      `SELECT uploadId, internalName, estado, criadoEm
+       FROM cerberus_uploads
+       WHERE estado IN ('PENDENTE', 'CONSUMIDO') AND criadoEm <= ?
+       ORDER BY criadoEm ASC LIMIT ?`,
+    )
+    .all(new Date(cutoffMs).toISOString(), limite) as Array<{
+      uploadId: string;
+      internalName: string;
+      estado: string;
+      criadoEm: string;
+    }>;
+  const root = rootFromEnv();
+  const candidates: CerberusGcPlan["candidates"] = [];
+  const rejectedPaths: string[] = [];
+  for (const row of rows) {
+    try {
+      candidates.push({
+        uploadId: row.uploadId,
+        internalName: row.internalName,
+        estado: row.estado,
+        path: stagingPath(root, row.internalName),
+      });
+    } catch {
+      rejectedPaths.push(row.uploadId);
+    }
+  }
+  return {
+    dryRun: true,
+    cutoffIso: new Date(cutoffMs).toISOString(),
+    processingProtectionIso: new Date(processingProtectionMs).toISOString(),
+    candidates,
+    rejectedPaths,
+  };
+}
+
 export async function readStagedUpload(uploadId: string, internalName: string) {
   const root = rootFromEnv();
   const safeName = `${uploadId}${extname(internalName).toLowerCase()}`;
   if (safeName !== internalName || !/^[0-9a-f-]{36}\.(xls|xlsx)$/.test(safeName)) {
     throw new Error("Identificador de upload inválido.");
   }
-  const path = join(root, "staging", safeName);
+  const path = stagingPath(root, safeName);
   const realRoot = resolve(root);
   if (!resolve(dirname(path)).startsWith(`${realRoot}/`)) throw new Error("Path fora do staging.");
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
