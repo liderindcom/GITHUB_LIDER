@@ -253,11 +253,15 @@ function CatalogoComercialPage() {
       });
       setLinhasImportadas(importadas);
       setErrosImportacao(
-        importadas.length === 0 && erros.length === 0
+        linhas.length === 0
           ? [
-              "Nenhuma linha válida foi encontrada. Use o modelo e preencha a coluna Descrição comercial.",
+              "O arquivo foi lido, mas ainda não há produtos preenchidos. Preencha pelo menos a coluna Descrição comercial e selecione a planilha novamente.",
             ]
-          : erros,
+          : importadas.length === 0 && erros.length === 0
+            ? [
+                "A planilha foi lida, mas nenhuma linha foi reconhecida. Use o modelo do portal e mantenha a coluna Descrição comercial.",
+              ]
+            : erros,
       );
     } catch {
       setErrosImportacao([
@@ -560,9 +564,22 @@ function CatalogoComercialPage() {
                 <Download className="mr-2 size-4" /> Baixar modelo
               </Button>
               {arquivoImportado && (
-                <span className="text-xs text-muted-foreground">
-                  {arquivoImportado} · {linhasImportadas.length} linha(s) válida(s)
-                </span>
+                <div className="basis-full rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <div className="flex items-start gap-2">
+                    <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">Planilha selecionada</p>
+                      <p className="truncate text-muted-foreground" title={arquivoImportado}>
+                        {arquivoImportado}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {linhasImportadas.length > 0
+                          ? `${linhasImportadas.length} linha(s) pronta(s) para revisão.`
+                          : "Nenhum produto está pronto para envio ainda."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
             {errosImportacao.length > 0 && (
