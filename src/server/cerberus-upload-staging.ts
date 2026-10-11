@@ -32,6 +32,13 @@ export type CerberusUploadReceipt = {
   fornecedorCodigo: string;
 };
 
+type CerberusUploadRow = CerberusUploadReceipt & {
+  subject: string;
+  actorType: "fornecedor" | "interno";
+  estado: "PENDENTE" | "PROCESSANDO" | "CONSUMIDO";
+  criadoEm: string;
+};
+
 type StageInput = {
   originalName: string;
   mimeType: string;
@@ -126,6 +133,26 @@ function rootFromEnv(): string {
 
 function sha256(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function ensureUploadRegistry() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cerberus_uploads (
+      uploadId TEXT PRIMARY KEY,
+      internalName TEXT NOT NULL UNIQUE,
+      subject TEXT NOT NULL,
+      actorType TEXT NOT NULL,
+      fornecedorCodigo TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      bytes INTEGER NOT NULL,
+      decision TEXT NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'PENDENTE',
+      criadoEm TEXT NOT NULL,
+      processadoEm TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_cerberus_uploads_owner
+      ON cerberus_uploads (fornecedorCodigo, estado, criadoEm);
+  `);
 }
 
 async function assertSensorHealthy() {
@@ -297,6 +324,22 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
     });
     throw new Error("Falha na verificação pós-efeito.");
   }
+  ensureUploadRegistry();
+  db.prepare(
+    `INSERT INTO cerberus_uploads
+      (uploadId, internalName, subject, actorType, fornecedorCodigo, sha256, bytes, decision, estado, criadoEm)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE', ?)`
+  ).run(
+    receipt.uploadId,
+    receipt.internalName,
+    ator.subject,
+    ator.actorType,
+    receipt.fornecedorCodigo,
+    receipt.sha256,
+    receipt.bytes,
+    receipt.decision,
+    new Date().toISOString(),
+  );
   await appendAudit(root, {
     type: "upload_staged",
     uploadId,
@@ -309,6 +352,69 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
     decision: receipt.decision,
   });
   return receipt;
+}
+
+export async function claimStagedUpload(input: {
+  uploadId: string;
+  internalName: string;
+  sha256: string;
+  fornecedorCodigo: string;
+}) {
+  ensureUploadRegistry();
+  if (!/^[0-9a-f-]{36}$/.test(input.uploadId)) throw new Error("Upload não encontrado.");
+  if (!/^[0-9a-f-]{36}\.(xls|xlsx)$/.test(input.internalName)) {
+    throw new Error("Upload não encontrado.");
+  }
+  if (!/^[a-f0-9]{64}$/.test(input.sha256)) throw new Error("Integridade do upload inválida.");
+
+  const row = db
+    .prepare(
+      `SELECT uploadId, internalName, subject, actorType, fornecedorCodigo, sha256, bytes,
+              decision, estado, criadoEm
+       FROM cerberus_uploads
+       WHERE uploadId = ? AND internalName = ? AND fornecedorCodigo = ?`,
+    )
+    .get(input.uploadId, input.internalName, input.fornecedorCodigo) as CerberusUploadRow | undefined;
+  if (!row) throw new Error("Upload não encontrado.");
+  if (row.estado === "CONSUMIDO") throw new Error("Upload já consumido.");
+  if (row.estado === "PROCESSANDO") throw new Error("Upload já está sendo processado.");
+  if (row.sha256 !== input.sha256) throw new Error("Integridade do upload inválida.");
+
+  const claimed = db
+    .prepare(
+      "UPDATE cerberus_uploads SET estado = 'PROCESSANDO' WHERE uploadId = ? AND fornecedorCodigo = ? AND estado = 'PENDENTE'",
+    )
+    .run(input.uploadId, input.fornecedorCodigo);
+  if (claimed.changes !== 1) throw new Error("Upload já está sendo processado.");
+
+  try {
+    const bytes = await readStagedUpload(row.uploadId, row.internalName);
+    if (bytes.length !== row.bytes || sha256(bytes) !== row.sha256) {
+      db.prepare("UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ?").run(row.uploadId);
+      throw new Error("Integridade do upload inválida.");
+    }
+    return { bytes, receipt: row };
+  } catch (error) {
+    db.prepare("UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ?").run(row.uploadId);
+    throw error;
+  }
+}
+
+export function markStagedUploadConsumed(uploadId: string) {
+  ensureUploadRegistry();
+  const result = db
+    .prepare(
+      "UPDATE cerberus_uploads SET estado = 'CONSUMIDO', processadoEm = ? WHERE uploadId = ? AND estado = 'PROCESSANDO'",
+    )
+    .run(new Date().toISOString(), uploadId);
+  if (result.changes !== 1) throw new Error("Estado do upload inconsistente.");
+}
+
+export function releaseStagedUpload(uploadId: string) {
+  ensureUploadRegistry();
+  db.prepare("UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ? AND estado = 'PROCESSANDO'").run(
+    uploadId,
+  );
 }
 
 export async function readStagedUpload(uploadId: string, internalName: string) {

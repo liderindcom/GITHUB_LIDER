@@ -5,16 +5,18 @@ import type { CatalogoComercialDB, CatalogoComercialInput } from "@/catalogo-api
 import {
   CerberusBodyTooLargeError,
   CerberusInvalidJsonError,
+  claimStagedUpload,
   readJsonBodyLimited,
-  readStagedUpload,
-  stagePortalUpload,
+  markStagedUploadConsumed,
+  releaseStagedUpload,
 } from "@/server/cerberus-upload-staging";
 import {
   persistirCatalogoComercial,
   validarDuplicidadesCatalogo,
 } from "@/server/catalogo-comercial-persist";
-import { exigirInternoRole } from "@/server/sessao-portal";
+import { exigirInternoRole, exigirSessaoFornecedor, lerSessaoPortal } from "@/server/sessao-portal";
 import { permitirRequisicao } from "@/server/request-guard";
+import { db } from "@/server/db";
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
@@ -222,17 +224,29 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
         if (process.env.CERBERUS_PORTAL_UPLOADS_ENABLED !== "true") {
           return error("Endpoint indisponível.", 404);
         }
-        let sessao: { codigo: string; role: string };
+        let sessao: { tipo: "interno" | "fornecedor"; codigo: string; identidade: string };
         try {
-          sessao = exigirInternoRole("admin");
+          const principal = lerSessaoPortal();
+          if (!principal) throw new Error("Sessão do portal exigida.");
+          if (principal.tipo === "interno") {
+            const interno = exigirInternoRole("admin");
+            sessao = { tipo: "interno", codigo: interno.codigo, identidade: interno.codigo };
+          } else {
+            const fornecedor = exigirSessaoFornecedor();
+            sessao = {
+              tipo: "fornecedor",
+              codigo: fornecedor.codigo,
+              identidade: `${fornecedor.codigo}:${fornecedor.email}`,
+            };
+          }
         } catch (cause) {
-          return error(cause instanceof Error ? cause.message : "Acesso administrativo exigido.", 401);
+          return error(cause instanceof Error ? cause.message : "Sessão do portal exigida.", 401);
         }
         const porIdentidade = permitirRequisicao(
           request,
           "cerberus-import-identidade",
           { maximo: 2, janelaMs: 15 * 60_000 },
-          sessao.codigo,
+          sessao.identidade,
         );
         const porOrigem = permitirRequisicao(request, "cerberus-import-origem", {
           maximo: 10,
@@ -263,48 +277,55 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
         }
         if (!body || typeof body !== "object") return error("Corpo inválido.", 400);
         const candidate = body as Record<string, unknown>;
-        const originalName =
-          typeof candidate.originalName === "string" ? candidate.originalName : "";
-        const mimeType = typeof candidate.mimeType === "string" ? candidate.mimeType : "";
-        const bytesBase64 = typeof candidate.bytesBase64 === "string" ? candidate.bytesBase64 : "";
+        const uploadId = typeof candidate.uploadId === "string" ? candidate.uploadId : "";
+        const internalName = typeof candidate.internalName === "string" ? candidate.internalName : "";
+        const sha256 = typeof candidate.sha256 === "string" ? candidate.sha256 : "";
         const fornecedorCodigo =
           typeof candidate.fornecedorCodigo === "string" ? candidate.fornecedorCodigo : undefined;
-        if (!originalName || !mimeType || !bytesBase64)
+        if (!uploadId || !internalName || !sha256)
           return error("Campos obrigatórios ausentes.", 422);
 
+        let uploadIdProcessando = "";
         try {
-          const receipt = await stagePortalUpload({
-            originalName,
-            mimeType,
-            bytesBase64,
-            route: "catalogo-comercial",
-            fornecedorCodigo,
+          const alvo = sessao.tipo === "interno" ? fornecedorCodigo : sessao.codigo;
+          if (!alvo) return error("Fornecedor de destino exigido.", 422);
+          const staged = await claimStagedUpload({
+            uploadId,
+            internalName,
+            sha256,
+            fornecedorCodigo: alvo,
           });
-          const bytes = await readStagedUpload(receipt.uploadId, receipt.internalName);
-          const convertido = converterPlanilha(bytes);
+          uploadIdProcessando = staged.receipt.uploadId;
+          const convertido = converterPlanilha(staged.bytes);
           if (convertido.erros.length) {
-            return error(convertido.erros.join(" "), 422);
+            throw new Error(convertido.erros.join(" "));
           }
 
           // Valida o lote inteiro antes da primeira gravação. Assim, uma planilha
           // com uma duplicidade não deixa metade dos produtos persistida.
           validarDuplicidadesCatalogo(convertido.linhas, {
-            fornecedorCodigo: receipt.fornecedorCodigo,
+            fornecedorCodigo: staged.receipt.fornecedorCodigo,
           });
 
-          const itens: CatalogoComercialDB[] = [];
-          for (const linha of convertido.linhas) {
-            itens.push(
-              await persistirCatalogoComercial(linha, {
-                fornecedorCodigo: receipt.fornecedorCodigo,
-                validarDuplicidade: false,
-              }),
-            );
-          }
-          return Response.json({ receipt, itens }, { headers: { "cache-control": "no-store" } });
+          const tarefas: Array<Promise<CatalogoComercialDB>> = [];
+          const transacao = db.transaction(() => {
+            for (const linha of convertido.linhas) {
+              tarefas.push(
+                persistirCatalogoComercial(linha, {
+                  fornecedorCodigo: staged.receipt.fornecedorCodigo,
+                  validarDuplicidade: false,
+                }),
+              );
+            }
+            markStagedUploadConsumed(staged.receipt.uploadId);
+          });
+          transacao();
+          const itens = await Promise.all(tarefas);
+          return Response.json({ receipt: staged.receipt, itens }, { headers: { "cache-control": "no-store" } });
         } catch (cause) {
+          if (uploadIdProcessando) releaseStagedUpload(uploadIdProcessando);
           const message = cause instanceof Error ? cause.message : "Importação recusada.";
-          const status = message.includes("Sessão") ? 401 : 422;
+          const status = message.includes("não encontrado") ? 404 : message.includes("já consumido") || message.includes("sendo processado") ? 409 : message.includes("Sessão") ? 401 : 422;
           return error(message, status);
         }
       },

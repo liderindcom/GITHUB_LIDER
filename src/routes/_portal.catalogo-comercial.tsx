@@ -553,27 +553,29 @@ function CatalogoComercialPage() {
         .slice(arquivoSelecionado.name.lastIndexOf("."))
         .toLowerCase();
       const mimeType = MIME_POR_EXTENSAO[extensao] || arquivoSelecionado.type;
-      const respostaCerberus = await fetch("/api/cerberus/catalogo-import", {
+      const payloadUpload = {
+        originalName: arquivoSelecionado.name,
+        mimeType,
+        bytesBase64: await arquivoParaBase64(arquivoSelecionado),
+      };
+      const respostaUpload = await fetch("/api/cerberus/upload", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({
-          originalName: arquivoSelecionado.name,
-          mimeType,
-          bytesBase64: await arquivoParaBase64(arquivoSelecionado),
-          fornecedorCodigo: codigoFornecedorAtivo,
-        }),
+        body: JSON.stringify(payloadUpload),
       });
-      const resultadoCerberus = (await respostaCerberus.json().catch(() => ({}))) as {
+      const resultadoUpload = (await respostaUpload.json().catch(() => ({}))) as {
         error?: unknown;
-        itens?: CatalogoComercialDB[];
+        uploadId?: string;
+        internalName?: string;
+        sha256?: string;
       };
-      if (!respostaCerberus.ok) {
-        if (respostaCerberus.status === 404) {
+      if (!respostaUpload.ok) {
+        if (respostaUpload.status === 404) {
           throw new Error("O recebimento seguro ainda não está habilitado neste ambiente.");
         }
         const mensagemServidor =
-          typeof resultadoCerberus.error === "string" ? resultadoCerberus.error.trim() : "";
+          typeof resultadoUpload.error === "string" ? resultadoUpload.error.trim() : "";
         const mensagemSegura =
           /^(Sessão|Sensor|Heartbeat|Tipo de arquivo|MIME|Nome de arquivo|Arquivo|Conteúdo|Campos obrigatórios|JSON inválido|Corpo inválido|A planilha|Nenhuma linha|Linha \d+|Fornecedor|Permissão|Produto duplicado)/.test(
             mensagemServidor,
@@ -582,6 +584,28 @@ function CatalogoComercialPage() {
         throw new Error(
           "Não foi possível receber a planilha neste momento. Tente novamente em alguns minutos. Nenhum dado foi enviado.",
         );
+      }
+      if (!resultadoUpload.uploadId || !resultadoUpload.internalName || !resultadoUpload.sha256) {
+        throw new Error("O recebimento seguro não devolveu um recibo válido.");
+      }
+      const respostaCerberus = await fetch("/api/cerberus/catalogo-import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          uploadId: resultadoUpload.uploadId,
+          internalName: resultadoUpload.internalName,
+          sha256: resultadoUpload.sha256,
+          fornecedorCodigo: codigoFornecedorAtivo,
+        }),
+      });
+      const resultadoCerberus = (await respostaCerberus.json().catch(() => ({}))) as {
+        error?: unknown;
+        itens?: CatalogoComercialDB[];
+      };
+      if (!respostaCerberus.ok) {
+        const mensagemServidor = typeof resultadoCerberus.error === "string" ? resultadoCerberus.error.trim() : "";
+        throw new Error(mensagemServidor || "A importação segura foi recusada.");
       }
       if (typeof resultadoCerberus.error === "string") throw new Error(resultadoCerberus.error);
       if (!resultadoCerberus.itens?.length) throw new Error("Nenhum produto foi importado.");
