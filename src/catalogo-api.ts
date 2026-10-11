@@ -1,13 +1,20 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import { normalizarCodigoFornecedor } from "@/lib/fornecedor-codigo";
-import { persistirCatalogoComercial } from "@/server/catalogo-comercial-persist";
+import {
+  arquivarCatalogoPersistido,
+  atualizarCatalogoPersistido,
+  persistirCatalogoComercial,
+} from "@/server/catalogo-comercial-persist";
 import {
   codigoFornecedorEfetivo,
   lerSessaoPortal,
   resolverCodigoFornecedorDados,
 } from "@/server/sessao-portal";
 import { db } from "@/server/db";
+
+export type CatalogoStatus =
+  "RASCUNHO" | "ENVIADO_PARA_ANALISE" | "APROVADO" | "REJEITADO" | "ARQUIVADO" | "PUBLICADO";
 
 export type CatalogoComercialDB = {
   id: string;
@@ -31,7 +38,7 @@ export type CatalogoComercialDB = {
   colecao: string | null;
   estacao: string | null;
   evento: string | null;
-  status: "RASCUNHO" | "PUBLICADO" | "ARQUIVADO";
+  status: CatalogoStatus;
   criadoEm: string;
   atualizadoEm: string;
   publicadoEm: string | null;
@@ -102,8 +109,22 @@ export type CatalogoComercialInput = Omit<
   "id" | "fornecedorCodigo" | "criadoEm" | "atualizadoEm" | "publicadoEm"
 >;
 
+export type CatalogoComercialEdicao = Omit<CatalogoComercialInput, "origem">;
+
 export const salvarCatalogoComercial = createServerFn({ method: "POST" })
   .validator((data: CatalogoComercialInput) => data)
   .handler(async ({ data }) => {
     return persistirCatalogoComercial(data);
+  });
+
+export const atualizarCatalogoComercial = createServerFn({ method: "POST" })
+  .validator((data: { id: string; item: CatalogoComercialEdicao }) => data)
+  .handler(async ({ data }) => {
+    return atualizarCatalogoPersistido(data.id, data.item);
+  });
+
+export const arquivarCatalogoComercial = createServerFn({ method: "POST" })
+  .validator((data: { id: string }) => data)
+  .handler(async ({ data }) => {
+    return arquivarCatalogoPersistido(data.id);
   });

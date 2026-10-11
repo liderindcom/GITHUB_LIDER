@@ -1,30 +1,45 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
+  Archive,
   CheckCircle2,
   Download,
+  Eye,
   FileSpreadsheet,
   ImagePlus,
   Info,
   PackagePlus,
+  Pencil,
+  Search,
   Save,
   Send,
   ShieldCheck,
   Sparkles,
   Upload,
+  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
 import {
+  arquivarCatalogoComercial,
+  atualizarCatalogoComercial,
   fetchCatalogoComercial,
   salvarCatalogoComercial,
   type CatalogoComercialDB,
+  type CatalogoStatus,
 } from "@/catalogo-api";
 import { PortalLayout } from "@/components/portal-layout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -78,6 +93,44 @@ const MIME_POR_EXTENSAO: Record<string, string> = {
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 };
 const MAX_PLANILHA_BYTES = 10 * 1024 * 1024;
+
+const ROTULOS_STATUS: Record<CatalogoStatus, string> = {
+  RASCUNHO: "Rascunho",
+  ENVIADO_PARA_ANALISE: "Enviado para análise",
+  APROVADO: "Aprovado",
+  REJEITADO: "Rejeitado",
+  ARQUIVADO: "Arquivado",
+  PUBLICADO: "Enviado para análise",
+};
+
+const ROTULOS_FICHA: Record<string, string> = {
+  codigoInterno: "Código interno",
+  descricao: "Descrição do produto",
+  embalagemQuantidade: "Quantidade por caixa",
+  custoFornecedor: "Custo do fornecedor",
+  condicaoFaturamento: "Condição de faturamento",
+  ipiPct: "IPI (%)",
+  prazoEntregaDias: "Prazo de entrega (dias)",
+  freteTipo: "Frete",
+  ean13: "EAN13",
+  dun14: "DUN14",
+  controlaValidade: "Controla validade",
+  validadeDias: "Validade (dias)",
+  diasValidadeMinima: "Validade mínima no recebimento",
+  ncm: "NCM",
+  cest: "CEST",
+  caixaComprimentoCm: "Caixa: comprimento (cm)",
+  caixaLarguraCm: "Caixa: largura (cm)",
+  caixaAlturaCm: "Caixa: altura (cm)",
+  caixaPesoBrutoKg: "Caixa: peso bruto (kg)",
+  unidadeComprimentoCm: "Unidade: comprimento (cm)",
+  unidadeLarguraCm: "Unidade: largura (cm)",
+  unidadeAlturaCm: "Unidade: altura (cm)",
+  unidadePesoBrutoKg: "Unidade: peso bruto (kg)",
+  palletBaseCaixas: "Pallet: base (caixas)",
+  palletAlturaCaixas: "Pallet: altura (caixas)",
+  palletTotalCaixas: "Pallet: total de caixas",
+};
 
 const ALIASES_FICHA_LIDER: Record<string, string[]> = {
   codigoInterno: ["cod interno", "referencia", "codigo produto", "codigo"],
@@ -153,7 +206,9 @@ function valorNumeroFicha(valor: unknown) {
   return Number.isFinite(numero) ? numero : null;
 }
 
-function fichaImportada(linha: Formulario): Record<string, unknown> {
+function fichaImportada(
+  linha: Pick<CatalogoComercialDB, "dadosFichaLiderJson">,
+): Record<string, unknown> {
   if (!linha.dadosFichaLiderJson) return {};
   try {
     const valor = JSON.parse(linha.dadosFichaLiderJson);
@@ -161,6 +216,19 @@ function fichaImportada(linha: Formulario): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function rotuloStatus(status: CatalogoStatus) {
+  return ROTULOS_STATUS[status] || status;
+}
+
+function varianteStatus(
+  status: CatalogoStatus,
+): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "APROVADO") return "default";
+  if (status === "REJEITADO") return "destructive";
+  if (status === "ENVIADO_PARA_ANALISE" || status === "PUBLICADO") return "outline";
+  return "secondary";
 }
 
 function valorFicha(linha: Record<string, unknown>, campo: string) {
@@ -202,6 +270,11 @@ function CatalogoComercialPage() {
   const [linhasImportadas, setLinhasImportadas] = useState<Formulario[]>([]);
   const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
   const [importando, setImportando] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [detalhes, setDetalhes] = useState<CatalogoComercialDB | null>(null);
+  const [busca, setBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<"TODOS" | CatalogoStatus>("TODOS");
+  const [arquivandoId, setArquivandoId] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchCatalogoComercial({ data: { fornecedorCodigo: codigoFornecedorAtivo } })
@@ -230,23 +303,79 @@ function CatalogoComercialPage() {
     setForm((atual) => ({ ...atual, [campo]: valorFinal }));
   };
 
-  const salvar = async (status: "RASCUNHO" | "PUBLICADO") => {
+  const limparEdicao = () => {
+    setForm(vazio);
+    setEditandoId(null);
+  };
+
+  const editarItem = (item: CatalogoComercialDB) => {
+    setEditandoId(item.id);
+    setForm({ ...item, status: "RASCUNHO" });
+    window.setTimeout(() => {
+      document
+        .getElementById("form-catalogo")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const salvar = async (status: "RASCUNHO" | "ENVIADO_PARA_ANALISE") => {
     if (!form.descricao.trim()) {
       toast.error("Informe a descrição do produto ou coleção.");
       return;
     }
     setSalvando(true);
     try {
-      const salvo = await salvarCatalogoComercial({ data: { ...form, status } });
-      setItens((atual) => [salvo, ...atual]);
-      setForm(vazio);
-      toast.success(status === "PUBLICADO" ? "Produto enviado ao Grupo Líder." : "Rascunho salvo.");
+      const salvo = editandoId
+        ? await atualizarCatalogoComercial({
+            data: { id: editandoId, item: { ...form, status } },
+          })
+        : await salvarCatalogoComercial({ data: { ...form, status } });
+      setItens((atual) =>
+        editandoId ? atual.map((item) => (item.id === salvo.id ? salvo : item)) : [salvo, ...atual],
+      );
+      limparEdicao();
+      toast.success(
+        status === "ENVIADO_PARA_ANALISE"
+          ? "Produto enviado ao Grupo Líder para análise."
+          : editandoId
+            ? "Produto atualizado no catálogo."
+            : "Rascunho salvo no catálogo.",
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar o produto.");
     } finally {
       setSalvando(false);
     }
   };
+
+  const arquivarItem = async (item: CatalogoComercialDB) => {
+    if (
+      !window.confirm(`Arquivar "${item.descricao}"? Ele deixará de aparecer no catálogo ativo.`)
+    ) {
+      return;
+    }
+    setArquivandoId(item.id);
+    try {
+      await arquivarCatalogoComercial({ data: { id: item.id } });
+      setItens((atual) => atual.filter((candidato) => candidato.id !== item.id));
+      if (editandoId === item.id) limparEdicao();
+      toast.success("Produto arquivado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível arquivar o produto.");
+    } finally {
+      setArquivandoId(null);
+    }
+  };
+
+  const itensFiltrados = itens.filter((item) => {
+    const texto =
+      `${item.descricao} ${item.codigoFornecedor ?? ""} ${item.skuReferencia ?? ""} ${item.marca ?? ""}`.toLocaleLowerCase(
+        "pt-BR",
+      );
+    const combinaBusca = !busca.trim() || texto.includes(busca.trim().toLocaleLowerCase("pt-BR"));
+    const combinaStatus = filtroStatus === "TODOS" || item.status === filtroStatus;
+    return combinaBusca && combinaStatus;
+  });
 
   const baixarModeloCatalogo = () => {
     const planilha = XLSX.utils.json_to_sheet([
@@ -446,7 +575,7 @@ function CatalogoComercialPage() {
         const mensagemServidor =
           typeof resultadoCerberus.error === "string" ? resultadoCerberus.error.trim() : "";
         const mensagemSegura =
-          /^(Sessão|Sensor|Heartbeat|Tipo de arquivo|MIME|Nome de arquivo|Arquivo|Conteúdo|Campos obrigatórios|JSON inválido|Corpo inválido|A planilha|Nenhuma linha|Linha \d+|Fornecedor|Permissão)/.test(
+          /^(Sessão|Sensor|Heartbeat|Tipo de arquivo|MIME|Nome de arquivo|Arquivo|Conteúdo|Campos obrigatórios|JSON inválido|Corpo inválido|A planilha|Nenhuma linha|Linha \d+|Fornecedor|Permissão|Produto duplicado)/.test(
             mensagemServidor,
           );
         if (mensagemSegura) throw new Error(mensagemServidor);
@@ -492,16 +621,30 @@ function CatalogoComercialPage() {
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-          <Card className="border-primary/20 shadow-sm">
+          <Card id="form-catalogo" className="border-primary/20 shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <PackagePlus className="size-5 text-primary" /> Novo produto ou coleção
+                <PackagePlus className="size-5 text-primary" />
+                {editandoId ? "Editar produto do catálogo" : "Novo produto ou coleção"}
               </CardTitle>
               <CardDescription>
-                Quanto mais completo o catálogo, melhor o comprador poderá avaliar a oportunidade.
+                {editandoId
+                  ? "Atualize os dados e salve como rascunho ou reenvie para análise."
+                  : "Quanto mais completo o catálogo, melhor o comprador poderá avaliar a oportunidade."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
+              {editandoId && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <span>
+                    Você está editando um item existente. A edição volta o produto para revisão do
+                    fornecedor.
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={limparEdicao}>
+                    <X className="size-4" /> Cancelar
+                  </Button>
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Campo
                   label="Código fornecedor"
@@ -622,9 +765,9 @@ function CatalogoComercialPage() {
                   <Save className="mr-2 size-4" />
                   Salvar rascunho
                 </Button>
-                <Button onClick={() => void salvar("PUBLICADO")} disabled={salvando}>
+                <Button onClick={() => void salvar("ENVIADO_PARA_ANALISE")} disabled={salvando}>
                   <Send className="mr-2 size-4" />
-                  Enviar ao Grupo Líder
+                  Enviar para análise
                 </Button>
               </div>
             </CardContent>
@@ -796,41 +939,191 @@ function CatalogoComercialPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Produtos e coleções enviados</CardTitle>
+            <CardTitle>Meu catálogo</CardTitle>
             <CardDescription>
-              {fornecedor.nome} · {carregando ? "carregando..." : `${itens.length} registro(s)`}
+              {fornecedor.nome} ·{" "}
+              {carregando
+                ? "carregando..."
+                : `${itensFiltrados.length} de ${itens.length} registro(s)`}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={(event) => setBusca(event.target.value)}
+                  placeholder="Buscar por produto, código, SKU ou marca"
+                  className="pl-9"
+                />
+              </div>
+              <select
+                value={filtroStatus}
+                onChange={(event) =>
+                  setFiltroStatus(event.target.value as "TODOS" | CatalogoStatus)
+                }
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filtrar por status"
+              >
+                <option value="TODOS">Todos os status</option>
+                <option value="RASCUNHO">Rascunhos</option>
+                <option value="ENVIADO_PARA_ANALISE">Enviados para análise</option>
+                <option value="APROVADO">Aprovados</option>
+                <option value="REJEITADO">Rejeitados</option>
+              </select>
+            </div>
+
             {itens.length === 0 && !carregando ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                Seu catálogo ainda está vazio. Apresente a próxima oportunidade ao Grupo Líder.
+                Seu catálogo ainda está vazio. Importe uma ficha técnica ou cadastre um produto.
+              </p>
+            ) : itensFiltrados.length === 0 && !carregando ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Nenhum produto corresponde aos filtros atuais.
               </p>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {itens.map((item) => (
-                  <div key={item.id} className="rounded-2xl border p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold">{item.descricao}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {[item.marca, item.categoria, item.colecao].filter(Boolean).join(" · ") ||
-                            "Sem classificação informada"}
-                        </p>
+                {itensFiltrados.map((item) => {
+                  const ficha = fichaImportada(item);
+                  return (
+                    <div key={item.id} className="rounded-2xl border p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold" title={item.descricao}>
+                            {item.descricao}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {[item.marca, item.categoria, item.colecao]
+                              .filter(Boolean)
+                              .join(" · ") || "Sem classificação informada"}
+                          </p>
+                        </div>
+                        <Badge variant={varianteStatus(item.status)}>
+                          {rotuloStatus(item.status)}
+                        </Badge>
                       </div>
-                      <Badge variant={item.status === "PUBLICADO" ? "default" : "secondary"}>
-                        {item.status === "PUBLICADO" ? "Enviado" : "Rascunho"}
-                      </Badge>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <span>Código: {item.codigoFornecedor || "—"}</span>
+                        <span>EAN: {String(ficha.ean13 || "—")}</span>
+                        <span>
+                          Atualizado: {new Date(item.atualizadoEm).toLocaleDateString("pt-BR")}
+                        </span>
+                        <span>
+                          {item.prazoEntregaDias ? `${item.prazoEntregaDias} dias` : "Prazo —"}
+                        </span>
+                      </div>
+                      <p className="mt-3 line-clamp-2 text-xs text-muted-foreground">
+                        {item.fichaTecnica || "Sem ficha técnica informada."}
+                      </p>
+                      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t pt-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDetalhes(item)}
+                        >
+                          <Eye className="size-4" /> Ver ficha
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => editarItem(item)}
+                        >
+                          <Pencil className="size-4" /> Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={arquivandoId === item.id}
+                          onClick={() => void arquivarItem(item)}
+                        >
+                          <Archive className="size-4" /> Arquivar
+                        </Button>
+                      </div>
                     </div>
-                    <p className="mt-3 line-clamp-3 text-xs text-muted-foreground">
-                      {item.fichaTecnica || "Sem ficha técnica informada."}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={Boolean(detalhes)} onOpenChange={(aberto) => !aberto && setDetalhes(null)}>
+          <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+            {detalhes && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>{detalhes.descricao}</DialogTitle>
+                  <DialogDescription>
+                    Código {detalhes.codigoFornecedor || "não informado"} · atualizado em{" "}
+                    {new Date(detalhes.atualizadoEm).toLocaleString("pt-BR")}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={varianteStatus(detalhes.status)}>
+                    {rotuloStatus(detalhes.status)}
+                  </Badge>
+                  {detalhes.marca && <Badge variant="outline">{detalhes.marca}</Badge>}
+                  {detalhes.categoria && <Badge variant="outline">{detalhes.categoria}</Badge>}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ["SKU/referência", detalhes.skuReferencia],
+                    [
+                      "Prazo de entrega",
+                      detalhes.prazoEntregaDias ? `${detalhes.prazoEntregaDias} dias` : null,
+                    ],
+                    ["Preço sugerido", detalhes.precoSugerido],
+                    ["Pedido mínimo", detalhes.pedidoMinimo],
+                    ["Estoque disponível", detalhes.estoqueDisponivel],
+                    ["Coleção", detalhes.colecao],
+                  ].map(([label, valor]) => (
+                    <div key={String(label)} className="rounded-lg border p-3 text-sm">
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="mt-1 font-medium">
+                        {valor === null || valor === "" ? "—" : String(valor)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold">Ficha técnica importada</h3>
+                  {Object.entries(fichaImportada(detalhes)).filter(
+                    ([, valor]) => valor !== null && valor !== "",
+                  ).length ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {Object.entries(fichaImportada(detalhes))
+                        .filter(([, valor]) => valor !== null && valor !== "")
+                        .map(([campo, valor]) => (
+                          <div key={campo} className="rounded-lg bg-muted/50 p-2 text-sm">
+                            <span className="text-xs text-muted-foreground">
+                              {ROTULOS_FICHA[campo] || campo}
+                            </span>
+                            <p className="font-medium">{String(valor)}</p>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                      Nenhuma ficha técnica estruturada foi importada.
+                    </p>
+                  )}
+                </div>
+                {detalhes.fichaTecnica && (
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">Observações</h3>
+                    <p className="whitespace-pre-wrap rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                      {detalhes.fichaTecnica}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </PortalLayout>
   );

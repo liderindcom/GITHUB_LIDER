@@ -3,7 +3,10 @@ import * as XLSX from "xlsx";
 
 import type { CatalogoComercialDB, CatalogoComercialInput } from "@/catalogo-api";
 import { readStagedUpload, stagePortalUpload } from "@/server/cerberus-upload-staging";
-import { persistirCatalogoComercial } from "@/server/catalogo-comercial-persist";
+import {
+  persistirCatalogoComercial,
+  validarDuplicidadesCatalogo,
+} from "@/server/catalogo-comercial-persist";
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
@@ -242,11 +245,18 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
             return error(convertido.erros.join(" "), 422);
           }
 
+          // Valida o lote inteiro antes da primeira gravação. Assim, uma planilha
+          // com uma duplicidade não deixa metade dos produtos persistida.
+          validarDuplicidadesCatalogo(convertido.linhas, {
+            fornecedorCodigo: receipt.fornecedorCodigo,
+          });
+
           const itens: CatalogoComercialDB[] = [];
           for (const linha of convertido.linhas) {
             itens.push(
               await persistirCatalogoComercial(linha, {
                 fornecedorCodigo: receipt.fornecedorCodigo,
+                validarDuplicidade: false,
               }),
             );
           }
