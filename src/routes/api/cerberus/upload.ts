@@ -1,5 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { stagePortalUpload } from "@/server/cerberus-upload-staging";
+import {
+  CerberusBodyTooLargeError,
+  CerberusInvalidJsonError,
+  readJsonBodyLimited,
+  stagePortalUpload,
+} from "@/server/cerberus-upload-staging";
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
@@ -12,13 +17,15 @@ export const Route = createFileRoute("/api/cerberus/upload")({
         if (process.env.CERBERUS_PORTAL_UPLOADS_ENABLED !== "true") {
           return error("Endpoint indisponível.", 404);
         }
-        const contentLength = Number(request.headers.get("content-length") || 0);
-        if (contentLength > 14_000_000) return error("Arquivo maior que o limite.", 413);
         let body: unknown;
         try {
-          body = await request.json();
-        } catch {
-          return error("JSON inválido.", 400);
+          body = await readJsonBodyLimited(request);
+        } catch (cause) {
+          if (cause instanceof CerberusBodyTooLargeError) {
+            return error(cause.message, 413);
+          }
+          if (cause instanceof CerberusInvalidJsonError) return error(cause.message, 400);
+          return error("Corpo inválido.", 400);
         }
         if (!body || typeof body !== "object") return error("Corpo inválido.", 400);
         const candidate = body as Record<string, unknown>;

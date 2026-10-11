@@ -2,7 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import * as XLSX from "xlsx";
 
 import type { CatalogoComercialDB, CatalogoComercialInput } from "@/catalogo-api";
-import { readStagedUpload, stagePortalUpload } from "@/server/cerberus-upload-staging";
+import {
+  CerberusBodyTooLargeError,
+  CerberusInvalidJsonError,
+  readJsonBodyLimited,
+  readStagedUpload,
+  stagePortalUpload,
+} from "@/server/cerberus-upload-staging";
 import {
   persistirCatalogoComercial,
   validarDuplicidadesCatalogo,
@@ -216,9 +222,13 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
         }
         let body: unknown;
         try {
-          body = await request.json();
-        } catch {
-          return error("JSON inválido.", 400);
+          body = await readJsonBodyLimited(request);
+        } catch (cause) {
+          if (cause instanceof CerberusBodyTooLargeError) {
+            return error(cause.message, 413);
+          }
+          if (cause instanceof CerberusInvalidJsonError) return error(cause.message, 400);
+          return error("Corpo inválido.", 400);
         }
         if (!body || typeof body !== "object") return error("Corpo inválido.", 400);
         const candidate = body as Record<string, unknown>;

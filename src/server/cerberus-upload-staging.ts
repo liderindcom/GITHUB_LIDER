@@ -12,6 +12,7 @@ import {
 } from "./sessao-portal";
 
 const MAX_BYTES = 10 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 14_000_000;
 const ALLOWED_EXTENSIONS = new Set([".xls", ".xlsx"]);
 const ALLOWED_MIME = new Set([
   "application/vnd.ms-excel",
@@ -44,6 +45,64 @@ type UploadActor = {
   actorType: "fornecedor" | "interno";
   fornecedorCodigo: string;
 };
+
+export class CerberusBodyTooLargeError extends Error {
+  constructor() {
+    super("Corpo da requisição excede o limite.");
+    this.name = "CerberusBodyTooLargeError";
+  }
+}
+
+export class CerberusInvalidJsonError extends Error {
+  constructor() {
+    super("JSON inválido.");
+    this.name = "CerberusInvalidJsonError";
+  }
+}
+
+export async function readJsonBodyLimited(
+  request: Request,
+  maxBytes = MAX_REQUEST_BYTES,
+): Promise<unknown> {
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new CerberusBodyTooLargeError();
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) {
+    const text = await request.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) throw new CerberusBodyTooLargeError();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new CerberusInvalidJsonError();
+    }
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new CerberusBodyTooLargeError();
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new CerberusInvalidJsonError();
+  }
+}
 
 function rootFromEnv(): string {
   const root = process.env.CERBERUS_UPLOAD_ROOT?.trim();
