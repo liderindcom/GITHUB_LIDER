@@ -296,6 +296,13 @@ function CatalogoComercialPage() {
         if (respostaCerberus.status === 404) {
           throw new Error("O recebimento seguro ainda não está habilitado neste ambiente.");
         }
+        const mensagemServidor =
+          typeof resultadoCerberus.error === "string" ? resultadoCerberus.error.trim() : "";
+        const mensagemSegura =
+          /^(Sessão|Sensor|Heartbeat|Tipo de arquivo|MIME|Nome de arquivo|Arquivo|Conteúdo|Campos obrigatórios|JSON inválido|Corpo inválido|A planilha|Nenhuma linha|Linha \d+)/.test(
+            mensagemServidor,
+          );
+        if (mensagemSegura) throw new Error(mensagemServidor);
         throw new Error(
           "Não foi possível receber a planilha neste momento. Tente novamente em alguns minutos. Nenhum dado foi enviado.",
         );
