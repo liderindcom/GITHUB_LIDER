@@ -1,8 +1,8 @@
-type Limite = { maximo: number; janelaMs: number };
-type Registro = { inicio: number; total: number; tocadoEm: number };
+import { db } from "./db";
 
-const registros = new Map<string, Registro>();
-const MAX_REGISTROS = 10_000;
+type Limite = { maximo: number; janelaMs: number };
+type Registro = { inicio: number; total: number; tocado_em: number };
+let tabelaPronta = false;
 
 function identificarCliente(request: Request): string {
   // Cloudflare e o Nginx local sobrescrevem estes headers antes do runtime.
@@ -15,39 +15,46 @@ function identificarCliente(request: Request): string {
   return forwarded ? "proxy:" + forwarded : "origem-nao-verificada";
 }
 
-function limparExpirados(agora: number) {
-  if (registros.size < MAX_REGISTROS) return;
-  for (const [chave, registro] of registros) {
-    if (agora - registro.tocadoEm > 15 * 60_000) registros.delete(chave);
-  }
-  if (registros.size > MAX_REGISTROS) {
-    const excedente = registros.size - MAX_REGISTROS;
-    let removidos = 0;
-    for (const chave of registros.keys()) {
-      registros.delete(chave);
-      removidos += 1;
-      if (removidos >= excedente) break;
-    }
-  }
+function garantirTabela() {
+  if (tabelaPronta) return;
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_contadores (
+      chave TEXT PRIMARY KEY,
+      inicio BIGINT NOT NULL,
+      total INTEGER NOT NULL,
+      tocado_em BIGINT NOT NULL
+    );
+  `);
+  tabelaPronta = true;
 }
 
-/** Limitador local fail-closed. A borda Cloudflare aplica a segunda camada. */
+/** Limitador compartilhado no banco; a borda Cloudflare aplica a segunda camada. */
 export function permitirRequisicao(
   request: Request,
   escopo: string,
   limite: Limite,
+  identidade?: string,
 ): { permitido: true } | { permitido: false; retryAfterSegundos: number } {
+  garantirTabela();
   const agora = Date.now();
-  limparExpirados(agora);
-  const chave = `${escopo}:${identificarCliente(request)}`;
-  const anterior = registros.get(chave);
+  db.prepare("DELETE FROM rate_limit_contadores WHERE tocado_em < ?").run(agora - 15 * 60_000);
+  const chaveBase = identidade?.trim()
+    ? `identidade:${identidade.trim()}`
+    : `origem:${identificarCliente(request)}`;
+  const chave = `${escopo}:${chaveBase}`;
+  const anterior = db
+    .prepare("SELECT inicio, total, tocado_em FROM rate_limit_contadores WHERE chave = ?")
+    .get(chave) as Registro | undefined;
 
   if (!anterior || agora - anterior.inicio >= limite.janelaMs) {
-    registros.set(chave, { inicio: agora, total: 1, tocadoEm: agora });
+    db.prepare(
+      `INSERT INTO rate_limit_contadores (chave, inicio, total, tocado_em)
+       VALUES (?, ?, 1, ?)
+       ON CONFLICT(chave) DO UPDATE SET inicio = excluded.inicio, total = 1, tocado_em = excluded.tocado_em`,
+    ).run(chave, agora, agora);
     return { permitido: true };
   }
 
-  anterior.tocadoEm = agora;
   if (anterior.total >= limite.maximo) {
     return {
       permitido: false,
@@ -57,6 +64,23 @@ export function permitirRequisicao(
       ),
     };
   }
-  anterior.total += 1;
-  return { permitido: true };
+  const atualizado = db
+    .prepare(
+      `UPDATE rate_limit_contadores SET total = total + 1, tocado_em = ?
+       WHERE chave = ? AND inicio = ? AND total < ?`,
+    )
+    .run(agora, chave, anterior.inicio, limite.maximo);
+  if (atualizado.changes > 0) return { permitido: true };
+
+  const atual = db
+    .prepare("SELECT inicio, total, tocado_em FROM rate_limit_contadores WHERE chave = ?")
+    .get(chave) as Registro | undefined;
+  if (!atual || atual.total < limite.maximo) return { permitido: true };
+  return {
+    permitido: false,
+    retryAfterSegundos: Math.max(
+      1,
+      Math.ceil((limite.janelaMs - (agora - atual.inicio)) / 1000),
+    ),
+  };
 }

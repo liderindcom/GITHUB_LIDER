@@ -5,6 +5,8 @@ import {
   readJsonBodyLimited,
   stagePortalUpload,
 } from "@/server/cerberus-upload-staging";
+import { exigirSessaoFornecedor } from "@/server/sessao-portal";
+import { permitirRequisicao } from "@/server/request-guard";
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
@@ -16,6 +18,35 @@ export const Route = createFileRoute("/api/cerberus/upload")({
       POST: async ({ request }) => {
         if (process.env.CERBERUS_PORTAL_UPLOADS_ENABLED !== "true") {
           return error("Endpoint indisponível.", 404);
+        }
+        let sessao: { codigo: string; email: string };
+        try {
+          sessao = exigirSessaoFornecedor();
+        } catch (cause) {
+          return error(cause instanceof Error ? cause.message : "Sessão exigida.", 401);
+        }
+        const porIdentidade = permitirRequisicao(
+          request,
+          "cerberus-upload-identidade",
+          { maximo: 10, janelaMs: 15 * 60_000 },
+          `${sessao.codigo}:${sessao.email}`,
+        );
+        const porOrigem = permitirRequisicao(request, "cerberus-upload-origem", {
+          maximo: 30,
+          janelaMs: 15 * 60_000,
+        });
+        const bloqueio = !porIdentidade.permitido ? porIdentidade : porOrigem;
+        if (!bloqueio.permitido) {
+          return Response.json(
+            { error: "Muitas tentativas. Aguarde e tente novamente." },
+            {
+              status: 429,
+              headers: {
+                "cache-control": "no-store",
+                "retry-after": String(bloqueio.retryAfterSegundos),
+              },
+            },
+          );
         }
         let body: unknown;
         try {

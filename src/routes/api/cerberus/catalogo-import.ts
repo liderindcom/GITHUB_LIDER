@@ -13,6 +13,8 @@ import {
   persistirCatalogoComercial,
   validarDuplicidadesCatalogo,
 } from "@/server/catalogo-comercial-persist";
+import { exigirInternoRole } from "@/server/sessao-portal";
+import { permitirRequisicao } from "@/server/request-guard";
 
 function error(message: string, status: number) {
   return Response.json({ error: message }, { status, headers: { "cache-control": "no-store" } });
@@ -219,6 +221,35 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
       POST: async ({ request }) => {
         if (process.env.CERBERUS_PORTAL_UPLOADS_ENABLED !== "true") {
           return error("Endpoint indisponível.", 404);
+        }
+        let sessao: { codigo: string; role: string };
+        try {
+          sessao = exigirInternoRole("admin");
+        } catch (cause) {
+          return error(cause instanceof Error ? cause.message : "Acesso administrativo exigido.", 401);
+        }
+        const porIdentidade = permitirRequisicao(
+          request,
+          "cerberus-import-identidade",
+          { maximo: 2, janelaMs: 15 * 60_000 },
+          sessao.codigo,
+        );
+        const porOrigem = permitirRequisicao(request, "cerberus-import-origem", {
+          maximo: 10,
+          janelaMs: 15 * 60_000,
+        });
+        const bloqueio = !porIdentidade.permitido ? porIdentidade : porOrigem;
+        if (!bloqueio.permitido) {
+          return Response.json(
+            { error: "Muitas tentativas. Aguarde e tente novamente." },
+            {
+              status: 429,
+              headers: {
+                "cache-control": "no-store",
+                "retry-after": String(bloqueio.retryAfterSegundos),
+              },
+            },
+          );
         }
         let body: unknown;
         try {
