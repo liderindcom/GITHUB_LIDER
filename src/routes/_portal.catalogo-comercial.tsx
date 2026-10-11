@@ -1,6 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Download, FileSpreadsheet, ImagePlus, PackagePlus, Save, Send, Sparkles, Upload } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  ImagePlus,
+  Info,
+  PackagePlus,
+  Save,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Upload,
+} from "lucide-react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -60,12 +72,31 @@ const vazio: Formulario = {
   status: "RASCUNHO",
 };
 
+const MIME_POR_EXTENSAO: Record<string, string> = {
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+const MAX_PLANILHA_BYTES = 10 * 1024 * 1024;
+
+async function arquivoParaBase64(arquivo: File): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Não foi possível preparar a planilha."));
+    reader.readAsDataURL(arquivo);
+  });
+  const separador = dataUrl.indexOf(",");
+  if (separador < 0) throw new Error("Não foi possível preparar a planilha.");
+  return dataUrl.slice(separador + 1);
+}
+
 function CatalogoComercialPage() {
   const { fornecedor } = usePortal();
   const [itens, setItens] = useState<CatalogoComercialDB[]>([]);
   const [form, setForm] = useState<Formulario>(vazio);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
   const [arquivoImportado, setArquivoImportado] = useState<string | null>(null);
   const [linhasImportadas, setLinhasImportadas] = useState<Formulario[]>([]);
   const [errosImportacao, setErrosImportacao] = useState<string[]>([]);
@@ -121,29 +152,33 @@ function CatalogoComercialPage() {
       {
         "Código fornecedor": "",
         "Descrição comercial": "",
-        "Marca": "",
-        "Categoria": "",
-        "Subcategoria": "",
+        Marca: "",
+        Categoria: "",
+        Subcategoria: "",
         "SKU RMS": "",
         "Imagem URL": "",
         "Ficha técnica": "",
-        "Variações": "",
+        Variações: "",
         "Preço sugerido": "",
         "Início validade preço": "",
         "Fim validade preço": "",
         "Estoque disponível": "",
         "Prazo entrega dias": "",
         "Pedido mínimo": "",
-        "Coleção": "",
-        "Estação": "",
-        "Evento": "",
+        Coleção: "",
+        Estação: "",
+        Evento: "",
       },
     ]);
     const arquivo = XLSX.write(
       { Sheets: { "Catálogo Comercial": planilha }, SheetNames: ["Catálogo Comercial"] },
       { bookType: "xlsx", type: "array" },
     );
-    const url = URL.createObjectURL(new Blob([arquivo], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const url = URL.createObjectURL(
+      new Blob([arquivo], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+    );
     const link = document.createElement("a");
     link.href = url;
     link.download = "modelo-catalogo-comercial.xlsx";
@@ -152,6 +187,14 @@ function CatalogoComercialPage() {
   };
 
   const processarCatalogoImportado = async (arquivo: File) => {
+    if (arquivo.size > MAX_PLANILHA_BYTES) {
+      setArquivoSelecionado(null);
+      setArquivoImportado(arquivo.name);
+      setLinhasImportadas([]);
+      setErrosImportacao(["A planilha excede o limite de 10 MB. Escolha um arquivo menor."]);
+      return;
+    }
+    setArquivoSelecionado(arquivo);
     setArquivoImportado(arquivo.name);
     setLinhasImportadas([]);
     setErrosImportacao([]);
@@ -159,18 +202,22 @@ function CatalogoComercialPage() {
       const workbook = XLSX.read(await arquivo.arrayBuffer(), { type: "array" });
       const primeiraAba = workbook.Sheets[workbook.SheetNames[0]];
       const linhas = XLSX.utils.sheet_to_json<Record<string, unknown>>(primeiraAba, { defval: "" });
-      const normalizar = (valor: unknown) => String(valor ?? "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
+      const normalizar = (valor: unknown) =>
+        String(valor ?? "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "");
       const achar = (linha: Record<string, unknown>, nomes: string[]) =>
         Object.entries(linha).find(([chave]) => nomes.includes(normalizar(chave)))?.[1];
-      const texto = (linha: Record<string, unknown>, nomes: string[]) => String(achar(linha, nomes) ?? "").trim();
+      const texto = (linha: Record<string, unknown>, nomes: string[]) =>
+        String(achar(linha, nomes) ?? "").trim();
       const numeroImportado = (linha: Record<string, unknown>, nomes: string[]) => {
         const bruto = texto(linha, nomes).replace(/[^0-9,.-]/g, "");
         if (!bruto) return null;
-        const valor = Number(bruto.includes(",") ? bruto.replace(/\./g, "").replace(",", ".") : bruto);
+        const valor = Number(
+          bruto.includes(",") ? bruto.replace(/\./g, "").replace(",", ".") : bruto,
+        );
         return Number.isFinite(valor) ? valor : null;
       };
       const importadas: Formulario[] = [];
@@ -178,7 +225,8 @@ function CatalogoComercialPage() {
       linhas.forEach((linha, indice) => {
         const descricao = texto(linha, ["descricao", "descricaocomercial", "produto", "nome"]);
         if (!descricao) {
-          if (Object.values(linha).some((valor) => String(valor).trim())) erros.push(`Linha ${indice + 2}: descrição comercial não informada.`);
+          if (Object.values(linha).some((valor) => String(valor).trim()))
+            erros.push(`Linha ${indice + 2}: descrição comercial não informada.`);
           return;
         }
         importadas.push({
@@ -204,21 +252,57 @@ function CatalogoComercialPage() {
         });
       });
       setLinhasImportadas(importadas);
-      setErrosImportacao(erros);
+      setErrosImportacao(
+        importadas.length === 0 && erros.length === 0
+          ? [
+              "Nenhuma linha válida foi encontrada. Use o modelo e preencha a coluna Descrição comercial.",
+            ]
+          : erros,
+      );
     } catch {
-      setErrosImportacao(["Não foi possível ler o arquivo. Use um Excel .xlsx, .xls ou CSV baseado no modelo."]);
+      setErrosImportacao([
+        "Não foi possível ler o arquivo. Use um Excel .xlsx ou .xls baseado no modelo.",
+      ]);
     }
   };
 
   const salvarCatalogoImportado = async () => {
-    if (!linhasImportadas.length) return;
+    if (!linhasImportadas.length || !arquivoSelecionado) return;
     setImportando(true);
     try {
+      const extensao = arquivoSelecionado.name
+        .slice(arquivoSelecionado.name.lastIndexOf("."))
+        .toLowerCase();
+      const mimeType = MIME_POR_EXTENSAO[extensao] || arquivoSelecionado.type;
+      const respostaCerberus = await fetch("/api/cerberus/upload", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          originalName: arquivoSelecionado.name,
+          mimeType,
+          bytesBase64: await arquivoParaBase64(arquivoSelecionado),
+        }),
+      });
+      const resultadoCerberus = (await respostaCerberus.json().catch(() => ({}))) as {
+        error?: unknown;
+      };
+      if (!respostaCerberus.ok) {
+        if (respostaCerberus.status === 404) {
+          throw new Error("O recebimento seguro ainda não está habilitado neste ambiente.");
+        }
+        throw new Error(
+          "Não foi possível receber a planilha neste momento. Tente novamente em alguns minutos. Nenhum dado foi enviado.",
+        );
+      }
+      if (typeof resultadoCerberus.error === "string") throw new Error(resultadoCerberus.error);
+
       const salvos: CatalogoComercialDB[] = [];
       for (const linha of linhasImportadas) {
         salvos.push(await salvarCatalogoComercial({ data: { ...linha, status: "RASCUNHO" } }));
       }
       setItens((atual) => [...salvos.reverse(), ...atual]);
+      setArquivoSelecionado(null);
       setLinhasImportadas([]);
       setArquivoImportado(null);
       toast.success(`${salvos.length} produto(s) importado(s) como rascunho.`);
@@ -297,17 +381,72 @@ function CatalogoComercialPage() {
                   value={form.skuReferencia ?? ""}
                   onChange={(v) => alterar("skuReferencia", v)}
                 />
-                <Campo label="Imagem URL" value={form.imagemUrl ?? ""} onChange={(v) => alterar("imagemUrl", v)} placeholder="https://..." />
-                <Campo label="Preço sugerido" value={form.precoSugerido?.toString() ?? ""} onChange={(v) => alterar("precoSugerido", v)} inputMode="decimal" />
-                <Campo label="Início validade preço" value={form.precoValidadeInicio ?? ""} onChange={(v) => alterar("precoValidadeInicio", v)} placeholder="AAAA-MM-DD" />
-                <Campo label="Fim validade preço" value={form.precoValidadeFim ?? ""} onChange={(v) => alterar("precoValidadeFim", v)} placeholder="AAAA-MM-DD" />
-                <Campo label="Estoque disponível" value={form.estoqueDisponivel?.toString() ?? ""} onChange={(v) => alterar("estoqueDisponivel", v)} inputMode="numeric" />
-                <Campo label="Prazo entrega dias" value={form.prazoEntregaDias?.toString() ?? ""} onChange={(v) => alterar("prazoEntregaDias", v)} inputMode="numeric" />
-                <Campo label="Pedido mínimo" value={form.pedidoMinimo?.toString() ?? ""} onChange={(v) => alterar("pedidoMinimo", v)} inputMode="numeric" />
-                <Campo label="Coleção" value={form.colecao ?? ""} onChange={(v) => alterar("colecao", v)} placeholder="Ex.: Primavera 2027" />
-                <Campo label="Estação" value={form.estacao ?? ""} onChange={(v) => alterar("estacao", v)} placeholder="Ex.: Verão, Natal, Círio" />
-                <Campo label="Evento" value={form.evento ?? ""} onChange={(v) => alterar("evento", v)} placeholder="Ex.: Dia das Mães" />
-                <Campo label="Variações" value={form.variacoesJson ?? ""} onChange={(v) => alterar("variacoesJson", v)} placeholder="Ex.: cores, tamanhos, voltagens" />
+                <Campo
+                  label="Imagem URL"
+                  value={form.imagemUrl ?? ""}
+                  onChange={(v) => alterar("imagemUrl", v)}
+                  placeholder="https://..."
+                />
+                <Campo
+                  label="Preço sugerido"
+                  value={form.precoSugerido?.toString() ?? ""}
+                  onChange={(v) => alterar("precoSugerido", v)}
+                  inputMode="decimal"
+                />
+                <Campo
+                  label="Início validade preço"
+                  value={form.precoValidadeInicio ?? ""}
+                  onChange={(v) => alterar("precoValidadeInicio", v)}
+                  placeholder="AAAA-MM-DD"
+                />
+                <Campo
+                  label="Fim validade preço"
+                  value={form.precoValidadeFim ?? ""}
+                  onChange={(v) => alterar("precoValidadeFim", v)}
+                  placeholder="AAAA-MM-DD"
+                />
+                <Campo
+                  label="Estoque disponível"
+                  value={form.estoqueDisponivel?.toString() ?? ""}
+                  onChange={(v) => alterar("estoqueDisponivel", v)}
+                  inputMode="numeric"
+                />
+                <Campo
+                  label="Prazo entrega dias"
+                  value={form.prazoEntregaDias?.toString() ?? ""}
+                  onChange={(v) => alterar("prazoEntregaDias", v)}
+                  inputMode="numeric"
+                />
+                <Campo
+                  label="Pedido mínimo"
+                  value={form.pedidoMinimo?.toString() ?? ""}
+                  onChange={(v) => alterar("pedidoMinimo", v)}
+                  inputMode="numeric"
+                />
+                <Campo
+                  label="Coleção"
+                  value={form.colecao ?? ""}
+                  onChange={(v) => alterar("colecao", v)}
+                  placeholder="Ex.: Primavera 2027"
+                />
+                <Campo
+                  label="Estação"
+                  value={form.estacao ?? ""}
+                  onChange={(v) => alterar("estacao", v)}
+                  placeholder="Ex.: Verão, Natal, Círio"
+                />
+                <Campo
+                  label="Evento"
+                  value={form.evento ?? ""}
+                  onChange={(v) => alterar("evento", v)}
+                  placeholder="Ex.: Dia das Mães"
+                />
+                <Campo
+                  label="Variações"
+                  value={form.variacoesJson ?? ""}
+                  onChange={(v) => alterar("variacoesJson", v)}
+                  placeholder="Ex.: cores, tamanhos, voltagens"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Ficha técnica</Label>
@@ -369,19 +508,48 @@ function CatalogoComercialPage() {
         <Card className="border-primary/20 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="size-5 text-primary" /> Importar catálogo por planilha
+              <FileSpreadsheet className="size-5 text-primary" /> Enviar catálogo por planilha
             </CardTitle>
             <CardDescription>
-              Use a planilha para cadastrar vários produtos de uma vez. A importação entra como rascunho para revisão.
+              Envie vários produtos de uma vez. O arquivo será conferido e ficará como rascunho para
+              revisão; ele não publica produtos nem gera pedido automaticamente.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm md:grid-cols-3">
+              <div className="flex gap-2">
+                <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span>
+                  <strong className="text-foreground">1. Prepare:</strong> baixe o modelo e preencha
+                  a coluna Descrição comercial.
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span>
+                  <strong className="text-foreground">2. Revise:</strong> confira a prévia das
+                  linhas reconhecidas antes de enviar.
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+                <span>
+                  <strong className="text-foreground">3. Envie:</strong> a planilha será recebida
+                  para análise e ficará em rascunho.
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Formatos aceitos: .xlsx e .xls. O campo obrigatório é{" "}
+              <strong className="text-foreground">Descrição comercial</strong>. Para começar, use o
+              modelo abaixo.
+            </p>
             <div className="flex flex-wrap items-center gap-3">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted">
                 <Upload className="size-4" /> Selecionar planilha
                 <input
                   type="file"
-                  accept=".xlsx,.xls,.csv"
+                  accept=".xlsx,.xls"
                   className="hidden"
                   onChange={(event) => {
                     const arquivo = event.target.files?.[0];
@@ -401,19 +569,51 @@ function CatalogoComercialPage() {
             </div>
             {errosImportacao.length > 0 && (
               <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-                {errosImportacao.map((erro, indice) => <p key={indice}>{erro}</p>)}
+                {errosImportacao.map((erro, indice) => (
+                  <p key={indice}>{erro}</p>
+                ))}
               </div>
             )}
             {linhasImportadas.length > 0 && (
               <>
                 <div className="max-h-56 overflow-auto rounded-md border">
                   <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-muted"><tr><th className="p-2 text-left">Descrição</th><th className="p-2 text-left">Marca</th><th className="p-2 text-left">Categoria</th><th className="p-2 text-right">Preço</th></tr></thead>
-                    <tbody>{linhasImportadas.map((linha, indice) => <tr key={`${linha.descricao}-${indice}`} className="border-t"><td className="p-2">{linha.descricao}</td><td className="p-2">{linha.marca || "—"}</td><td className="p-2">{linha.categoria || "—"}</td><td className="p-2 text-right">{linha.precoSugerido == null ? "—" : linha.precoSugerido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td></tr>)}</tbody>
+                    <thead className="sticky top-0 bg-muted">
+                      <tr>
+                        <th className="p-2 text-left">Descrição</th>
+                        <th className="p-2 text-left">Marca</th>
+                        <th className="p-2 text-left">Categoria</th>
+                        <th className="p-2 text-right">Preço</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {linhasImportadas.map((linha, indice) => (
+                        <tr key={`${linha.descricao}-${indice}`} className="border-t">
+                          <td className="p-2">{linha.descricao}</td>
+                          <td className="p-2">{linha.marca || "—"}</td>
+                          <td className="p-2">{linha.categoria || "—"}</td>
+                          <td className="p-2 text-right">
+                            {linha.precoSugerido == null
+                              ? "—"
+                              : linha.precoSugerido.toLocaleString("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
-                <Button type="button" onClick={() => void salvarCatalogoImportado()} disabled={importando}>
-                  {importando ? "Importando..." : `Importar ${linhasImportadas.length} produto(s) como rascunho`}
+                <Button
+                  type="button"
+                  onClick={() => void salvarCatalogoImportado()}
+                  disabled={importando || errosImportacao.length > 0}
+                >
+                  <Send className="mr-2 size-4" />
+                  {importando
+                    ? "Enviando..."
+                    : `Enviar ${linhasImportadas.length} produto(s) para análise`}
                 </Button>
               </>
             )}
