@@ -51,6 +51,70 @@ function filters(params: URLSearchParams) {
   return { clauses, values, requestedCut: cutStart || "latest" };
 }
 
+function sourceCut(cutStart: string | null, cutEnd: string | null) {
+  const row = db.prepare(`
+    SELECT cut_start::text AS cut_start, cut_end::text AS cut_end
+      FROM fill_rate_cdam_sync_runs
+     WHERE status = 'success'
+       AND (? IS NULL OR cut_start <= ?::date)
+       AND (? IS NULL OR cut_end >= ?::date)
+     ORDER BY cut_end DESC
+     LIMIT 1
+  `).get(cutStart, cutStart, cutEnd, cutEnd) as { cut_start: string; cut_end: string } | undefined;
+  return row;
+}
+
+function lineFilters(params: URLSearchParams, cut: { cut_start: string; cut_end: string }) {
+  const [cutStart, cutEnd] = cutParams(params);
+  const values: unknown[] = [cut.cut_start, cut.cut_end, cutStart || cut.cut_start, cutEnd || cut.cut_end];
+  const clauses = [
+    "cut_start = ? AND cut_end = ?",
+    "TO_DATE(LPAD(order_date_raw::text, 6, '0'), 'DDMMYY') BETWEEN ?::date AND ?::date",
+  ];
+  for (const [queryName, column] of [
+    ["cdamCode", "cdam_code"], ["cdamLocalCode", "cdam_local_code"], ["storeCode", "store_code"],
+    ["departmentCode", "department_code"], ["sectionCode", "section_code"], ["groupCode", "group_code"],
+    ["subgroupCode", "subgroup_code"], ["skuCode", "sku_code"],
+  ] as const) {
+    const value = numberParam(params, queryName);
+    if (value !== null) { clauses.push(`${column} = ?`); values.push(value); }
+  }
+  return { clauses, values };
+}
+
+const GRAIN_DIMENSIONS: Record<Grain, string[]> = {
+  store: ["store_code"],
+  department: ["store_code", "department_code"],
+  section: ["store_code", "department_code", "section_code"],
+  group: ["store_code", "department_code", "section_code", "group_code"],
+  subgroup: ["store_code", "department_code", "section_code", "group_code", "subgroup_code"],
+  sku: ["store_code", "department_code", "section_code", "group_code", "subgroup_code", "sku_code"],
+};
+
+function dynamicRows(params: URLSearchParams, grain: Grain, cut: { cut_start: string; cut_end: string }, limit: number) {
+  const { clauses, values } = lineFilters(params, cut);
+  const dimensions = GRAIN_DIMENSIONS[grain];
+  const groupKeys = ["cdam_local_code", ...dimensions];
+  const projected = ["store_code", "department_code", "section_code", "group_code", "subgroup_code", "sku_code"]
+    .map((column) => dimensions.includes(column) ? `MAX(${column}) FILTER (WHERE ${column} IS NOT NULL) AS ${column}` : `NULL AS ${column}`)
+    .join(', ');
+  return db.prepare(`
+    SELECT MIN(cut_start) AS cut_start, MAX(cut_end) AS cut_end,
+           MAX(cdam_code) AS cdam_code, cdam_local_code, ${projected},
+           '${grain}' AS grain, COUNT(DISTINCT order_code) AS order_count, COUNT(*) AS line_count,
+           SUM(quantity_ordered) AS quantity_ordered, SUM(quantity_fulfilled) AS quantity_fulfilled,
+           SUM(quantity_ordered - quantity_fulfilled) AS quantity_gap,
+           CASE WHEN SUM(quantity_ordered) > 0 THEN SUM(quantity_fulfilled) / SUM(quantity_ordered) END AS quantity_fill_rate,
+           COUNT(*) FILTER (WHERE quantity_fulfilled >= quantity_ordered) AS full_line_count,
+           (array_agg(source_run_id ORDER BY observed_at DESC))[1] AS source_run_id, MAX(observed_at) AS observed_at
+      FROM fill_rate_cdam_lines
+     WHERE ${clauses.join(' AND ')}
+     GROUP BY ${groupKeys.join(', ')}
+     ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
+     LIMIT ?
+  `).all(...values, limit);
+}
+
 function json(data: unknown, status = 200) {
   return Response.json(data, {
     status,
@@ -61,10 +125,13 @@ function json(data: unknown, status = 200) {
 export function fillRateRows(params: URLSearchParams) {
   try {
     const grain = grainParam(params);
-    const { clauses, values, requestedCut } = filters(params);
+    const [cutStart, cutEnd] = cutParams(params);
+    const cut = sourceCut(cutStart, cutEnd);
+    if (!cut) return json({ source: "portal_postgresql_cache", originHotPath: false, grain, requestedCut: cutStart || "latest", reconciliationStatus: "sem_dados", warnings: ["corte não carregado no cache PostgreSQL"], rows: [] });
     const rawLimit = numberParam(params, "limit") ?? 200;
     const limit = Math.min(Math.max(rawLimit, 1), 25000);
-    const rows = db
+    const exact = cutStart === cut.cut_start && cutEnd === cut.cut_end;
+    const rows = exact ? db
       .prepare(
         `SELECT cut_start, cut_end, cdam_code, cdam_local_code, store_code, department_code,
                 section_code, group_code, subgroup_code, sku_code, grain,
@@ -76,7 +143,7 @@ export function fillRateRows(params: URLSearchParams) {
           ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
           LIMIT ?`,
       )
-      .all(grain, ...values, limit);
+      .all(grain, ...filters(params).values, limit) : dynamicRows(params, grain, cut, limit);
     return json({
       source: "portal_postgresql_cache",
       originHotPath: false,
@@ -95,7 +162,12 @@ export function fillRateRows(params: URLSearchParams) {
 
 export function fillRateSummary(params: URLSearchParams) {
   try {
-    const { clauses, values, requestedCut } = filters(params);
+    const [cutStart, cutEnd] = cutParams(params);
+    const cut = sourceCut(cutStart, cutEnd);
+    if (!cut) return json({ source: "portal_postgresql_cache", originHotPath: false, requestedCut: cutStart || "latest", reconciliationStatus: "sem_dados", warnings: ["corte não carregado no cache PostgreSQL"], summary: {} });
+    const exact = cutStart === cut.cut_start && cutEnd === cut.cut_end;
+    const requestedCut = cutStart || "latest";
+    const { clauses, values } = exact ? filters(params) : lineFilters(params, cut);
     const summary = db
       .prepare(
         `SELECT COUNT(*) AS line_count, COUNT(DISTINCT order_code) AS order_count,
