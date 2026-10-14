@@ -34,6 +34,7 @@ function filters(params: URLSearchParams) {
   ];
   for (const [queryName, column] of [
     ["cdamCode", "cdam_code"],
+    ["cdamLocalCode", "cdam_local_code"],
     ["storeCode", "store_code"],
     ["departmentCode", "department_code"],
     ["sectionCode", "section_code"],
@@ -65,7 +66,7 @@ export function fillRateRows(params: URLSearchParams) {
     const limit = Math.min(Math.max(rawLimit, 1), 1000);
     const rows = db
       .prepare(
-        `SELECT cut_start, cut_end, cdam_code, store_code, department_code,
+        `SELECT cut_start, cut_end, cdam_code, cdam_local_code, store_code, department_code,
                 section_code, group_code, subgroup_code, sku_code, grain,
                 order_count, line_count, quantity_ordered, quantity_fulfilled,
                 quantity_gap, quantity_fill_rate, full_line_count, source_run_id,
