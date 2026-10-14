@@ -128,6 +128,7 @@ export function fillRateRows(params: URLSearchParams) {
     const [cutStart, cutEnd] = cutParams(params);
     const cut = sourceCut(cutStart, cutEnd);
     if (!cut) return json({ source: "portal_postgresql_cache", originHotPath: false, grain, requestedCut: cutStart || "latest", reconciliationStatus: "sem_dados", warnings: ["corte não carregado no cache PostgreSQL"], rows: [] });
+    const requestedCut = cutStart || "latest";
     const rawLimit = numberParam(params, "limit") ?? 200;
     const limit = Math.min(Math.max(rawLimit, 1), 25000);
     const exact = cutStart === cut.cut_start && cutEnd === cut.cut_end;
