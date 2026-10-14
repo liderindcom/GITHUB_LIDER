@@ -63,7 +63,7 @@ export function fillRateRows(params: URLSearchParams) {
     const grain = grainParam(params);
     const { clauses, values, requestedCut } = filters(params);
     const rawLimit = numberParam(params, "limit") ?? 200;
-    const limit = Math.min(Math.max(rawLimit, 1), 1000);
+    const limit = Math.min(Math.max(rawLimit, 1), 25000);
     const rows = db
       .prepare(
         `SELECT cut_start, cut_end, cdam_code, cdam_local_code, store_code, department_code,
