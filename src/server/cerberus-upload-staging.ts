@@ -344,7 +344,7 @@ export async function stagePortalUpload(input: StageInput): Promise<CerberusUplo
   db.prepare(
     `INSERT INTO cerberus_uploads
       (uploadId, internalName, subject, actorType, fornecedorCodigo, sha256, bytes, decision, estado, criadoEm)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE', ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDENTE', ?)`,
   ).run(
     receipt.uploadId,
     receipt.internalName,
@@ -390,7 +390,8 @@ export async function claimStagedUpload(input: {
        FROM cerberus_uploads
        WHERE uploadId = ? AND internalName = ? AND fornecedorCodigo = ?`,
     )
-    .get(input.uploadId, input.internalName, input.fornecedorCodigo) as CerberusUploadRow | undefined;
+    .get(input.uploadId, input.internalName, input.fornecedorCodigo) as
+    CerberusUploadRow | undefined;
   if (!row) throw new Error("Upload não encontrado.");
   if (row.estado === "CONSUMIDO") throw new Error("Upload já consumido.");
   if (row.estado === "PROCESSANDO") throw new Error("Upload já está sendo processado.");
@@ -398,20 +399,20 @@ export async function claimStagedUpload(input: {
 
   const claimed = db
     .prepare(
-      "UPDATE cerberus_uploads SET estado = 'PROCESSANDO' WHERE uploadId = ? AND fornecedorCodigo = ? AND estado = 'PENDENTE'",
+      "UPDATE cerberus_uploads SET estado = 'PROCESSANDO' WHERE uploadId = ? AND fornecedorCodigo = ? AND sha256 = ? AND estado = 'PENDENTE'",
     )
-    .run(input.uploadId, input.fornecedorCodigo);
+    .run(input.uploadId, input.fornecedorCodigo, input.sha256);
   if (claimed.changes !== 1) throw new Error("Upload já está sendo processado.");
 
   try {
     const bytes = await readStagedUpload(row.uploadId, row.internalName);
     if (bytes.length !== row.bytes || sha256(bytes) !== row.sha256) {
-      db.prepare("UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ?").run(row.uploadId);
+      releaseStagedUpload(row.uploadId, row.sha256);
       throw new Error("Integridade do upload inválida.");
     }
     return { bytes, receipt: row };
   } catch (error) {
-    db.prepare("UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ?").run(row.uploadId);
+    releaseStagedUpload(row.uploadId, row.sha256);
     throw error;
   }
 }
@@ -426,11 +427,11 @@ export function markStagedUploadConsumed(uploadId: string) {
   if (result.changes !== 1) throw new Error("Estado do upload inconsistente.");
 }
 
-export function releaseStagedUpload(uploadId: string) {
+export function releaseStagedUpload(uploadId: string, sha256: string) {
   ensureUploadRegistry();
-  db.prepare("UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ? AND estado = 'PROCESSANDO'").run(
-    uploadId,
-  );
+  db.prepare(
+    "UPDATE cerberus_uploads SET estado = 'PENDENTE' WHERE uploadId = ? AND sha256 = ? AND estado = 'PROCESSANDO'",
+  ).run(uploadId, sha256);
 }
 
 export type CerberusGcPlan = {
@@ -446,10 +447,13 @@ export type CerberusGcPlan = {
  * até existir um runner com liderança única, soft-delete transacional e
  * auditoria operacional próprios.
  */
-export function planStagedUploadGc(options: { nowMs?: number; limit?: number } = {}): CerberusGcPlan {
+export function planStagedUploadGc(
+  options: { nowMs?: number; limit?: number } = {},
+): CerberusGcPlan {
   ensureUploadRegistry();
   const limite = Math.min(Math.max(options.limit ?? GC_MAX_ROWS, 1), GC_MAX_ROWS);
-  const banco = db.prepare("SELECT CURRENT_TIMESTAMP AS agora").get() as { agora?: string } | undefined;
+  const banco = db.prepare("SELECT CURRENT_TIMESTAMP AS agora").get() as
+    { agora?: string } | undefined;
   const bancoMs = banco?.agora ? Date.parse(`${banco.agora.replace(" ", "T")}Z`) : NaN;
   const nowMs = options.nowMs ?? (Number.isFinite(bancoMs) ? bancoMs : Date.now());
   const cutoffMs = nowMs - STAGING_TTL_MS - STAGING_GRACE_MS;
@@ -462,11 +466,11 @@ export function planStagedUploadGc(options: { nowMs?: number; limit?: number } =
        ORDER BY criadoEm ASC LIMIT ?`,
     )
     .all(new Date(cutoffMs).toISOString(), limite) as Array<{
-      uploadId: string;
-      internalName: string;
-      estado: string;
-      criadoEm: string;
-    }>;
+    uploadId: string;
+    internalName: string;
+    estado: string;
+    criadoEm: string;
+  }>;
   const root = rootFromEnv();
   const candidates: CerberusGcPlan["candidates"] = [];
   const rejectedPaths: string[] = [];

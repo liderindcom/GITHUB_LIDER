@@ -278,7 +278,8 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
         if (!body || typeof body !== "object") return error("Corpo inválido.", 400);
         const candidate = body as Record<string, unknown>;
         const uploadId = typeof candidate.uploadId === "string" ? candidate.uploadId : "";
-        const internalName = typeof candidate.internalName === "string" ? candidate.internalName : "";
+        const internalName =
+          typeof candidate.internalName === "string" ? candidate.internalName : "";
         const sha256 = typeof candidate.sha256 === "string" ? candidate.sha256 : "";
         const fornecedorCodigo =
           typeof candidate.fornecedorCodigo === "string" ? candidate.fornecedorCodigo : undefined;
@@ -321,11 +322,20 @@ export const Route = createFileRoute("/api/cerberus/catalogo-import")({
           });
           transacao();
           const itens = await Promise.all(tarefas);
-          return Response.json({ receipt: staged.receipt, itens }, { headers: { "cache-control": "no-store" } });
+          return Response.json(
+            { receipt: staged.receipt, itens },
+            { headers: { "cache-control": "no-store" } },
+          );
         } catch (cause) {
-          if (uploadIdProcessando) releaseStagedUpload(uploadIdProcessando);
+          if (uploadIdProcessando) releaseStagedUpload(uploadIdProcessando, sha256);
           const message = cause instanceof Error ? cause.message : "Importação recusada.";
-          const status = message.includes("não encontrado") ? 404 : message.includes("já consumido") || message.includes("sendo processado") ? 409 : message.includes("Sessão") ? 401 : 422;
+          const status = message.includes("não encontrado")
+            ? 404
+            : message.includes("já consumido") || message.includes("sendo processado")
+              ? 409
+              : message.includes("Sessão")
+                ? 401
+                : 422;
           return error(message, status);
         }
       },
