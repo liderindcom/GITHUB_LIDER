@@ -21,7 +21,7 @@ function grainParam(params: URLSearchParams): Grain {
   return grain as Grain;
 }
 
-function cutParams(params: URLSearchParams) {
+function cutParams(params: URLSearchParams): [string | null, string | null] {
   return [one(params, "cutStart"), one(params, "cutEnd")];
 }
 
@@ -96,20 +96,29 @@ function dynamicRows(params: URLSearchParams, grain: Grain, cut: { cut_start: st
   const dimensions = GRAIN_DIMENSIONS[grain];
   const groupKeys = ["cdam_local_code", ...dimensions];
   const projected = ["store_code", "department_code", "section_code", "group_code", "subgroup_code", "sku_code"]
-    .map((column) => dimensions.includes(column) ? `MAX(${column}) FILTER (WHERE ${column} IS NOT NULL) AS ${column}` : `NULL AS ${column}`)
+    .map((column) => dimensions.includes(column) ? `MAX(fr.${column}) FILTER (WHERE fr.${column} IS NOT NULL) AS ${column}` : `NULL AS ${column}`)
     .join(', ');
   return db.prepare(`
-    SELECT MIN(cut_start) AS cut_start, MAX(cut_end) AS cut_end,
-           MAX(cdam_code) AS cdam_code, cdam_local_code, ${projected},
-           '${grain}' AS grain, COUNT(DISTINCT order_code) AS order_count, COUNT(*) AS line_count,
-           SUM(quantity_ordered) AS quantity_ordered, SUM(quantity_fulfilled) AS quantity_fulfilled,
-           SUM(quantity_ordered - quantity_fulfilled) AS quantity_gap,
-           CASE WHEN SUM(quantity_ordered) > 0 THEN SUM(quantity_fulfilled) / SUM(quantity_ordered) END AS quantity_fill_rate,
-           COUNT(*) FILTER (WHERE quantity_fulfilled >= quantity_ordered) AS full_line_count,
-           (array_agg(source_run_id ORDER BY observed_at DESC))[1] AS source_run_id, MAX(observed_at) AS observed_at
-      FROM fill_rate_cdam_lines
-     WHERE ${clauses.join(' AND ')}
-     GROUP BY ${groupKeys.join(', ')}
+    WITH grouped AS (
+      SELECT MIN(fr.cut_start) AS cut_start, MAX(fr.cut_end) AS cut_end,
+             MAX(fr.cdam_code) AS cdam_code, fr.cdam_local_code, ${projected},
+             '${grain}' AS grain, COUNT(DISTINCT fr.order_code) AS order_count, COUNT(*) AS line_count,
+             SUM(fr.quantity_ordered) AS quantity_ordered, SUM(fr.quantity_fulfilled) AS quantity_fulfilled,
+             SUM(fr.quantity_ordered - fr.quantity_fulfilled) AS quantity_gap,
+             CASE WHEN SUM(fr.quantity_ordered) > 0 THEN SUM(fr.quantity_fulfilled) / SUM(fr.quantity_ordered) END AS quantity_fill_rate,
+             COUNT(*) FILTER (WHERE fr.quantity_fulfilled >= fr.quantity_ordered) AS full_line_count,
+             (array_agg(fr.source_run_id ORDER BY fr.observed_at DESC))[1] AS source_run_id, MAX(fr.observed_at) AS observed_at
+        FROM fill_rate_cdam_lines fr
+       WHERE ${clauses.map((clause) => clause.replace(/\b(cut_start|cut_end|order_date_raw|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/g, 'fr.$1')).join(' AND ')}
+       GROUP BY ${groupKeys.map((key) => `fr.${key}`).join(', ')}
+    )
+    SELECT grouped.*,
+           CASE WHEN grouped.department_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.departamento, '')) FROM produtos p WHERE CAST(p.departamentoCodigo AS TEXT) = CAST(grouped.department_code AS TEXT)) END AS department_description,
+           CASE WHEN grouped.section_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.secao, '')) FROM produtos p WHERE CAST(p.secaoCodigo AS TEXT) = CAST(grouped.section_code AS TEXT) AND CAST(p.departamentoCodigo AS TEXT) = CAST(grouped.department_code AS TEXT)) END AS section_description,
+           CASE WHEN grouped.group_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.grupo, '')) FROM produtos p WHERE CAST(p.grupoCodigo AS TEXT) = CAST(grouped.group_code AS TEXT) AND CAST(p.secaoCodigo AS TEXT) = CAST(grouped.section_code AS TEXT)) END AS group_description,
+           CASE WHEN grouped.subgroup_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.subgrupo, '')) FROM produtos p WHERE CAST(p.subgrupoCodigo AS TEXT) = CAST(grouped.subgroup_code AS TEXT) AND CAST(p.grupoCodigo AS TEXT) = CAST(grouped.group_code AS TEXT)) END AS subgroup_description,
+           CASE WHEN grouped.sku_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.descricao, '')) FROM produtos p WHERE CAST(p.codigoProdutoRms AS TEXT) = CAST(grouped.sku_code AS TEXT) OR CAST(p.sku AS TEXT) = CAST(grouped.sku_code AS TEXT)) END AS sku_description
+      FROM grouped
      ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
      LIMIT ?
   `).all(...values, limit);
@@ -132,19 +141,26 @@ export function fillRateRows(params: URLSearchParams) {
     const rawLimit = numberParam(params, "limit") ?? 200;
     const limit = Math.min(Math.max(rawLimit, 1), 25000);
     const exact = cutStart === cut.cut_start && cutEnd === cut.cut_end;
+    const exactFilters = filters(params);
+    const exactClauses = exactFilters.clauses.map((clause) => clause.replace(/\b(cut_start|cut_end|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/g, 'a.$1'));
     const rows = exact ? db
       .prepare(
-        `SELECT cut_start, cut_end, cdam_code, cdam_local_code, store_code, department_code,
-                section_code, group_code, subgroup_code, sku_code, grain,
-                order_count, line_count, quantity_ordered, quantity_fulfilled,
-                quantity_gap, quantity_fill_rate, full_line_count, source_run_id,
-                observed_at
-           FROM fill_rate_cdam_aggregates
-          WHERE grain = ? AND ${clauses.join(" AND ")}
+        `SELECT a.cut_start, a.cut_end, a.cdam_code, a.cdam_local_code, a.store_code, a.department_code,
+                a.section_code, a.group_code, a.subgroup_code, a.sku_code, a.grain,
+                a.order_count, a.line_count, a.quantity_ordered, a.quantity_fulfilled,
+                a.quantity_gap, a.quantity_fill_rate, a.full_line_count, a.source_run_id,
+                a.observed_at,
+                CASE WHEN a.department_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.departamento, '')) FROM produtos p WHERE CAST(p.departamentoCodigo AS TEXT) = CAST(a.department_code AS TEXT)) END AS department_description,
+                CASE WHEN a.section_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.secao, '')) FROM produtos p WHERE CAST(p.secaoCodigo AS TEXT) = CAST(a.section_code AS TEXT) AND CAST(p.departamentoCodigo AS TEXT) = CAST(a.department_code AS TEXT)) END AS section_description,
+                CASE WHEN a.group_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.grupo, '')) FROM produtos p WHERE CAST(p.grupoCodigo AS TEXT) = CAST(a.group_code AS TEXT) AND CAST(p.secaoCodigo AS TEXT) = CAST(a.section_code AS TEXT)) END AS group_description,
+                CASE WHEN a.subgroup_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.subgrupo, '')) FROM produtos p WHERE CAST(p.subgrupoCodigo AS TEXT) = CAST(a.subgroup_code AS TEXT) AND CAST(p.grupoCodigo AS TEXT) = CAST(a.group_code AS TEXT)) END AS subgroup_description,
+                CASE WHEN a.sku_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.descricao, '')) FROM produtos p WHERE CAST(p.codigoProdutoRms AS TEXT) = CAST(a.sku_code AS TEXT) OR CAST(p.sku AS TEXT) = CAST(a.sku_code AS TEXT)) END AS sku_description
+           FROM fill_rate_cdam_aggregates a
+          WHERE a.grain = ? AND ${exactClauses.join(" AND ")}
           ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
           LIMIT ?`,
       )
-      .all(grain, ...filters(params).values, limit) : dynamicRows(params, grain, cut, limit);
+      .all(grain, ...exactFilters.values, limit) : dynamicRows(params, grain, cut, limit);
     return json({
       source: "portal_postgresql_cache",
       originHotPath: false,
