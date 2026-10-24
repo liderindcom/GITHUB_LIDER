@@ -101,21 +101,43 @@ type ShareCategoriaView = ShareCategoriaDB & {
 type DirecaoTabela = "asc" | "desc" | null;
 type OrdenacaoTabela = { campo: string; direcao: DirecaoTabela };
 
-function ordenarTabela<T>(linhas: T[], busca: string, texto: (linha: T) => string, ordenacao: OrdenacaoTabela, valor: (linha: T, campo: string) => string | number) {
-  const filtradas = linhas.filter((linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()));
+function ordenarTabela<T>(
+  linhas: T[],
+  busca: string,
+  texto: (linha: T) => string,
+  ordenacao: OrdenacaoTabela,
+  valor: (linha: T, campo: string) => string | number,
+) {
+  const filtradas = linhas.filter(
+    (linha) => !busca || texto(linha).toLowerCase().includes(busca.toLowerCase()),
+  );
   if (!ordenacao.direcao) return filtradas;
   return [...filtradas].sort((a, b) => {
     const esquerda = valor(a, ordenacao.campo);
     const direita = valor(b, ordenacao.campo);
-    const comparacao = typeof esquerda === "number" && typeof direita === "number"
-      ? esquerda - direita
-      : String(esquerda).localeCompare(String(direita), "pt-BR", { numeric: true, sensitivity: "base" });
+    const comparacao =
+      typeof esquerda === "number" && typeof direita === "number"
+        ? esquerda - direita
+        : String(esquerda).localeCompare(String(direita), "pt-BR", {
+            numeric: true,
+            sensitivity: "base",
+          });
     return ordenacao.direcao === "asc" ? comparacao : -comparacao;
   });
 }
 
 function alternarOrdenacao(atual: OrdenacaoTabela, campo: string): OrdenacaoTabela {
-  return { campo, direcao: atual.campo === campo ? (atual.direcao === null ? "asc" : atual.direcao === "asc" ? "desc" : null) : "asc" };
+  return {
+    campo,
+    direcao:
+      atual.campo === campo
+        ? atual.direcao === null
+          ? "asc"
+          : atual.direcao === "asc"
+            ? "desc"
+            : null
+        : "asc",
+  };
 }
 
 type ShareMarcaView = {
@@ -282,9 +304,18 @@ function RepresentatividadePage() {
   const [buscaCategoriaTabela, setBuscaCategoriaTabela] = useState("");
   const [buscaMarcaTabela, setBuscaMarcaTabela] = useState("");
   const [buscaProdutoTabela, setBuscaProdutoTabela] = useState("");
-  const [ordemCategoriaTabela, setOrdemCategoriaTabela] = useState<OrdenacaoTabela>({ campo: "categoria", direcao: null });
-  const [ordemMarcaTabela, setOrdemMarcaTabela] = useState<OrdenacaoTabela>({ campo: "marca", direcao: null });
-  const [ordemProdutoTabela, setOrdemProdutoTabela] = useState<OrdenacaoTabela>({ campo: "codigo", direcao: null });
+  const [ordemCategoriaTabela, setOrdemCategoriaTabela] = useState<OrdenacaoTabela>({
+    campo: "categoria",
+    direcao: null,
+  });
+  const [ordemMarcaTabela, setOrdemMarcaTabela] = useState<OrdenacaoTabela>({
+    campo: "marca",
+    direcao: null,
+  });
+  const [ordemProdutoTabela, setOrdemProdutoTabela] = useState<OrdenacaoTabela>({
+    campo: "codigo",
+    direcao: null,
+  });
 
   const baseProdutos = Array.from(produtos);
 
@@ -316,7 +347,7 @@ function RepresentatividadePage() {
     return () => {
       cancelado = true;
     };
-  }, [fornecedor.codigo, janela, dadosFornecedorVersao]);
+  }, [fornecedor.codigo, janela]);
 
   const analise = useMemo<LinhaRepresentatividade[]>(() => {
     void dadosFornecedorVersao;
@@ -435,9 +466,75 @@ function RepresentatividadePage() {
     if (subgrupo !== "todos" && linha.subgrupo !== subgrupo) return false;
     return true;
   });
-  const categoriasTabela = useMemo(() => ordenarTabela(categoriasShare, buscaCategoriaTabela, (linha) => `${linha.categoria} ${linha.subgrupo}`, ordemCategoriaTabela, (linha, campo) => campo === "fornecedor" ? linha.fornecedorValor : campo === "categoriaTotal" ? linha.liderValor : campo === "share" ? linha.shareValor : linha.categoria), [categoriasShare, buscaCategoriaTabela, ordemCategoriaTabela]);
-  const marcasTabela = useMemo(() => ordenarTabela(marcasShareBase, buscaMarcaTabela, (linha) => linha.marca, ordemMarcaTabela, (linha, campo) => campo === "venda" ? linha.fornecedorValor : campo === "produtos" ? linha.produtos : campo === "share" ? linha.sharePortfolio : linha.marca), [marcasShareBase, buscaMarcaTabela, ordemMarcaTabela]);
-  const listaTabela = useMemo(() => ordenarTabela(lista, buscaProdutoTabela, (linha) => `${linha.codigo} ${linha.produto.descricao} ${linha.departamento} ${linha.secao} ${linha.grupo} ${linha.subgrupo}`, ordemProdutoTabela, (linha, campo) => campo === "produto" ? linha.produto.descricao : campo === "departamento" ? linha.departamento : campo === "secao" ? linha.secao : campo === "grupo" ? linha.grupo : campo === "subgrupo" ? linha.subgrupo : campo === "venda" ? linha.faturamento : campo === "vendaSubgrupo" ? linha.vendaSubgrupo : campo === "representatividade" ? linha.representatividade : campo === "acumulado" ? linha.acumulado : campo === "posicao" ? linha.posicao : linha.codigo), [lista, buscaProdutoTabela, ordemProdutoTabela]);
+  const categoriasTabela = useMemo(
+    () =>
+      ordenarTabela(
+        categoriasShare,
+        buscaCategoriaTabela,
+        (linha) => `${linha.categoria} ${linha.subgrupo}`,
+        ordemCategoriaTabela,
+        (linha, campo) =>
+          campo === "fornecedor"
+            ? linha.fornecedorValor
+            : campo === "categoriaTotal"
+              ? linha.liderValor
+              : campo === "share"
+                ? linha.shareValor
+                : linha.categoria,
+      ),
+    [categoriasShare, buscaCategoriaTabela, ordemCategoriaTabela],
+  );
+  const marcasTabela = useMemo(
+    () =>
+      ordenarTabela(
+        marcasShareBase,
+        buscaMarcaTabela,
+        (linha) => linha.marca,
+        ordemMarcaTabela,
+        (linha, campo) =>
+          campo === "venda"
+            ? linha.fornecedorValor
+            : campo === "produtos"
+              ? linha.produtos
+              : campo === "share"
+                ? linha.sharePortfolio
+                : linha.marca,
+      ),
+    [marcasShareBase, buscaMarcaTabela, ordemMarcaTabela],
+  );
+  const listaTabela = useMemo(
+    () =>
+      ordenarTabela(
+        lista,
+        buscaProdutoTabela,
+        (linha) =>
+          `${linha.codigo} ${linha.produto.descricao} ${linha.departamento} ${linha.secao} ${linha.grupo} ${linha.subgrupo}`,
+        ordemProdutoTabela,
+        (linha, campo) =>
+          campo === "produto"
+            ? linha.produto.descricao
+            : campo === "departamento"
+              ? linha.departamento
+              : campo === "secao"
+                ? linha.secao
+                : campo === "grupo"
+                  ? linha.grupo
+                  : campo === "subgrupo"
+                    ? linha.subgrupo
+                    : campo === "venda"
+                      ? linha.faturamento
+                      : campo === "vendaSubgrupo"
+                        ? linha.vendaSubgrupo
+                        : campo === "representatividade"
+                          ? linha.representatividade
+                          : campo === "acumulado"
+                            ? linha.acumulado
+                            : campo === "posicao"
+                              ? linha.posicao
+                              : linha.codigo,
+      ),
+    [lista, buscaProdutoTabela, ordemProdutoTabela],
+  );
   const graficoCategorias = categoriasShare.map((linha, index) => {
     const sub = (linha.subgrupo || "").trim();
     const cat = (linha.categoria || "").trim();
@@ -588,7 +685,8 @@ function RepresentatividadePage() {
                       <Tooltip
                         formatter={(value, name) => {
                           if (name === "share") return [percentual(Number(value)), "Share"];
-                          if (name === "fornecedor") return [brl(Number(value)), "Total do fornecedor"];
+                          if (name === "fornecedor")
+                            return [brl(Number(value)), "Total do fornecedor"];
                           return [brl(Number(value)), "Total da categoria"];
                         }}
                         labelFormatter={(_, payload) =>
@@ -767,10 +865,68 @@ function RepresentatividadePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead><TableColumnHeader title="Categoria" value={buscaCategoriaTabela} onChange={setBuscaCategoriaTabela} onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "categoria"))} direction={ordemCategoriaTabela.campo === "categoria" ? ordemCategoriaTabela.direcao : null} /></TableHead>
-                      <TableHead className="text-right"><TableColumnHeader title="Total fornecedor (subgrupo)" onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "fornecedor"))} direction={ordemCategoriaTabela.campo === "fornecedor" ? ordemCategoriaTabela.direcao : null} /></TableHead>
-                      <TableHead className="text-right"><TableColumnHeader title="Total categoria (subgrupo)" onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "categoriaTotal"))} direction={ordemCategoriaTabela.campo === "categoriaTotal" ? ordemCategoriaTabela.direcao : null} /></TableHead>
-                      <TableHead className="text-right"><TableColumnHeader title="Share" onSort={() => setOrdemCategoriaTabela(alternarOrdenacao(ordemCategoriaTabela, "share"))} direction={ordemCategoriaTabela.campo === "share" ? ordemCategoriaTabela.direcao : null} /></TableHead>
+                      <TableHead>
+                        <TableColumnHeader
+                          title="Categoria"
+                          value={buscaCategoriaTabela}
+                          onChange={setBuscaCategoriaTabela}
+                          onSort={() =>
+                            setOrdemCategoriaTabela(
+                              alternarOrdenacao(ordemCategoriaTabela, "categoria"),
+                            )
+                          }
+                          direction={
+                            ordemCategoriaTabela.campo === "categoria"
+                              ? ordemCategoriaTabela.direcao
+                              : null
+                          }
+                        />
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <TableColumnHeader
+                          title="Total fornecedor (subgrupo)"
+                          onSort={() =>
+                            setOrdemCategoriaTabela(
+                              alternarOrdenacao(ordemCategoriaTabela, "fornecedor"),
+                            )
+                          }
+                          direction={
+                            ordemCategoriaTabela.campo === "fornecedor"
+                              ? ordemCategoriaTabela.direcao
+                              : null
+                          }
+                        />
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <TableColumnHeader
+                          title="Total categoria (subgrupo)"
+                          onSort={() =>
+                            setOrdemCategoriaTabela(
+                              alternarOrdenacao(ordemCategoriaTabela, "categoriaTotal"),
+                            )
+                          }
+                          direction={
+                            ordemCategoriaTabela.campo === "categoriaTotal"
+                              ? ordemCategoriaTabela.direcao
+                              : null
+                          }
+                        />
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <TableColumnHeader
+                          title="Share"
+                          onSort={() =>
+                            setOrdemCategoriaTabela(
+                              alternarOrdenacao(ordemCategoriaTabela, "share"),
+                            )
+                          }
+                          direction={
+                            ordemCategoriaTabela.campo === "share"
+                              ? ordemCategoriaTabela.direcao
+                              : null
+                          }
+                        />
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -814,10 +970,52 @@ function RepresentatividadePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/60">
-                      <TableHead><TableColumnHeader title="Marca" value={buscaMarcaTabela} onChange={setBuscaMarcaTabela} onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "marca"))} direction={ordemMarcaTabela.campo === "marca" ? ordemMarcaTabela.direcao : null} /></TableHead>
-                      <TableHead className="text-right"><TableColumnHeader title="Venda" onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "venda"))} direction={ordemMarcaTabela.campo === "venda" ? ordemMarcaTabela.direcao : null} /></TableHead>
-                      <TableHead className="text-right"><TableColumnHeader title="Produtos" onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "produtos"))} direction={ordemMarcaTabela.campo === "produtos" ? ordemMarcaTabela.direcao : null} /></TableHead>
-                      <TableHead className="text-right"><TableColumnHeader title="Part. portfólio" onSort={() => setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "share"))} direction={ordemMarcaTabela.campo === "share" ? ordemMarcaTabela.direcao : null} /></TableHead>
+                      <TableHead>
+                        <TableColumnHeader
+                          title="Marca"
+                          value={buscaMarcaTabela}
+                          onChange={setBuscaMarcaTabela}
+                          onSort={() =>
+                            setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "marca"))
+                          }
+                          direction={
+                            ordemMarcaTabela.campo === "marca" ? ordemMarcaTabela.direcao : null
+                          }
+                        />
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <TableColumnHeader
+                          title="Venda"
+                          onSort={() =>
+                            setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "venda"))
+                          }
+                          direction={
+                            ordemMarcaTabela.campo === "venda" ? ordemMarcaTabela.direcao : null
+                          }
+                        />
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <TableColumnHeader
+                          title="Produtos"
+                          onSort={() =>
+                            setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "produtos"))
+                          }
+                          direction={
+                            ordemMarcaTabela.campo === "produtos" ? ordemMarcaTabela.direcao : null
+                          }
+                        />
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <TableColumnHeader
+                          title="Part. portfólio"
+                          onSort={() =>
+                            setOrdemMarcaTabela(alternarOrdenacao(ordemMarcaTabela, "share"))
+                          }
+                          direction={
+                            ordemMarcaTabela.campo === "share" ? ordemMarcaTabela.direcao : null
+                          }
+                        />
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -865,33 +1063,164 @@ function RepresentatividadePage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/60">
-                    <TableHead><TableColumnHeader title="Cód. produto" value={buscaProdutoTabela} onChange={setBuscaProdutoTabela} onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "codigo"))} direction={ordemProdutoTabela.campo === "codigo" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead><TableColumnHeader title="Produto" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "produto"))} direction={ordemProdutoTabela.campo === "produto" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead><TableColumnHeader title="Departamento" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "departamento"))} direction={ordemProdutoTabela.campo === "departamento" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead><TableColumnHeader title="Seção" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "secao"))} direction={ordemProdutoTabela.campo === "secao" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead><TableColumnHeader title="Grupo" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "grupo"))} direction={ordemProdutoTabela.campo === "grupo" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead><TableColumnHeader title="Subgrupo" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "subgrupo"))} direction={ordemProdutoTabela.campo === "subgrupo" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                  <TableHead className="text-right"><TableColumnHeader title="Venda produto" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "venda"))} direction={ordemProdutoTabela.campo === "venda" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead className="text-right"><TableColumnHeader title="Total fornecedor" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "vendaSubgrupo"))} direction={ordemProdutoTabela.campo === "vendaSubgrupo" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Cód. produto"
+                        value={buscaProdutoTabela}
+                        onChange={setBuscaProdutoTabela}
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "codigo"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "codigo" ? ordemProdutoTabela.direcao : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Produto"
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "produto"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "produto" ? ordemProdutoTabela.direcao : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Departamento"
+                        onSort={() =>
+                          setOrdemProdutoTabela(
+                            alternarOrdenacao(ordemProdutoTabela, "departamento"),
+                          )
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "departamento"
+                            ? ordemProdutoTabela.direcao
+                            : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Seção"
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "secao"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "secao" ? ordemProdutoTabela.direcao : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Grupo"
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "grupo"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "grupo" ? ordemProdutoTabela.direcao : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Subgrupo"
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "subgrupo"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "subgrupo"
+                            ? ordemProdutoTabela.direcao
+                            : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableColumnHeader
+                        title="Venda produto"
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "venda"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "venda" ? ordemProdutoTabela.direcao : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableColumnHeader
+                        title="Total fornecedor"
+                        onSort={() =>
+                          setOrdemProdutoTabela(
+                            alternarOrdenacao(ordemProdutoTabela, "vendaSubgrupo"),
+                          )
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "vendaSubgrupo"
+                            ? ordemProdutoTabela.direcao
+                            : null
+                        }
+                      />
+                    </TableHead>
                     <TableHead className="text-right">Total categoria</TableHead>
-                    <TableHead><TableColumnHeader title="Representatividade" onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "representatividade"))} direction={ordemProdutoTabela.campo === "representatividade" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead className="text-right"><TableColumnHeader title="Acum." onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "acumulado"))} direction={ordemProdutoTabela.campo === "acumulado" ? ordemProdutoTabela.direcao : null} /></TableHead>
-                    <TableHead className="text-center"><TableColumnHeader title="Pos." onSort={() => setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "posicao"))} direction={ordemProdutoTabela.campo === "posicao" ? ordemProdutoTabela.direcao : null} /></TableHead>
+                    <TableHead>
+                      <TableColumnHeader
+                        title="Representatividade"
+                        onSort={() =>
+                          setOrdemProdutoTabela(
+                            alternarOrdenacao(ordemProdutoTabela, "representatividade"),
+                          )
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "representatividade"
+                            ? ordemProdutoTabela.direcao
+                            : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableColumnHeader
+                        title="Acum."
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "acumulado"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "acumulado"
+                            ? ordemProdutoTabela.direcao
+                            : null
+                        }
+                      />
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <TableColumnHeader
+                        title="Pos."
+                        onSort={() =>
+                          setOrdemProdutoTabela(alternarOrdenacao(ordemProdutoTabela, "posicao"))
+                        }
+                        direction={
+                          ordemProdutoTabela.campo === "posicao" ? ordemProdutoTabela.direcao : null
+                        }
+                      />
+                    </TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {listaTabela.map((linha) => {
                     const status = statusParticipacao(linha.representatividade, linha.posicao);
-                    const categoriaLinha = categoriasShare.find(
-                      (categoria) =>
-                        chaveRotulo(categoria.departamento) === chaveRotulo(linha.departamento) &&
-                        chaveRotulo(categoria.secao) === chaveRotulo(linha.secao) &&
-                        chaveRotulo(categoria.grupo) === chaveRotulo(linha.grupo) &&
-                        chaveRotulo(categoria.subgrupo) === chaveRotulo(linha.subgrupo),
-                    ) ?? categoriasShare.find(
-                      (categoria) => chaveRotulo(categoria.subgrupo) === chaveRotulo(linha.subgrupo),
-                    );
+                    const categoriaLinha =
+                      categoriasShare.find(
+                        (categoria) =>
+                          chaveRotulo(categoria.departamento) === chaveRotulo(linha.departamento) &&
+                          chaveRotulo(categoria.secao) === chaveRotulo(linha.secao) &&
+                          chaveRotulo(categoria.grupo) === chaveRotulo(linha.grupo) &&
+                          chaveRotulo(categoria.subgrupo) === chaveRotulo(linha.subgrupo),
+                      ) ??
+                      categoriasShare.find(
+                        (categoria) =>
+                          chaveRotulo(categoria.subgrupo) === chaveRotulo(linha.subgrupo),
+                      );
 
                     return (
                       <TableRow key={linha.produto.sku}>

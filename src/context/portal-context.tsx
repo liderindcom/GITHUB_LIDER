@@ -192,6 +192,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           agendaRecebimentoCdam: forn.agendaRecebimentoCdam as any,
           filialEntregaPadrao: forn.filialEntregaPadrao,
           isentoCobranca: forn.isentoCobranca as any,
+          acessoStatus: forn.acessoStatus,
           acessoDataInicio: forn.acessoDataInicio,
           acessoDataFim: forn.acessoDataFim,
           ...(forn.fornecedorComercialCodigo
@@ -336,7 +337,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           // esperando todas as cargas do fornecedor (vendas, estoque,
           // perdas, pedidos e financeiro). Elas podem continuar em segundo
           // plano e atualizar o cache conforme cada tela for usada.
-          void carregarDadosReaisFornecedor(code);
+          // Dê prioridade à rota aberta pelo usuário. A carga global envolve
+          // vários conjuntos e não deve concorrer com o primeiro conteúdo da tela.
+          window.setTimeout(() => void carregarDadosReaisFornecedor(code), 1_500);
         }
       } catch {
         window.sessionStorage.removeItem(CHAVE_SESSAO);
