@@ -2,6 +2,16 @@ import { db } from "@/server/db";
 
 const GRAINS = ["store", "department", "section", "group", "subgroup", "sku"] as const;
 type Grain = (typeof GRAINS)[number];
+const SEGMENT_DEPARTMENTS: Record<string, number[]> = {
+  SUPERMERCADO: [100, 102, 103, 105, 600],
+  MAGAZAN: [201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 219, 220, 222, 223, 224, 225, 226, 227, 228, 500],
+  FARMALIDER: [300],
+  "HOME CENTER": [110, 115],
+  OTICA: [221],
+  PETSLIDER: [104, 999],
+  NUTRILIDER: [106],
+};
+const SEGMENTS = [...Object.keys(SEGMENT_DEPARTMENTS), "OUTROS"] as const;
 
 function one(params: URLSearchParams, name: string) {
   const value = params.get(name)?.trim();
@@ -19,6 +29,23 @@ function grainParam(params: URLSearchParams): Grain {
   const grain = one(params, "grain") || "store";
   if (!GRAINS.includes(grain as Grain)) throw new Error("grain inválido");
   return grain as Grain;
+}
+
+function segmentParam(params: URLSearchParams) {
+  const segment = one(params, "segmento");
+  if (!segment) return null;
+  if (!SEGMENTS.includes(segment as (typeof SEGMENTS)[number])) throw new Error("segmento inválido");
+  return segment;
+}
+
+function segmentFilter(params: URLSearchParams) {
+  const segment = segmentParam(params);
+  if (!segment) return { clause: null, values: [] as unknown[] };
+  const codes = Object.values(SEGMENT_DEPARTMENTS).flat();
+  const placeholders = (values: number[]) => values.map(() => "?").join(",");
+  if (segment === "OUTROS") return { clause: `(department_code IS NULL OR department_code NOT IN (${placeholders(codes)}))`, values: codes };
+  const values = SEGMENT_DEPARTMENTS[segment];
+  return { clause: `department_code IN (${placeholders(values)})`, values };
 }
 
 function cutParams(params: URLSearchParams): [string | null, string | null] {
@@ -48,6 +75,8 @@ function filters(params: URLSearchParams) {
       values.push(value);
     }
   }
+  const segment = segmentFilter(params);
+  if (segment.clause) { clauses.push(segment.clause); values.push(...segment.values); }
   return { clauses, values, requestedCut: cutStart || "latest" };
 }
 
@@ -79,6 +108,8 @@ function lineFilters(params: URLSearchParams, cut: { cut_start: string; cut_end:
     const value = numberParam(params, queryName);
     if (value !== null) { clauses.push(`${column} = ?`); values.push(value); }
   }
+  const segment = segmentFilter(params);
+  if (segment.clause) { clauses.push(segment.clause); values.push(...segment.values); }
   return { clauses, values };
 }
 
