@@ -142,7 +142,7 @@ export function fillRateRows(params: URLSearchParams) {
     const limit = Math.min(Math.max(rawLimit, 1), 25000);
     const exact = cutStart === cut.cut_start && cutEnd === cut.cut_end;
     const exactFilters = filters(params);
-    const exactClauses = exactFilters.clauses.map((clause) => clause.replace(/\b(cut_start|cut_end|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/g, 'a.$1'));
+    const exactClauses = exactFilters.clauses.map((clause) => clause.replace(/^(cut_start|cut_end|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/, 'a.$1'));
     const rows = exact ? db
       .prepare(
         `SELECT a.cut_start, a.cut_end, a.cdam_code, a.cdam_local_code, a.store_code, a.department_code,
