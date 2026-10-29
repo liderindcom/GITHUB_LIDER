@@ -176,20 +176,43 @@ export function fillRateRows(params: URLSearchParams) {
     const exactClauses = exactFilters.clauses.map((clause) => clause.replace(/^(cut_start|cut_end|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/, 'a.$1'));
     const rows = exact ? db
       .prepare(
-        `SELECT a.cut_start, a.cut_end, a.cdam_code, a.cdam_local_code, a.store_code, a.department_code,
-                a.section_code, a.group_code, a.subgroup_code, a.sku_code, a.grain,
-                a.order_count, a.line_count, a.quantity_ordered, a.quantity_fulfilled,
-                a.quantity_gap, a.quantity_fill_rate, a.full_line_count, a.source_run_id,
-                a.observed_at,
-                CASE WHEN a.department_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.departamento, '')) FROM produtos p WHERE CAST(p.departamentoCodigo AS TEXT) = CAST(a.department_code AS TEXT)) END AS department_description,
-                CASE WHEN a.section_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.secao, '')) FROM produtos p WHERE CAST(p.secaoCodigo AS TEXT) = CAST(a.section_code AS TEXT) AND CAST(p.departamentoCodigo AS TEXT) = CAST(a.department_code AS TEXT)) END AS section_description,
-                CASE WHEN a.group_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.grupo, '')) FROM produtos p WHERE CAST(p.grupoCodigo AS TEXT) = CAST(a.group_code AS TEXT) AND CAST(p.secaoCodigo AS TEXT) = CAST(a.section_code AS TEXT)) END AS group_description,
-                CASE WHEN a.subgroup_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.subgrupo, '')) FROM produtos p WHERE CAST(p.subgrupoCodigo AS TEXT) = CAST(a.subgroup_code AS TEXT) AND CAST(p.grupoCodigo AS TEXT) = CAST(a.group_code AS TEXT)) END AS subgroup_description,
-                CASE WHEN a.sku_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.descricao, '')) FROM produtos p WHERE CAST(p.codigoProdutoRms AS TEXT) = CAST(a.sku_code AS TEXT) OR CAST(p.sku AS TEXT) = CAST(a.sku_code AS TEXT)) END AS sku_description
-           FROM fill_rate_cdam_aggregates a
-          WHERE a.grain = ? AND ${exactClauses.join(" AND ")}
-          ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
-          LIMIT ?`,
+        `WITH filtered AS (
+          SELECT a.*
+            FROM fill_rate_cdam_aggregates a
+           WHERE a.grain = ? AND ${exactClauses.join(" AND ")}
+           ORDER BY a.quantity_gap DESC, a.store_code NULLS LAST, a.sku_code NULLS LAST
+           LIMIT ?
+        ), departments AS (
+          SELECT CAST(p.departamentoCodigo AS TEXT) AS code, MAX(NULLIF(p.departamento, '')) AS description
+            FROM produtos p GROUP BY p.departamentoCodigo
+        ), sections AS (
+          SELECT CAST(p.departamentoCodigo AS TEXT) AS department_code, CAST(p.secaoCodigo AS TEXT) AS code, MAX(NULLIF(p.secao, '')) AS description
+            FROM produtos p GROUP BY p.departamentoCodigo, p.secaoCodigo
+        ), product_groups AS (
+          SELECT CAST(p.secaoCodigo AS TEXT) AS section_code, CAST(p.grupoCodigo AS TEXT) AS code, MAX(NULLIF(p.grupo, '')) AS description
+            FROM produtos p GROUP BY p.secaoCodigo, p.grupoCodigo
+        ), subgroups AS (
+          SELECT CAST(p.grupoCodigo AS TEXT) AS group_code, CAST(p.subgrupoCodigo AS TEXT) AS code, MAX(NULLIF(p.subgrupo, '')) AS description
+            FROM produtos p GROUP BY p.grupoCodigo, p.subgrupoCodigo
+        ), sku_descriptions AS (
+          SELECT code, MAX(description) AS description FROM (
+            SELECT CAST(p.codigoProdutoRms AS TEXT) AS code, NULLIF(p.descricao, '') AS description FROM produtos p WHERE p.codigoProdutoRms IS NOT NULL
+            UNION ALL
+            SELECT CAST(p.sku AS TEXT) AS code, NULLIF(p.descricao, '') AS description FROM produtos p WHERE p.sku IS NOT NULL
+          ) mapped GROUP BY code
+        )
+        SELECT filtered.*,
+               departments.description AS department_description,
+               sections.description AS section_description,
+               product_groups.description AS group_description,
+               subgroups.description AS subgroup_description,
+               sku_descriptions.description AS sku_description
+          FROM filtered
+          LEFT JOIN departments ON departments.code = CAST(filtered.department_code AS TEXT)
+          LEFT JOIN sections ON sections.department_code = CAST(filtered.department_code AS TEXT) AND sections.code = CAST(filtered.section_code AS TEXT)
+          LEFT JOIN product_groups ON product_groups.section_code = CAST(filtered.section_code AS TEXT) AND product_groups.code = CAST(filtered.group_code AS TEXT)
+          LEFT JOIN subgroups ON subgroups.group_code = CAST(filtered.group_code AS TEXT) AND subgroups.code = CAST(filtered.subgroup_code AS TEXT)
+          LEFT JOIN sku_descriptions ON sku_descriptions.code = CAST(filtered.sku_code AS TEXT)` ,
       )
       .all(grain, ...exactFilters.values, limit) : dynamicRows(params, grain, cut, limit);
     return json({
