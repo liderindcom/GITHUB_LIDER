@@ -52,16 +52,31 @@ function cutParams(params: URLSearchParams): [string | null, string | null] {
   return [one(params, "cutStart"), one(params, "cutEnd")];
 }
 
+const MAX_INTERACTIVE_DAYS = 7;
+
+function historicalImportWarning(params: URLSearchParams) {
+  const [start, end] = cutParams(params);
+  if (!start || !end) return null;
+  const startDate = new Date(`${start}T00:00:00Z`);
+  const endDate = new Date(`${end}T00:00:00Z`);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+  const days = Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+  if (days <= MAX_INTERACTIVE_DAYS) return null;
+  return `O período selecionado tem ${days} dias. A consulta interativa aceita no máximo ${MAX_INTERACTIVE_DAYS} dias; é necessária uma importação histórica para esse intervalo.`;
+}
+
 function filters(params: URLSearchParams) {
   const [cutStart, cutEnd] = cutParams(params);
   const values: unknown[] = [cutStart, cutEnd];
   const clauses = [
-    "cut_start = COALESCE(?, (SELECT MAX(cut_start) FROM fill_rate_cdam_sync_runs WHERE status = 'success'))",
-    "cut_end = COALESCE(?, (SELECT MAX(cut_end) FROM fill_rate_cdam_sync_runs WHERE status = 'success'))",
+    "cut_start::date = COALESCE(?::date, (SELECT MAX(cut_start)::date FROM fill_rate_cdam_sync_runs WHERE status = 'success'))",
+    "cut_end::date = COALESCE(?::date, (SELECT MAX(cut_end)::date FROM fill_rate_cdam_sync_runs WHERE status = 'success'))",
   ];
   for (const [queryName, column] of [
     ["cdamCode", "cdam_code"],
-    ["cdamLocalCode", "cdam_local_code"],
+    // The Atlas selector sends the full CDAM (2011/2038); the local
+    // warehouse code is stored separately as 201/203.
+    ["cdamLocalCode", "cdam_code"],
     ["storeCode", "store_code"],
     ["departmentCode", "department_code"],
     ["sectionCode", "section_code"],
@@ -82,26 +97,24 @@ function filters(params: URLSearchParams) {
 
 function sourceCut(cutStart: string | null, cutEnd: string | null) {
   const row = db.prepare(`
-    SELECT cut_start::text AS cut_start, cut_end::text AS cut_end
+    SELECT cut_start::text AS cut_start, cut_end::text AS cut_end, status
       FROM fill_rate_cdam_sync_runs
-     WHERE status = 'success'
-       AND (? IS NULL OR cut_start <= ?::date)
+     WHERE (? IS NULL OR cut_start <= ?::date)
        AND (? IS NULL OR cut_end >= ?::date)
-     ORDER BY cut_end DESC
-     LIMIT 1
-  `).get(cutStart, cutStart, cutEnd, cutEnd) as { cut_start: string; cut_end: string } | undefined;
-  return row;
+    ORDER BY (cut_start::date = ?::date AND cut_end::date = ?::date) DESC, cut_end DESC, started_at DESC
+    LIMIT 1
+  `).get(cutStart, cutStart, cutEnd, cutEnd, cutStart, cutEnd) as { cut_start: string; cut_end: string; status: string } | undefined;
+  return row?.status === "success" ? row : undefined;
 }
 
 function lineFilters(params: URLSearchParams, cut: { cut_start: string; cut_end: string }) {
   const [cutStart, cutEnd] = cutParams(params);
-  const values: unknown[] = [cut.cut_start, cut.cut_end, cutStart || cut.cut_start, cutEnd || cut.cut_end];
+  const values: unknown[] = [cut.cut_start, cut.cut_end];
   const clauses = [
-    "cut_start = ? AND cut_end = ?",
-    "TO_DATE(LPAD(order_date_raw::text, 6, '0'), 'DDMMYY') BETWEEN ?::date AND ?::date",
+    "cut_start::date = ?::date AND cut_end::date = ?::date",
   ];
   for (const [queryName, column] of [
-    ["cdamCode", "cdam_code"], ["cdamLocalCode", "cdam_local_code"], ["storeCode", "store_code"],
+    ["cdamCode", "cdam_code"], ["cdamLocalCode", "cdam_code"], ["storeCode", "store_code"],
     ["departmentCode", "department_code"], ["sectionCode", "section_code"], ["groupCode", "group_code"],
     ["subgroupCode", "subgroup_code"], ["skuCode", "sku_code"],
   ] as const) {
@@ -131,7 +144,7 @@ function dynamicRows(params: URLSearchParams, grain: Grain, cut: { cut_start: st
     .join(', ');
   return db.prepare(`
     WITH grouped AS (
-      SELECT MIN(fr.cut_start) AS cut_start, MAX(fr.cut_end) AS cut_end,
+    SELECT MIN(fr.cut_start) AS cut_start, MAX(fr.cut_end) AS cut_end,
              MAX(fr.cdam_code) AS cdam_code, fr.cdam_local_code, ${projected},
              '${grain}' AS grain, COUNT(DISTINCT fr.order_code) AS order_count, COUNT(*) AS line_count,
              SUM(fr.quantity_ordered) AS quantity_ordered, SUM(fr.quantity_fulfilled) AS quantity_fulfilled,
@@ -142,17 +155,42 @@ function dynamicRows(params: URLSearchParams, grain: Grain, cut: { cut_start: st
         FROM fill_rate_cdam_lines fr
        WHERE ${clauses.map((clause) => clause.replace(/\b(cut_start|cut_end|order_date_raw|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/g, 'fr.$1')).join(' AND ')}
        GROUP BY ${groupKeys.map((key) => `fr.${key}`).join(', ')}
+    ), limited AS (
+      SELECT * FROM grouped
+       ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
+       LIMIT ?
     )
-    SELECT grouped.*,
-           CASE WHEN grouped.department_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.departamento, '')) FROM produtos p WHERE CAST(p.departamentoCodigo AS TEXT) = CAST(grouped.department_code AS TEXT)) END AS department_description,
-           CASE WHEN grouped.section_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.secao, '')) FROM produtos p WHERE CAST(p.secaoCodigo AS TEXT) = CAST(grouped.section_code AS TEXT) AND CAST(p.departamentoCodigo AS TEXT) = CAST(grouped.department_code AS TEXT)) END AS section_description,
-           CASE WHEN grouped.group_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.grupo, '')) FROM produtos p WHERE CAST(p.grupoCodigo AS TEXT) = CAST(grouped.group_code AS TEXT) AND CAST(p.secaoCodigo AS TEXT) = CAST(grouped.section_code AS TEXT)) END AS group_description,
-           CASE WHEN grouped.subgroup_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.subgrupo, '')) FROM produtos p WHERE CAST(p.subgrupoCodigo AS TEXT) = CAST(grouped.subgroup_code AS TEXT) AND CAST(p.grupoCodigo AS TEXT) = CAST(grouped.group_code AS TEXT)) END AS subgroup_description,
-           CASE WHEN grouped.sku_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.descricao, '')) FROM produtos p WHERE CAST(p.codigoProdutoRms AS TEXT) = CAST(grouped.sku_code AS TEXT) OR CAST(p.sku AS TEXT) = CAST(grouped.sku_code AS TEXT)) END AS sku_description
-      FROM grouped
-     ORDER BY quantity_gap DESC, store_code NULLS LAST, sku_code NULLS LAST
-     LIMIT ?
+    SELECT limited.*,
+           CASE WHEN limited.department_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.departamento, '')) FROM produtos p WHERE CAST(p.departamentoCodigo AS TEXT) = CAST(limited.department_code AS TEXT)) END AS department_description,
+           CASE WHEN limited.section_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.secao, '')) FROM produtos p WHERE CAST(p.secaoCodigo AS TEXT) = CAST(limited.section_code AS TEXT) AND CAST(p.departamentoCodigo AS TEXT) = CAST(limited.department_code AS TEXT)) END AS section_description,
+           CASE WHEN limited.group_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.grupo, '')) FROM produtos p WHERE CAST(p.grupoCodigo AS TEXT) = CAST(limited.group_code AS TEXT) AND CAST(p.secaoCodigo AS TEXT) = CAST(limited.section_code AS TEXT)) END AS group_description,
+           CASE WHEN limited.subgroup_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.subgrupo, '')) FROM produtos p WHERE CAST(p.subgrupoCodigo AS TEXT) = CAST(limited.subgroup_code AS TEXT) AND CAST(p.grupoCodigo AS TEXT) = CAST(limited.group_code AS TEXT)) END AS subgroup_description,
+           CASE WHEN limited.sku_code IS NOT NULL THEN (SELECT MAX(NULLIF(p.descricao, '')) FROM produtos p WHERE CAST(p.codigoProdutoRms AS TEXT) = CAST(limited.sku_code AS TEXT) OR CAST(p.sku AS TEXT) = CAST(limited.sku_code AS TEXT)) END AS sku_description
+      FROM limited
   `).all(...values, limit);
+}
+
+function billingSummary(params: URLSearchParams, cut: { cut_start: string; cut_end: string }) {
+  const { clauses, values } = lineFilters(params, cut);
+  const lineClauses = clauses.map((clause) => clause.replace(/\b(cut_start|cut_end|order_date_raw|cdam_code|cdam_local_code|store_code|department_code|section_code|group_code|subgroup_code|sku_code)\b/g, 'fr.$1'));
+  return db.prepare(`
+    SELECT COALESCE(SUM(e.quantity_on_time), 0) AS quantity_on_time,
+           COALESCE(SUM(e.quantity_late), 0) AS quantity_late_accumulated,
+           COALESCE(SUM(e.quantity_billed), 0) AS quantity_billed_total
+      FROM fill_rate_cdam_billing_events e
+     WHERE e.cut_start::date = ?::date AND e.cut_end::date = ?::date
+       AND EXISTS (
+         SELECT 1
+           FROM fill_rate_cdam_lines fr
+          WHERE fr.cut_start::date = e.cut_start::date
+            AND fr.cut_end::date = e.cut_end::date
+            AND fr.cdam_code = e.cdam_code
+            AND fr.store_code = e.store_code
+            AND fr.order_code = e.order_code
+            AND fr.sku_code = e.sku_code
+            AND ${lineClauses.join(' AND ')}
+       )
+  `).get(cut.cut_start, cut.cut_end, ...values) as Record<string, unknown>;
 }
 
 function json(data: unknown, status = 200) {
@@ -164,6 +202,8 @@ function json(data: unknown, status = 200) {
 
 export function fillRateRows(params: URLSearchParams) {
   try {
+    const importWarning = historicalImportWarning(params);
+    if (importWarning) return json({ source: "portal_postgresql_cache", originHotPath: false, requestedCut: params.get("cutStart") || "latest", reconciliationStatus: "importacao_necessaria", warnings: [importWarning], rows: [] });
     const grain = grainParam(params);
     const [cutStart, cutEnd] = cutParams(params);
     const cut = sourceCut(cutStart, cutEnd);
@@ -202,17 +242,46 @@ export function fillRateRows(params: URLSearchParams) {
           ) mapped GROUP BY code
         )
         SELECT filtered.*,
+               buckets.quantity_d1,
+               buckets.quantity_d2,
+               buckets.quantity_d3,
                departments.description AS department_description,
                sections.description AS section_description,
                product_groups.description AS group_description,
                subgroups.description AS subgroup_description,
                sku_descriptions.description AS sku_description
           FROM filtered
+          LEFT JOIN LATERAL (
+            SELECT
+              COALESCE(SUM(e.quantity_billed) FILTER (WHERE e.billing_date = filtered.cut_end::date + 1), 0) AS quantity_d1,
+              COALESCE(SUM(e.quantity_billed) FILTER (WHERE e.billing_date = filtered.cut_end::date + 2), 0) AS quantity_d2,
+              COALESCE(SUM(e.quantity_billed) FILTER (WHERE e.billing_date = filtered.cut_end::date + 3), 0) AS quantity_d3
+            FROM fill_rate_cdam_billing_events e
+            WHERE e.cut_start::date = filtered.cut_start::date
+              AND e.cut_end::date = filtered.cut_end::date
+              AND e.cdam_code = filtered.cdam_code
+              AND e.store_code = filtered.store_code
+              AND EXISTS (
+                SELECT 1
+                  FROM fill_rate_cdam_lines bl
+                 WHERE bl.cut_start::date = filtered.cut_start::date
+                   AND bl.cut_end::date = filtered.cut_end::date
+                   AND bl.cdam_code = filtered.cdam_code
+                   AND bl.store_code = filtered.store_code
+                   AND bl.order_code = e.order_code
+                   AND bl.sku_code = e.sku_code
+                   AND bl.department_code IS NOT DISTINCT FROM filtered.department_code
+                   AND bl.section_code IS NOT DISTINCT FROM filtered.section_code
+                   AND bl.group_code IS NOT DISTINCT FROM filtered.group_code
+                   AND bl.subgroup_code IS NOT DISTINCT FROM filtered.subgroup_code
+                   AND bl.sku_code IS NOT DISTINCT FROM filtered.sku_code
+              )
+          ) buckets ON TRUE
           LEFT JOIN departments ON departments.code = CAST(filtered.department_code AS TEXT)
           LEFT JOIN sections ON sections.department_code = CAST(filtered.department_code AS TEXT) AND sections.code = CAST(filtered.section_code AS TEXT)
           LEFT JOIN product_groups ON product_groups.section_code = CAST(filtered.section_code AS TEXT) AND product_groups.code = CAST(filtered.group_code AS TEXT)
           LEFT JOIN subgroups ON subgroups.group_code = CAST(filtered.group_code AS TEXT) AND subgroups.code = CAST(filtered.subgroup_code AS TEXT)
-          LEFT JOIN sku_descriptions ON sku_descriptions.code = CAST(filtered.sku_code AS TEXT)` ,
+          LEFT JOIN sku_descriptions ON sku_descriptions.code = CAST(filtered.sku_code AS TEXT)`,
       )
       .all(grain, ...exactFilters.values, limit) : dynamicRows(params, grain, cut, limit);
     return json({
@@ -233,6 +302,8 @@ export function fillRateRows(params: URLSearchParams) {
 
 export function fillRateSummary(params: URLSearchParams) {
   try {
+    const importWarning = historicalImportWarning(params);
+    if (importWarning) return json({ source: "portal_postgresql_cache", originHotPath: false, requestedCut: params.get("cutStart") || "latest", reconciliationStatus: "importacao_necessaria", warnings: [importWarning], summary: {} });
     const [cutStart, cutEnd] = cutParams(params);
     const cut = sourceCut(cutStart, cutEnd);
     if (!cut) return json({ source: "portal_postgresql_cache", originHotPath: false, requestedCut: cutStart || "latest", reconciliationStatus: "sem_dados", warnings: ["corte não carregado no cache PostgreSQL"], summary: {} });
@@ -251,13 +322,35 @@ export function fillRateSummary(params: URLSearchParams) {
           WHERE ${clauses.join(" AND ")}`,
       )
       .get(...values);
+    let billing: Record<string, unknown> = {
+      quantity_on_time: 0,
+      quantity_late_accumulated: 0,
+      quantity_billed_total: 0,
+    };
+    try {
+      billing = billingSummary(params, cut);
+    } catch {
+      // A migration may not have reached an older read replica yet. The
+      // quantitative fill-rate response remains valid and explicitly reports
+      // zero billing-event data until the additive cache is available.
+    }
+    const ordered = Number((summary as Record<string, unknown>).quantity_ordered || 0);
+    const onTime = Number(billing.quantity_on_time || 0);
+    const late = Number(billing.quantity_late_accumulated || 0);
     return json({
       source: "portal_postgresql_cache",
       originHotPath: false,
       requestedCut,
       reconciliationStatus: "reconciliado",
       warnings: ["o histórico não contém snapshot causal de estoque"],
-      summary,
+      summary: {
+        ...summary,
+        quantity_on_time: onTime,
+        quantity_late_accumulated: late,
+        quantity_billed_total: Number(billing.quantity_billed_total || 0),
+        fill_rate_on_time: ordered > 0 ? onTime / ordered : null,
+        fill_rate_late_accumulated: ordered > 0 ? late / ordered : null,
+      },
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "consulta indisponível";

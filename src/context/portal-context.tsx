@@ -361,14 +361,19 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   }, [autenticado, primeiroAcessoConcluido, usuarioInterno, usuarioFornecedor, carregandoSessao]);
 
   useEffect(() => {
-    if (codigoFornecedorAtivo) {
-      fetchAntecipacoes({ data: codigoFornecedorAtivo }).then((data) => {
-        setAntecipacoes(data || []);
-      });
-    } else {
+    if (carregandoSessao || !autenticado || !codigoFornecedorAtivo) {
       setAntecipacoes([]);
+      return;
     }
-  }, [codigoFornecedorAtivo]);
+    fetchAntecipacoes({ data: codigoFornecedorAtivo })
+      .then((data) => {
+        setAntecipacoes(data || []);
+      })
+      .catch((error) => {
+        console.error("Erro ao carregar antecipações:", error);
+        setAntecipacoes([]);
+      });
+  }, [autenticado, carregandoSessao, codigoFornecedorAtivo]);
 
   const entrar = useCallback(
     (

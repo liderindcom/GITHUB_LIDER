@@ -160,6 +160,26 @@ function VendasAnualPage() {
 
   const abaixo = (dados?.fornecedor?.pontos ?? 0) < 0;
   const mesesTabela = useMemo(() => ordenar(dados?.meses ?? [], buscaMes, (m) => m.nome, ordemMes, (m) => m.nome), [dados?.meses, buscaMes, ordemMes]);
+  const resumoMensal = useMemo(() => {
+    const total = (campo: "pesoAnoPct" | "fornValorBase" | "fornValorAtual" | "fornVolumeBase" | "fornVolumeAtual") =>
+      mesesTabela.reduce((soma, mes) => soma + Number(mes[campo] ?? 0), 0);
+    const fornValorBase = total("fornValorBase");
+    const fornValorAtual = total("fornValorAtual");
+    const fornVolumeBase = total("fornVolumeBase");
+    const fornVolumeAtual = total("fornVolumeAtual");
+    const ultimoMes = [...mesesTabela].sort((a, b) => a.mes - b.mes).at(-1);
+    return {
+      pesoAnoPct: total("pesoAnoPct"),
+      farolAcumPct: ultimoMes?.farolAcumPct ?? null,
+      fornValorBase,
+      fornValorAtual,
+      fornVolumeBase,
+      fornVolumeAtual,
+      precoMedioBase: precoMedio(fornValorBase, fornVolumeBase),
+      precoMedioAtual: precoMedio(fornValorAtual, fornVolumeAtual),
+      crescimentoPct: fornValorBase > 0 ? (fornValorAtual / fornValorBase - 1) * 100 : null,
+    };
+  }, [mesesTabela]);
   const secoesTabela = useMemo(() => ordenar(dados?.secoes ?? [], buscaSecao, (s) => s.secao, ordemSecao, (s) => s.secao), [dados?.secoes, buscaSecao, ordemSecao]);
   const itensTabela = useMemo(() => ordenar(dados?.itens ?? [], buscaItem, (i) => `${codigoItemComDigito(i)} ${i.descricao} ${i.secao}`, ordemItem, (i) => i.descricao), [dados?.itens, buscaItem, ordemItem]);
   const redeAbaixo = (dados?.rede?.pontos ?? 0) < 0;
@@ -375,6 +395,20 @@ function VendasAnualPage() {
                         </TableRow>
                       );
                     })}
+                    {mesesTabela.length > 0 && (
+                      <TableRow className="border-t-2 bg-muted/60 font-mono text-xs font-bold">
+                        <TableCell className="font-sans">Total / resumo</TableCell>
+                        <TableCell className="text-right">{percentual(resumoMensal.pesoAnoPct)}</TableCell>
+                        <TableCell className="text-right">{resumoMensal.farolAcumPct === null ? "—" : percentual(resumoMensal.farolAcumPct)}</TableCell>
+                        <TableCell className="text-right">{brl(resumoMensal.fornValorBase)}</TableCell>
+                        <TableCell className="text-right">{brl(resumoMensal.fornValorAtual)}</TableCell>
+                        <TableCell className="text-right">{numero(Math.round(resumoMensal.fornVolumeBase))}</TableCell>
+                        <TableCell className="text-right">{numero(Math.round(resumoMensal.fornVolumeAtual))}</TableCell>
+                        <TableCell className="text-right">{brl(resumoMensal.precoMedioBase)}</TableCell>
+                        <TableCell className="text-right">{brl(resumoMensal.precoMedioAtual)}</TableCell>
+                        <TableCell className={`text-right ${corDelta(resumoMensal.crescimentoPct)}`}>{pctOuTraco(resumoMensal.crescimentoPct)}</TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>

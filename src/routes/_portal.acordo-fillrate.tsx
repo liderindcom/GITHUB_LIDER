@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePortal } from "@/context/portal-context";
 import { brl, numero, dataBR } from "@/lib/format";
-import { fetchFillrateAcordo, FILLRATE_TAXA_PADRAO, FILLRATE_META_PADRAO } from "@/api";
+import { fetchFillrateAcordo, fetchPedidos, FILLRATE_TAXA_PADRAO, FILLRATE_META_PADRAO } from "@/api";
 import {
   fillRateGeral,
   fillRatePedido,
@@ -45,17 +45,38 @@ function alternarOrdenacao(atual: OrdenacaoTabela, campo: string): OrdenacaoTabe
 
 function AcordoFillRatePage() {
   const { fornecedor, codigoFornecedorAtivo, dadosFornecedorVersao } = usePortal();
+  const [pedidosReais, setPedidosReais] = useState<typeof pedidos>([]);
+
+  useEffect(() => {
+    let ativo = true;
+    fetchPedidos({ data: codigoFornecedorAtivo })
+      .then((dados) => {
+        if (ativo) setPedidosReais(dados as typeof pedidos);
+      })
+      .catch((erro) => {
+        console.error("Erro ao carregar pedidos do Fill Rate:", erro);
+        if (ativo) setPedidosReais([]);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [codigoFornecedorAtivo, dadosFornecedorVersao]);
+
+  // A carga direta é a fonte principal. Enquanto ela chega, o contexto real
+  // do fornecedor pode já ter os mesmos pedidos; isso evita card calculado
+  // com tabela visual vazia durante a troca de fornecedor.
+  const pedidosDoFornecedor = pedidosReais.length > 0 ? pedidosReais : pedidos;
   
   // Obter meses disponíveis dinamicamente dos pedidos
   const mesesDisponiveis = useMemo(() => {
     const mesesSet = new Set<string>();
-    for (const p of pedidos) {
+    for (const p of pedidosDoFornecedor) {
       if (p.emissao) {
         mesesSet.add(p.emissao.slice(0, 7)); // 'YYYY-MM'
       }
     }
     return Array.from(mesesSet).sort().reverse();
-  }, [pedidos, dadosFornecedorVersao]);
+  }, [pedidosDoFornecedor, dadosFornecedorVersao]);
 
   const [mesSelecionado, setMesSelecionado] = useState<string>("");
   const [metaFillRate, setMetaFillRate] = useState<number>(FILLRATE_META_PADRAO);
@@ -106,11 +127,11 @@ function AcordoFillRatePage() {
   const mesCorrente = mesAtualIso();
   const pedidosDoMes = useMemo(() => {
     if (!mesSelecionado) return [];
-    return pedidos.filter((p) => {
+    return pedidosDoFornecedor.filter((p) => {
       const mes = p.emissao ? p.emissao.slice(0, 7) : "";
       return mes === mesSelecionado && p.destino === "Fornecedor";
     });
-  }, [pedidos, mesSelecionado, dadosFornecedorVersao]);
+  }, [pedidosDoFornecedor, mesSelecionado, dadosFornecedorVersao]);
 
   const ultimoImportadoMes = useMemo(() => {
     let max = "";

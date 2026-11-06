@@ -9,15 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePortal } from "@/context/portal-context";
 import { soDigitos } from "@/lib/fornecedor-codigo";
-import {
-  loginUsuarioFornecedor,
-  loginUsuarioInterno,
-  primeiroAcessoFornecedor,
-} from "@/api";
+import { loginUsuarioFornecedor, loginUsuarioInterno, primeiroAcessoFornecedor } from "@/api";
 
 const destaques = [
   { icone: Truck, titulo: "Agendamento de NF-e", texto: "Janelas de descarga em tempo real" },
-  { icone: Lock, titulo: "Sessão protegida", texto: "Credenciais e sessão com proteção no servidor" },
+  {
+    icone: Lock,
+    titulo: "Sessão protegida",
+    texto: "Credenciais e sessão com proteção no servidor",
+  },
   { icone: KeyRound, titulo: "Antecipação", texto: "Simulador de taxas pro-rata dia" },
 ];
 
@@ -118,8 +118,8 @@ export function LoginScreen() {
       <div className="pointer-events-none absolute -left-40 top-[-10rem] size-[34rem] rounded-full bg-primary/20 blur-[140px]" />
       <div className="pointer-events-none absolute -bottom-52 right-[-8rem] size-[30rem] rounded-full bg-warning/20 blur-[150px]" />
 
-      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-10 px-6 py-12 lg:grid-cols-[1.05fr_minmax(0,26rem)] lg:gap-16">
-        <div className="rise-in space-y-10">
+      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center gap-8 px-4 py-8 sm:gap-10 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,26rem)] lg:gap-16">
+        <div className="rise-in min-w-0 space-y-8 sm:space-y-10">
           <div className="space-y-3">
             <LiderLogo
               variant="hero"
@@ -159,14 +159,14 @@ export function LoginScreen() {
           </div>
         </div>
 
-        <div className="rise-in glow-ember w-full rounded-3xl border border-border bg-elevated/80 p-6 shadow-panel backdrop-blur-xl sm:p-8">
+        <div className="rise-in glow-ember min-w-0 w-full max-w-md justify-self-center rounded-3xl border border-border bg-elevated/80 p-6 shadow-panel backdrop-blur-xl sm:p-8 lg:max-w-none">
           <div className="mb-5 flex items-center gap-3 lg:hidden">
             <LiderLogo variant="full" priority className="h-7" />
           </div>
           <h2 className="font-display text-2xl font-bold">Acesse sua conta</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Código RMS ou CNPJ, e-mail e senha. No primeiro acesso a senha é o CNPJ; o portal
-            pede em seguida para corrigir a senha no menu.
+            Código RMS ou CNPJ, e-mail e senha. No primeiro acesso a senha é o CNPJ; o portal pede
+            em seguida para corrigir a senha no menu.
           </p>
 
           <div className="mt-6 space-y-4">
@@ -261,8 +261,8 @@ export function LoginScreen() {
 
             {mounted ? (
               <p className="text-center text-xs text-muted-foreground">
-                Primeiro acesso: e-mail + senha = CNPJ, depois o menu Corrigir senha. Equipe
-                Líder: usuário interno no primeiro campo, e-mail em branco.
+                Primeiro acesso: e-mail + senha = CNPJ, depois o menu Corrigir senha. Equipe Líder:
+                usuário interno no primeiro campo, e-mail em branco.
               </p>
             ) : null}
           </div>

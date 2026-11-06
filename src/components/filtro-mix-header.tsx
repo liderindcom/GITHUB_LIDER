@@ -33,14 +33,19 @@ const CAMPOS: { key: keyof FiltroMercadologico; label: string; opcao: keyof Retu
 ];
 
 export function FiltroMixHeader() {
-  const { filtroMercadologico, setFiltroMercadologico, dadosFornecedorVersao } = usePortal();
+  const {
+    codigoFornecedorAtivo,
+    filtroMercadologico,
+    setFiltroMercadologico,
+    dadosFornecedorVersao,
+  } = usePortal();
   const [aberto, setAberto] = useState(false);
   const ativos = filtroMercadologicoAtivo(filtroMercadologico);
 
   const produtosBase = useMemo(() => {
     void dadosFornecedorVersao;
-    return produtosTodosDoFornecedor();
-  }, [dadosFornecedorVersao]);
+    return produtosTodosDoFornecedor(codigoFornecedorAtivo);
+  }, [codigoFornecedorAtivo, dadosFornecedorVersao]);
 
   const opcoes = useMemo(
     () => opcoesFiltroMercadologico(produtosBase, filtroMercadologico),
@@ -64,6 +69,7 @@ export function FiltroMixHeader() {
         </button>
       </PopoverTrigger>
       <PopoverContent
+        portalled={false}
         align="end"
         className="z-50 w-[280px] space-y-2.5 rounded-xl border border-border bg-card p-3 shadow-panel"
       >
@@ -94,7 +100,7 @@ export function FiltroMixHeader() {
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue placeholder={`Todos os ${campo.label.toLowerCase()}s`} />
                 </SelectTrigger>
-                <SelectContent className="z-[60] max-h-56 text-xs">
+                <SelectContent portalled={false} className="z-[60] max-h-56 text-xs">
                   <SelectItem value={FILTRO_TODOS}>Todos</SelectItem>
                   {lista.map((item) => (
                     <SelectItem key={item} value={item}>

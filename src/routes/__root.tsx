@@ -128,12 +128,49 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function LegacyPortalCacheCleanup() {
+  useEffect(() => {
+    let ativo = true;
+    const limpar = async () => {
+      if (typeof window === "undefined" || !ativo) return;
+      try {
+        if ("serviceWorker" in navigator) {
+          const registros = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(
+            registros
+              .filter((registro) => {
+                try {
+                  return new URL(registro.scope).origin === window.location.origin;
+                } catch {
+                  return false;
+                }
+              })
+              .map((registro) => registro.unregister()),
+          );
+        }
+        if ("caches" in window) {
+          const chaves = await caches.keys();
+          await Promise.all(chaves.map((chave) => caches.delete(chave)));
+        }
+      } catch {
+        // A limpeza é apenas de compatibilidade e não pode impedir o portal de abrir.
+      }
+    };
+    void limpar();
+    return () => {
+      ativo = false;
+    };
+  }, []);
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
       <PortalProvider>
+        <LegacyPortalCacheCleanup />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
         <Toaster richColors position="top-right" />

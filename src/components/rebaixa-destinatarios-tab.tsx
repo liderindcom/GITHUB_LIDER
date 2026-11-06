@@ -93,7 +93,7 @@ export function RebaixaDestinatariosTab() {
       <Card className="border-none shadow-md">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold">
-            {editando ? "Editar destinatário" : "Novo destinatário de rebaixa"}
+            {editando ? "Editar destinatário" : "Novo destinatário de rebaixa e tabela de preço"}
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -168,15 +168,18 @@ export function RebaixaDestinatariosTab() {
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground md:col-span-2 lg:col-span-3">
-            O cadastro é validado no servidor. Compradores e auxiliares não editam seus próprios
-            destinatários; a aba exige permissão de gestão Atlas.
+            Este cadastro é compartilhado pela comunicação de rebaixas e pelo envio de tabelas de
+            preço. A tabela é separada por comprador e segmento; compradores e auxiliares não editam
+            seus próprios destinatários.
           </p>
         </CardContent>
       </Card>
 
       <Card className="border-none shadow-md">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Destinatários cadastrados</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            Destinatários de rebaixa e tabela de preço
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto rounded-md border">
@@ -222,4 +225,3 @@ export function RebaixaDestinatariosTab() {
     </div>
   );
 }
-

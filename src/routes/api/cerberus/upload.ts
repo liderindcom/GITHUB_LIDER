@@ -16,9 +16,7 @@ export const Route = createFileRoute("/api/cerberus/upload")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (process.env.CERBERUS_PORTAL_UPLOADS_ENABLED !== "true") {
-          return error("Endpoint indisponível.", 404);
-        }
+        return error("A importação de planilhas foi desativada. Cadastre os dados pelo portal.", 404);
         let sessao: { codigo: string; email: string };
         try {
           sessao = exigirSessaoFornecedor();

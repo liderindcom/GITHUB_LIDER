@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Painel Lider</title>
+    <link rel="stylesheet" href="./styles.css?v=20261008-users-access">
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="nav" aria-label="Navegação principal">
+        <div class="brand">
+          <span class="brand-mark">M</span>
+          <div>
+            <p>Painel</p>
+            <strong>Lider</strong>
+          </div>
+        </div>
+        <nav class="nav-links">
+          <button class="nav-link active" type="button" data-view="security">
+            <span class="nav-icon">!</span>
+            Centro de Segurança
+          </button>
+          <button class="nav-link" type="button" data-view="knowledge-constellation"><span class="nav-icon">✦</span>Atlas do Conhecimento</button>
+          <button class="nav-link" type="button" data-view="constellation">
+            <span class="nav-icon">*</span>
+            Constelação da VPS
+          </button>
+          <button class="nav-link" type="button" data-view="code-control">
+            <span class="nav-icon">%</span>
+            Controle de Código
+          </button>
+          <button class="nav-link" type="button" data-view="rm-rms"><span class="nav-icon">◆</span>Coliseum Cockpit</button>
+          <button class="nav-link" type="button" data-view="harness">
+            <span class="nav-icon">&gt;</span>
+            Project Harness
+          </button>
+          <button class="nav-link" type="button" data-view="onboarding"><span class="nav-icon">+</span>Onboarding</button>
+          <button class="nav-link" type="button" data-view="protocols">
+            <span class="nav-icon">#</span>
+            Protocolos
+          </button>
+          <button class="nav-link" type="button" data-view="control-room">
+            <span class="nav-icon">◆</span>
+            Control Room Coliseum
+          </button>
+          <button class="nav-link" type="button" data-view="users"><span class="nav-icon">●</span>Acesso Coliseum</button>
+          <button class="nav-link" type="button" data-view="agents" data-superuser-only="true"><span class="nav-icon">◎</span>Gestão de Agentes</button>
+        </nav>
+        <div class="nav-footer">
+          <span id="updatedAt">Snapshot local</span>
+          <span id="sourceCount">0 fontes</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <button class="nav-toggle" type="button" id="navToggle" aria-label="Recolher menu" aria-expanded="true">‹</button>
+        <section id="view-security" class="view active" aria-labelledby="securityTitle">
+          <header class="view-header">
+            <div>
+              <p class="eyebrow">Centro de Comando</p>
+              <h1 id="securityTitle">Centro de Segurança</h1>
+              <p class="lead">Visão portável dos incidentes, dependências e briefing de acionamento dos agentes.</p>
+            </div>
+            <div class="header-actions">
+              <button class="action-button" type="button" id="copyBriefButton">Copiar briefing</button>
+              <a class="action-link" href="./docs/centro-seguranca-cerbero.md">Abrir README</a>
+            </div>
+          </header>
+
+          <section id="securityModeBanner" class="security-mode-banner mode-offline" role="status" aria-live="polite">
+            <div>
+              <span id="securityModeLabel" class="status">OFFLINE</span>
+              <strong id="securityModeTitle">Fonte indisponível</strong>
+            </div>
+            <p id="securityModeDetail">Nenhum incidente vivo é exibido enquanto a API Cerberus não estiver conectada.</p>
+            <div class="security-mode-meta">
+              <span>Fonte: <strong id="securitySource">API Cerberus não conectada</strong></span>
+              <span>Idade: <strong id="securityAge">sem observação</strong></span>
+              <span>Integridade: <strong id="securityIntegrity">não verificada — fonte offline</strong></span>
+            </div>
+          </section>
+
+          <section class="metric-grid" aria-label="Pulso de segurança">
+            <div class="metric danger">
+              <span class="metric-value" id="metricSecurityOpen">0</span>
+              <span class="metric-label">eventos abertos</span>
+            </div>
+            <div class="metric warning">
+              <span class="metric-value" id="metricSecurityHigh">0</span>
+              <span class="metric-label">high/critical</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricSecurityProducts">0</span>
+              <span class="metric-label">produtos</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricSecurityMode">OFFLINE</span>
+              <span class="metric-label">modo do pacote</span>
+            </div>
+          </section>
+
+          <section class="two-column">
+            <div class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Fila</p>
+                  <h2>Incidentes de Referência</h2>
+                </div>
+                <select id="securityStatusFilter" aria-label="Filtrar eventos">
+                  <option value="all">Todos</option>
+                  <option value="aberto">Abertos</option>
+                  <option value="em_investigacao">Investigação</option>
+                  <option value="acionado_agentes">Agentes acionados</option>
+                </select>
+              </div>
+              <div id="securityEvents" class="event-list"></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Montagem</p>
+                  <h2>Dependências do Centro</h2>
+                </div>
+              </div>
+              <div id="securityDependencies" class="dependency-list"></div>
+              <div class="brief-box">
+                <h3>Briefing operacional</h3>
+                <pre id="agentBrief"></pre>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="view-knowledge-constellation" class="view" aria-labelledby="knowledgeConstellationTitle"><header class="view-header compact"><div><p class="eyebrow">Conhecimento registrado</p><h1 id="knowledgeConstellationTitle">Atlas do Conhecimento</h1><p class="lead">Mapa organizado de ideias, projetos, contratos, evidências, decisões, agentes, bloqueios e aprendizados registrados pelo MAOADC Coliseum.</p></div><div class="header-actions"><a class="action-link" href="./assets/knowledge-constellation/graph.html">Abrir em nova aba</a></div></header><section class="graph-shell knowledge-constellation-shell"><iframe title="Atlas do Conhecimento MAOADC" src="./assets/knowledge-constellation/graph.html" sandbox="allow-scripts allow-same-origin"></iframe></section></section>
+
+        <section id="view-constellation" class="view" aria-labelledby="constellationTitle">
+          <header class="view-header compact">
+            <div>
+              <p class="eyebrow">Mapa de Código</p>
+              <h1 id="constellationTitle">Constelação da VPS</h1>
+              <p class="lead">Snapshot local da isaura com projetos, pacotes MAOADC e arquivos seguros desta máquina.</p>
+            </div>
+            <div class="header-actions">
+              <a class="action-link" href="./assets/vps-constellation/REPORT.md">Relatório</a>
+              <a class="action-link" href="./assets/vps-constellation/constellation.json">Dados</a>
+              <a class="action-link" href="./assets/vps-constellation/graph.html">Abrir grafo</a>
+            </div>
+          </header>
+          <section class="graph-shell">
+            <iframe
+              title="Constelação local da VPS isaura"
+              src="./assets/vps-constellation/graph.html"
+              sandbox="allow-scripts allow-same-origin">
+            </iframe>
+          </section>
+        </section>
+
+        <section id="view-code-control" class="view" aria-labelledby="codeControlTitle">
+          <header class="view-header">
+            <div>
+              <p class="eyebrow">Projeto</p>
+              <h1 id="codeControlTitle">Controle de Código</h1>
+              <p class="lead">Painel de acompanhamento do saneamento de código: projeto em foco, volume por programador (no escopo × fora do escopo), entregas, pendências e decisões do Oscar.</p>
+            </div>
+            <div class="header-actions">
+              <a class="action-link" href="./docs/controle-codigo-painel.md">Abrir painel</a>
+            </div>
+          </header>
+
+          <section class="metric-grid" aria-label="Resumo do controle de código">
+            <div class="metric">
+              <span class="metric-value" id="metricCodePhase">-</span>
+              <span class="metric-label">fase atual</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricCodeDone">0</span>
+              <span class="metric-label">programadores</span>
+            </div>
+            <div class="metric warning">
+              <span class="metric-value" id="metricCodePending">0</span>
+              <span class="metric-label">com tarefa</span>
+            </div>
+            <div class="metric danger">
+              <span class="metric-value" id="metricCodeBlocked">0</span>
+              <span class="metric-label">bloqueados</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricCodeVolume">0</span>
+              <span class="metric-label">código no escopo</span>
+            </div>
+            <div class="metric danger">
+              <span class="metric-value" id="metricCodeOutOfScope">0</span>
+              <span class="metric-label">fora do escopo</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricCodeLinesInScope">0</span>
+              <span class="metric-label">linhas no escopo</span>
+            </div>
+            <div class="metric danger">
+              <span class="metric-value" id="metricCodeLinesOutOfScope">0</span>
+              <span class="metric-label">linhas fora</span>
+            </div>
+          </section>
+
+          <section class="team-layout">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Equipe</p>
+                  <h2>Programadores</h2>
+                </div>
+                <span id="codeTeamCount" class="count-pill">0 pessoas</span>
+              </div>
+              <div id="codeProgrammers" class="programmer-grid"></div>
+            </article>
+
+            <article class="panel programmer-detail-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Detalhe</p>
+                  <h2 id="programmerDetailName">Programador</h2>
+                </div>
+                <span id="programmerDetailStatus" class="status n-a">N/A</span>
+              </div>
+              <div id="programmerDetail" class="programmer-detail"></div>
+            </article>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Comparação</p>
+                <h2>Volume de Código por Programador</h2>
+              </div>
+              <span id="codeVolumeNote" class="count-pill">entregas no escopo × fora</span>
+            </div>
+            <div id="codeVolumeRanking" class="volume-ranking"></div>
+          </section>
+
+          <section class="code-board-grid">
+            <article class="panel code-summary-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Agora</p>
+                  <h2 id="codeCurrentPhase">Fase atual</h2>
+                </div>
+                <span id="codeCurrentStatus" class="status parcial">status</span>
+              </div>
+              <p id="codeObjective" class="code-objective"></p>
+              <div id="codeImmediateGoals" class="task-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Fases</p>
+                  <h2>Roadmap</h2>
+                </div>
+              </div>
+              <div id="codeRoadmap" class="phase-list"></div>
+            </article>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Qualidade</p>
+                <h2>KPIs de Codar</h2>
+              </div>
+              <span id="codeKpiCount" class="count-pill">0 KPIs</span>
+            </div>
+            <div id="codeKpis" class="kpi-grid"></div>
+          </section>
+
+          <section class="code-board-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Concluído</p>
+                  <h2>O Que Já Foi Feito</h2>
+                </div>
+              </div>
+              <div id="codeDoneList" class="task-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Próximos passos</p>
+                  <h2>O Que Falta Fazer</h2>
+                </div>
+              </div>
+              <div id="codePendingList" class="task-list"></div>
+            </article>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Bloqueios</p>
+                <h2>Decisões Pendentes</h2>
+              </div>
+            </div>
+            <div id="codeBlockedList" class="blocker-list"></div>
+          </section>
+
+          <dialog id="codeDetailDialog" class="protocol-detail-dialog" aria-labelledby="codeDetailTitle">
+            <div class="protocol-detail-head">
+              <div>
+                <p class="eyebrow">Leitura do controle</p>
+                <h2 id="codeDetailTitle">Item de Controle de Código</h2>
+              </div>
+              <button id="codeDetailClose" class="action-button" type="button">Fechar</button>
+            </div>
+            <div id="codeDetailBody" class="protocol-detail-body"></div>
+          </dialog>
+        </section>
+
+        <section id="view-onboarding" class="view" aria-labelledby="onboardingTitle">
+          <header class="view-header"><div><p class="eyebrow">Acesso controlado</p><h1 id="onboardingTitle">Onboarding de usuários</h1><p class="lead">Gere localmente a chave e o passaporte de entrada para um novo operador do MAOADC Coliseum.</p></div><div class="header-actions"><span class="status restrito">provisionamento administrativo</span></div></header>
+          <section class="metric-grid" aria-label="Estado do onboarding"><div class="metric"><span class="metric-value">4</span><span class="metric-label">binários disponíveis</span></div><div class="metric warning"><span class="metric-value">local</span><span class="metric-label">geração de chaves</span></div><div class="metric"><span class="metric-value">SSH</span><span class="metric-label">canal de conexão</span></div><div class="metric danger"><span class="metric-value">manual</span><span class="metric-label">aprovação final</span></div></section>
+          <section class="onboarding-grid"><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Fluxo</p><h2>Cadastrar novo usuário</h2></div></div><ol class="onboarding-steps"><li><strong>Envie o instalador</strong> correspondente ao computador do novo usuário.</li><li><strong>O usuário executa</strong> o instalador, cria o PIN/senha e gera o passaporte.</li><li><strong>O usuário envia a chave pública</strong> para o administrador por canal seguro.</li><li><strong>O administrador salva a chave pública</strong> no cadastro autorizado do servidor.</li></ol><div class="evidence-callout"><strong>Regra de segurança</strong><p>O usuário nunca envia PIN, senha ou chave privada. O servidor salva somente a chave pública. O Painel Líder orienta o fluxo; a gravação definitiva depende do backend de autorização.</p></div></article><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Fonte segura</p><h2>Arquivos do onboarding</h2></div></div><p class="muted-line"><code>/home/administrador/maoadc-arena/service-plane/onboard/</code></p><div class="onboarding-files"><a class="onboarding-file" href="/api/onboarding-download?file=maoadc-onboard.exe" download><span>Windows · maoadc-onboard.exe</span><b>Baixar</b></a><a class="onboarding-file" href="/api/onboarding-download?file=maoadc-onboard-darwin-arm64" download><span>macOS Apple Silicon · maoadc-onboard-darwin-arm64</span><b>Baixar</b></a><a class="onboarding-file" href="/api/onboarding-download?file=maoadc-onboard-darwin-amd64" download><span>macOS Intel · maoadc-onboard-darwin-amd64</span><b>Baixar</b></a><a class="onboarding-file" href="/api/onboarding-download?file=maoadc-onboard-linux" download><span>Linux · maoadc-onboard-linux</span><b>Baixar</b></a></div></article></section>
+          <section class="panel-section"><div class="section-heading"><div><p class="eyebrow">Identidade do usuário</p><h2>Login individual</h2></div><span class="count-pill">obrigatório</span></div><label class="onboarding-user-field">Login Linux do novo usuário<input id="onboardingUser" type="text" placeholder="ex.: joao.silva" pattern="[a-z_][a-z0-9_-]{0,30}" autocomplete="off"><small>Esse login será usado no SSH, na conta Linux, no diretório home e no terminal. Nunca reutilize o login de outra pessoa.</small></label></section>
+          <section class="panel-section"><div class="section-heading"><div><p class="eyebrow">Execução do usuário</p><h2>Comando do instalador</h2></div><span class="count-pill">porta SSH: 22</span></div><div class="onboarding-commands"><article class="command-card"><strong>Windows PowerShell</strong><code id="onboardingWindowsCommand">.\maoadc-onboard.exe init -user &lt;login_individual&gt; -host 10.15.2.100 -port 22</code><button class="action-button onboarding-copy" type="button" data-command="">Copiar comando</button></article><article class="command-card"><strong>macOS / Linux</strong><code id="onboardingUnixCommand">./maoadc-onboard init -user &lt;login_individual&gt; -host 10.15.2.100 -port 22</code><button class="action-button onboarding-copy" type="button" data-command="">Copiar comando</button></article></div></section>
+          <section class="panel-section"><div class="section-heading"><div><p class="eyebrow">Provisionamento do servidor</p><h2>Criar usuário Linux e ativar Herdr</h2></div><span class="count-pill">root-only</span></div><p class="muted-line">Depois de receber somente a chave pública, execute o assistente no servidor:</p><div class="command-card"><code>sudo bash /home/administrador/maoadc-arena/deployment/access-bootstrap/provision-onboard-user-interactive.sh</code></div><div class="command-card"><strong>Modo direto</strong><code id="onboardingProvisionCommand">/home/administrador/maoadc-arena/deployment/access-bootstrap/provision-onboard-user.sh --user &lt;login_individual&gt; --full-name "Nome Completo" --project lider_site --public-key-file /caminho/chave.pub --scope "Escopo autorizado"</code></div><div class="evidence-callout"><strong>O que o provisionador faz</strong><p>Cria uma conta Linux sem sudo/docker, instala o binário Herdr se necessário, cria ~/.config/herdr, instala somente a chave pública, registra o mandato e configura o auto-start individual do Herdr. O navegador nunca cria usuários nem recebe a chave privada.</p></div></section>
+          <section class="panel onboarding-warning"><strong>Passo final:</strong> depois de receber a chave pública, o administrador deve executar o provisionador root-only. Não usar o `data.js` nem o navegador para guardar chaves.</section>
+        </section>
+
+
+        <section id="view-users" class="view" aria-labelledby="usersTitle">
+          <header class="view-header compact">
+            <div>
+              <p class="eyebrow">Controle de acesso</p>
+              <h1 id="usersTitle">Acesso ao MAOADC Coliseum</h1>
+              <p class="lead">Política administrativa para controlar quem pode acessar o Coliseum.</p>
+            </div>
+            <div class="header-actions"><span class="status restrito">Administrador · Geormanny</span></div>
+          </header>
+          <section class="panel access-warning"><strong>Estado atual:</strong><p>Esta tela registra a política local e os responsáveis. Ela ainda não concede acesso real ao Linux nem ao Coliseum: a efetivação exige um autorizador/backend com autenticação, auditoria e aplicação de ACL/grupo.</p></section>
+          <section class="panel access-login-panel"><div class="panel-heading"><div><p class="eyebrow">Autorização do painel</p><h2>Login administrativo</h2></div><span id="accessSessionStatus" class="status restrito">Não autenticado</span></div><form id="accessLoginForm" class="user-form"><label>Usuário<input id="accessLoginUser" name="username" autocomplete="username" required></label><label>Senha<input id="accessLoginPassword" name="password" type="password" autocomplete="current-password" required></label><button class="action-button" type="submit">Entrar</button><button class="action-button" id="accessLogoutButton" type="button" hidden>Sair</button></form><p id="accessLoginMessage" class="muted-line">O login é validado pelo autorizador local do Coliseum.</p></section>
+          <section class="metric-grid user-metrics" aria-label="Resumo de acessos"><div class="metric"><span id="usersTotal" class="metric-value">0</span><span class="metric-label">usuários</span></div><div class="metric warning"><span id="usersPending" class="metric-value">0</span><span class="metric-label">aguardando provisionamento</span></div><div class="metric"><span id="usersActive" class="metric-value">0</span><span class="metric-label">acessos ativos</span></div><div class="metric danger"><span id="usersCredentialPending" class="metric-value">0</span><span class="metric-label">credenciais OpenAI pendentes</span></div></section>
+          <section class="users-grid">
+            <article class="panel">
+                <div class="panel-heading"><div><p class="eyebrow">Política de acesso</p><h2>Novo usuário</h2></div></div>
+              <form id="userForm" class="user-form">
+                <label>Nome completo<input id="userName" name="name" required autocomplete="off"></label>
+                <label>Identificador/login<input id="userId" name="userId" required pattern="[a-zA-Z0-9._-]+" autocomplete="off"></label>
+                <label>E-mail corporativo<input id="userEmail" name="email" type="email" required autocomplete="off"></label>
+                <label>Senha inicial (mín. 10 caracteres)<input id="userPassword" name="password" type="password" minlength="10" autocomplete="new-password" required></label>
+                <label>Perfil<select id="userRole" name="role"><option value="viewer">Viewer</option><option value="analyst">Analista</option><option value="operator">Operador</option><option value="approver">Aprovador</option><option value="admin">Administrador</option><option value="superuser">Superusuário</option></select></label>
+                <label>Escopo<input id="userScope" name="scope" value="maoadc-coliseum" placeholder="ex.: maoadc-coliseum" required></label>
+                <label>Validade<input id="userUntil" name="until" type="date"></label>
+                <label>Estado<select id="userStatus" name="status"><option value="pending">Aguardando provisionamento</option><option value="active">Ativo</option><option value="suspended">Suspenso</option></select></label>
+                <label>Acesso Coliseum<select id="userColiseumAccess" name="coliseumAccess"><option value="pending">Pendente de liberação</option><option value="granted">Liberado</option><option value="revoked">Revogado</option></select></label>
+                <label>Credencial OpenAI<select id="userCredential" name="credential"><option value="pending">Pendente de provisionamento</option><option value="provisioned">Provisionada</option><option value="not_applicable">Não aplicável</option></select></label>
+                <button class="action-button" type="submit">Adicionar cadastro local</button>
+              </form>
+            </article>
+            <article class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">Controle operacional</p><h2>Acessos cadastrados</h2></div><span id="userCount" class="count-pill">0</span></div>
+              <label class="user-filter">Filtrar por estado<select id="userStatusFilter"><option value="all">Todos</option><option value="pending">Aguardando provisionamento</option><option value="active">Ativos</option><option value="suspended">Suspensos</option></select></label>
+              <div id="userList" class="user-list"></div>
+            </article>
+          </section>
+          <section class="panel-section"><div class="section-heading"><div><p class="eyebrow">Próxima etapa</p><h2>Ativação real</h2></div></div><div class="evidence-callout"><p>O cadastro definitivo deverá ser integrado ao controle de acesso existente em <code>/home/administrador/controle-acesso</code>. Esse módulo não armazena senhas: a aplicação precisa autenticar o usuário e consultar o autorizador antes de cada ação. A política inicial deixa <strong>administrador</strong> e <strong>geormanny</strong> como superusuários; <strong>bernnardo</strong> fica pendente de liberação.</p></div></section>
+        </section>
+
+        <section id="view-agents" class="view" aria-labelledby="agentsTitle">
+          <header class="view-header compact"><div><p class="eyebrow">Administração restrita</p><h1 id="agentsTitle">Gestão de Agentes</h1><p class="lead">Controle de agentes, funções, ativação e estado das credenciais. Nenhuma chave é armazenada aqui.</p></div><div class="header-actions"><span id="agentsAccessStatus" class="status restrito">Somente superusuário</span></div></header>
+          <section class="panel access-warning"><strong>Regra de segurança:</strong><p>O painel registra apenas metadados e referência mascarada. A chave real deve permanecer no cofre ou em variável protegida.</p></section>
+          <section class="agents-grid"><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Cadastro</p><h2>Novo ou atualizar agente</h2></div></div><form id="agentForm" class="user-form"><label>Identificador<input id="agentId" name="agent_id" required pattern="[a-zA-Z0-9_-]+" placeholder="ex.: novo-agente"></label><label>Nome exibido<input id="agentName" name="display_name" required></label><label>Provedor<input id="agentProvider" name="provider" placeholder="OpenAI, DeepSeek, interno..."></label><label>Função<input id="agentRole" name="role" placeholder="Executor, Auditor, VP..."></label><label>Estado<select id="agentActive" name="active"><option value="true">Ativo</option><option value="false">Desativado</option></select></label><label>Estado da credencial<select id="agentKeyStatus" name="key_status"><option value="pending">Pendente</option><option value="configured">Configurada</option><option value="revoked">Revogada</option><option value="not_applicable">Não aplicável</option></select></label><label>Referência mascarada<input id="agentKeyRef" name="key_ref" placeholder="ex.: vault://openai/codex (sem segredo)"></label><button class="action-button" type="submit">Salvar controle do agente</button></form><p id="agentFormMessage" class="muted-line">Apenas superusuários podem salvar alterações.</p></article><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Registro operacional</p><h2>Agentes cadastrados</h2></div><span id="agentCount" class="count-pill">0</span></div><div id="agentList" class="agent-list"><div class="empty">Faça login como superusuário para carregar os agentes.</div></div></article></section>
+        </section>
+
+        <section id="view-rm-rms" class="view" aria-labelledby="rmRmsTitle"><header class="view-header"><div><p class="eyebrow">MAOADC Coliseum</p><h1 id="rmRmsTitle">Coliseum Cockpit</h1><p class="lead">Visão transversal de tudo que o Project Harness está criando, executando, auditando ou mantendo bloqueado.</p></div><div class="header-actions"><a class="action-link" href="./harness-data.js">Snapshot do Harness</a></div></header><section class="metric-grid"><div class="metric"><span class="metric-value" id="rmRmsPhase">-</span><span class="metric-label">projeto em foco</span></div><div class="metric warning"><span class="metric-value" id="rmRmsBlockers">0</span><span class="metric-label">bloqueios</span></div><div class="metric"><span class="metric-value" id="rmRmsDeliveries">0</span><span class="metric-label">artefatos recentes</span></div><div class="metric danger"><span class="metric-value" id="rmRmsPending">0</span><span class="metric-label">aprovações pendentes</span></div></section><section class="rm-rms-grid"><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Estado do Coliseum</p><h2 id="rmRmsCurrentPhase">Harness</h2></div><span id="rmRmsStatus" class="status">-</span></div><p id="rmRmsDecision" class="lead"></p><div class="evidence-callout"><strong>Regra de execução</strong><p id="rmRmsCriterion"></p></div></article><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Agentes e papéis</p><h2>Quem está operando</h2></div></div><div id="rmRmsPeople" class="rm-rms-people"></div></article></section><section class="panel-section"><div class="section-heading"><div><p class="eyebrow">Projetos monitorados</p><h2>Fila do Harness</h2></div></div><div id="rmRmsPhases" class="rm-rms-phases"></div></section><section class="rm-rms-grid"><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Criações</p><h2>Artefatos recentes</h2></div></div><div id="rmRmsDeliveries" class="rm-rms-list"></div></article><article class="panel"><div class="panel-heading"><div><p class="eyebrow">Governança</p><h2>Bloqueios ativos</h2></div></div><div id="rmRmsBlockerList" class="rm-rms-list"></div></article></section></section>
+
+        <section id="view-harness" class="view" aria-labelledby="harnessTitle">
+          <header class="view-header">
+            <div>
+              <p class="eyebrow">MAOADC</p>
+              <h1 id="harnessTitle">Project Harness</h1>
+              <p class="lead">Acompanhamento operacional de projetos com fase atual, heartbeat, responsáveis, gates e bloqueios antes de Auto-Run.</p>
+            </div>
+            <div class="header-actions">
+              <a class="action-link" href="./harness-data.js">Snapshot JS</a>
+            </div>
+          </header>
+
+          <section class="metric-grid" aria-label="Resumo do Project Harness">
+            <div class="metric">
+              <span class="metric-value" id="metricHarnessProjects">0</span>
+              <span class="metric-label">projetos</span>
+            </div>
+            <div class="metric warning">
+              <span class="metric-value" id="metricHarnessRunning">0</span>
+              <span class="metric-label">em execução</span>
+            </div>
+            <div class="metric danger">
+              <span class="metric-value" id="metricHarnessBlocked">0</span>
+              <span class="metric-label">bloqueados</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricHarnessApproval">0</span>
+              <span class="metric-label">aguardando Oscar</span>
+            </div>
+          </section>
+
+          <section class="team-layout">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Projetos</p>
+                  <h2>Fila Monitorada</h2>
+                </div>
+                <span id="harnessProjectCount" class="count-pill">0 projetos</span>
+              </div>
+              <div id="harnessProjectList" class="harness-project-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Detalhe</p>
+                  <h2 id="harnessDetailTitle">Projeto</h2>
+                </div>
+                <span id="harnessDetailStatus" class="status n-a">N/A</span>
+              </div>
+              <div id="harnessProjectDetail" class="harness-detail"></div>
+            </article>
+          </section>
+
+          <section class="code-board-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Entrada</p>
+                  <h2>Demandas Classificadas</h2>
+                </div>
+                <span id="harnessIntakeCount" class="count-pill">0 demandas</span>
+              </div>
+              <div id="harnessIntakeList" class="harness-intake-list"></div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Regra</p>
+                  <h2>Política de Entrada</h2>
+                </div>
+              </div>
+              <div id="harnessPolicy" class="harness-policy"></div>
+            </article>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Histórico</p>
+                <h2>Eventos Recentes</h2>
+              </div>
+              <span id="harnessUpdatedAt" class="count-pill">sem snapshot</span>
+            </div>
+            <div id="harnessEventList" class="event-list"></div>
+          </section>
+        </section>
+
+        <section id="view-protocols" class="view" aria-labelledby="protocolTitle">
+          <header class="view-header">
+            <div>
+              <p class="eyebrow">Governança</p>
+              <h1 id="protocolTitle">Protocolos e Controles</h1>
+              <p class="lead">Catálogo explicado de normas, controles, evidências e riscos residuais. Nem toda fonte catalogada é uma autoridade de produção.</p>
+            </div>
+          </header>
+
+          <section class="metric-grid" aria-label="Resumo dos protocolos">
+            <div class="metric">
+              <span class="metric-value" id="metricSources">0</span>
+              <span class="metric-label">fontes catalogadas</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricControls">0</span>
+              <span class="metric-label">famílias</span>
+            </div>
+            <div class="metric warning">
+              <span class="metric-value" id="metricOpenRisks">0</span>
+              <span class="metric-label">riscos não fechados</span>
+            </div>
+            <div class="metric">
+              <span class="metric-value" id="metricVerified">0</span>
+              <span class="metric-label">itens ativos</span>
+            </div>
+          </section>
+
+          <section class="panel protocol-tools">
+            <div class="tool-grid">
+              <label>
+                Busca
+                <input id="searchInput" type="search" placeholder="protocolo, gate, constelação, segredo">
+              </label>
+              <label>
+                Família
+                <select id="familySelect"></select>
+              </label>
+              <label>
+                Status
+                <select id="statusSelect"></select>
+              </label>
+            </div>
+          </section>
+
+          <section class="panel-section protocol-orientation">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Como interpretar</p>
+                <h2>Hierarquia dos protocolos</h2>
+              </div>
+            </div>
+            <div class="orientation-grid">
+              <article class="orientation-card">
+                <h3>1. Protocolo normativo</h3>
+                <p>Define princípios, tiers, limites, segurança e comportamento dos agentes. A fonte canônica vigente tem autoridade normativa.</p>
+              </article>
+              <article class="orientation-card">
+                <h3>2. Harness e gates</h3>
+                <p>Transformam a norma em projeto, fase, papel, bloqueio, teste, auditoria e transição verificável.</p>
+              </article>
+              <article class="orientation-card">
+                <h3>3. BICO e execução</h3>
+                <p>Distribuem tarefas assíncronas entre agentes. Um BICO executa uma frente; não cria autorização sozinho.</p>
+              </article>
+              <article class="orientation-card">
+                <h3>4. CODE e release</h3>
+                <p>Registram arquivos, decisão, testes, auditor, commit, risco e estado da entrega para continuidade e auditoria.</p>
+              </article>
+              <article class="orientation-card">
+                <h3>5. RAG e conhecimento</h3>
+                <p>Recuperam contexto de fontes com proveniência. Texto recuperado é contexto não confiável, nunca uma ordem.</p>
+              </article>
+              <article class="orientation-card">
+                <h3>6. Mapas e snapshots</h3>
+                <p>Constelações, bootstrap e relatórios ajudam a localizar relações e evidências, mas não autorizam produção.</p>
+              </article>
+            </div>
+            <p class="protocol-note"><strong>Regra de autoridade:</strong> fonte canônica e gates governam; decisões explicam; BICOs executam; CODE prova; snapshots informam. Se o status for <code>pilot</code>, <code>parcial</code>, <code>local</code> ou <code>documentado</code>, não trate como homologação de produção.</p>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Controle</p>
+                <h2>Famílias e Força</h2>
+              </div>
+            </div>
+            <div id="controlFamilies" class="family-grid"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Risco residual</p>
+                <h2>Matriz Prioritária</h2>
+              </div>
+            </div>
+            <div id="riskMatrix" class="risk-list"></div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Fontes</p>
+                <h2>Protocolos e Documentos</h2>
+              </div>
+              <span id="visibleCount" class="count-pill">0 visíveis</span>
+            </div>
+            <div id="sourceList" class="source-list"></div>
+          </section>
+
+          <dialog id="protocolDetailDialog" class="protocol-detail-dialog" aria-labelledby="protocolDetailTitle">
+            <div class="protocol-detail-head">
+              <div>
+                <p class="eyebrow">Leitura do protocolo</p>
+                <h2 id="protocolDetailTitle">Protocolo</h2>
+              </div>
+              <button id="protocolDetailClose" class="action-button" type="button">Fechar</button>
+            </div>
+            <div id="protocolDetailBody" class="protocol-detail-body"></div>
+          </dialog>
+        </section>
+
+        <section id="view-control-room" class="view" aria-labelledby="controlRoomTitle">
+          <header class="view-header compact">
+            <div>
+              <p class="eyebrow">MAOADC Coliseum</p>
+              <h1 id="controlRoomTitle">Control Room</h1>
+              <p class="lead">Campo, Cartório, contratos e estados operacionais no mesmo ambiente do Painel Líder.</p>
+            </div>
+            <div class="header-actions"><button class="action-button" type="button" id="toggleControlRoom" aria-expanded="true">Recolher mapa</button></div>
+          </header>
+          <section class="graph-shell control-room-shell">
+            <iframe
+              title="MAOADC Coliseum Control Room"
+              src="./control-room/"
+              sandbox="allow-scripts allow-same-origin">
+            </iframe>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./data.js?v=20261019-arquivo-b-programacao-loja"></script>
+    <script src="./harness-data.js?v=20260924-celulas-disponibilidade-fase0-running"></script>
+    <script src="./code-volume-measurements.js?v=20260815-code-volume"></script>
+    <script src="./code-control-sync.js?v=20260911-code-control-sync"></script>
+    <script src="./app.js?v=20261015-coliseum-access-auth"></script>
+  </body>
+</html>

@@ -55,4 +55,16 @@ export function reportLovableError(error: unknown, context: Record<string, unkno
     ...(stack !== undefined && { stack }),
     filename: window.location.pathname,
   });
+
+  // Error boundaries do not bubble to the server in production. Keep a small,
+  // redacted breadcrumb in the web access log so a client-side render failure
+  // can be diagnosed even when the browser console is unavailable. The query
+  // is intentionally capped and contains only the error class/message and
+  // current route; no session data or stack trace is sent.
+  const breadcrumb = `${error instanceof Error ? error.name : "RuntimeError"}: ${message}`
+    .replace(/[\r\n\t]+/g, " ")
+    .slice(0, 320);
+  const route = window.location.pathname.slice(0, 160);
+  const url = `/api/client-runtime-error?message=${encodeURIComponent(breadcrumb)}&route=${encodeURIComponent(route)}`;
+  void fetch(url, { method: "GET", credentials: "same-origin", cache: "no-store", keepalive: true }).catch(() => undefined);
 }

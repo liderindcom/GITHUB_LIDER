@@ -3,6 +3,7 @@ logs/
 node_modules/
 .env
 .env.postgres
+.env.*
 .DS_Store
 db/pgdata/
 db/portal.db
@@ -19,3 +20,4 @@ db/pg-column-case.json
 # Arquivos locais sensíveis/de teste — nunca versionar
 secrets/
 src/CERBERO_TEST.txt
+.aider*

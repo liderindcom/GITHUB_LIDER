@@ -12,3 +12,10 @@ export const dataBR = (iso: string) => {
   if (!ano || !mes || !dia) return iso;
   return `${dia}/${mes}/${ano}`;
 };
+
+export const dataHoraBR = (valor: string | null | undefined) => {
+  if (!valor) return "Data não disponível";
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return valor;
+  return data.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+};

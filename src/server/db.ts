@@ -125,7 +125,10 @@ function createPgDatabase(connectionString: string) {
             return { changes: 1, lastInsertRowid: 0 };
           }
           const res = bridge.rpc("run", sql, params);
-          return { changes: res.rowCount, lastInsertRowid: res.lastInsertRowid };
+          return {
+            changes: res.rowCount,
+            lastInsertRowid: res.lastInsertRowid,
+          };
         },
       };
     },
@@ -160,10 +163,49 @@ function createSqliteDatabase() {
 
 export const db = usePostgres() ? createPgDatabase(resolveDatabaseUrl()) : createSqliteDatabase();
 
+// Preferência operacional da agenda: fornecedores podem solicitar o modo
+// mensal, mas a publicação só o aplica depois da aprovação administrativa.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS portalPromotorCalculoPreferencias (
+      fornecedorCodigo TEXT PRIMARY KEY,
+      periodicidade TEXT NOT NULL DEFAULT 'DIARIO',
+      periodicidadeAtiva TEXT NOT NULL DEFAULT 'DIARIO',
+      status TEXT NOT NULL DEFAULT 'PENDENTE',
+      observacao TEXT,
+      solicitadoPor TEXT,
+      solicitadoEm TEXT NOT NULL,
+      aprovadoPor TEXT,
+      aprovadoEm TEXT,
+      atualizadoEm TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_portalPromotorCalculoPreferencias_status
+      ON portalPromotorCalculoPreferencias (status, periodicidade);
+  `);
+  try {
+    db.exec(
+      "ALTER TABLE portalPromotorCalculoPreferencias ADD COLUMN periodicidadeAtiva TEXT NOT NULL DEFAULT 'DIARIO'",
+    );
+  } catch (error) {
+    void error;
+  }
+  try {
+    db.prepare(
+      "UPDATE portalPromotorCalculoPreferencias SET periodicidadeAtiva = periodicidade WHERE status = 'APROVADA'",
+    ).run();
+  } catch (error) {
+    void error;
+  }
+} catch (error) {
+  console.error("portalPromotorCalculoPreferencias migration", error);
+}
+
 // Auto-run migrations on startup (safe schema setup)
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN isentoCobranca INTEGER DEFAULT 0;");
-} catch (e) {}
+} catch (e) {
+  void e;
+}
 try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN acessoDataInicio TEXT;");
 } catch (e) {}
@@ -180,6 +222,36 @@ try {
   db.exec("ALTER TABLE fornecedores ADD COLUMN degustacaoUsada INTEGER DEFAULT 0;");
 } catch (e) {}
 try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN taxaAcessoPct REAL DEFAULT 1;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN carenciaDias INTEGER;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN carenciaAte TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN primeiraCompetenciaCobravel TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN primeiraCobrancaEm TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN contratoAssinadoEm TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN contratoDocumentoRef TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN contratoValidadoEm TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN contratoValidadoPor TEXT;");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE fornecedores ADD COLUMN ultimoAcordoMes TEXT;");
+} catch (e) {}
+try {
   db.exec("ALTER TABLE perdas ADD COLUMN numeroNota TEXT;");
 } catch (e) {}
 try {
@@ -190,6 +262,35 @@ try {
 } catch (e) {}
 try {
   db.exec("ALTER TABLE estoque ADD COLUMN dataInventario TEXT;");
+} catch (e) {}
+try {
+  // Agenda financeira preservada para distinguir créditos RMS de outros
+  // lançamentos que também chegam à tabela de contas a receber.
+  db.exec("ALTER TABLE contas_receber ADD COLUMN agendaRms TEXT;");
+} catch (e) {
+  void e;
+}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS produto_fornecedor_relacoes (
+      sku TEXT NOT NULL,
+      fornecedorFiscalCodigo TEXT NOT NULL,
+      fornecedorRelacionadoCodigo TEXT NOT NULL,
+      tipoRelacao TEXT NOT NULL,
+      validadeInicio TEXT NOT NULL,
+      validadeFim TEXT,
+      fonte TEXT NOT NULL,
+      aprovadoPor TEXT,
+      atualizadoEm TEXT NOT NULL,
+      PRIMARY KEY (sku, fornecedorFiscalCodigo,
+                   fornecedorRelacionadoCodigo, tipoRelacao, validadeInicio)
+    );
+    CREATE INDEX IF NOT EXISTS idx_produto_fornecedor_relacoes_relacionado
+      ON produto_fornecedor_relacoes (fornecedorRelacionadoCodigo, validadeFim);
+    CREATE INDEX IF NOT EXISTS idx_produto_fornecedor_relacoes_sku
+      ON produto_fornecedor_relacoes (sku, validadeInicio, validadeFim);
+  `);
 } catch (e) {}
 
 try {
@@ -209,4 +310,47 @@ try {
 } catch (e) {}
 try {
   db.exec("ALTER TABLE usuarios_fornecedor ADD COLUMN precisaTrocarSenha INTEGER DEFAULT 0;");
+} catch (e) {}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agenda_promotor_edicoes (
+      fornecedorCodigo TEXT NOT NULL,
+      periodo TEXT NOT NULL,
+      versao INTEGER NOT NULL DEFAULT 1,
+      assignmentsJson TEXT NOT NULL,
+      atualizadoEm TEXT NOT NULL,
+      atualizadoPor TEXT NOT NULL,
+      PRIMARY KEY (fornecedorCodigo, periodo)
+    );
+    CREATE TABLE IF NOT EXISTS agenda_promotor_edicoes_historico (
+      id TEXT PRIMARY KEY,
+      fornecedorCodigo TEXT NOT NULL,
+      periodo TEXT NOT NULL,
+      versao INTEGER NOT NULL,
+      assignmentsJson TEXT NOT NULL,
+      criadoEm TEXT NOT NULL,
+      criadoPor TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agenda_promotor_edicoes_historico
+      ON agenda_promotor_edicoes_historico (fornecedorCodigo, periodo, versao);
+  `);
+} catch (e) {}
+
+// Clusters da rede: a política publicada continua sendo a base, enquanto
+// alterações administrativas ficam persistidas sem editar o JSON publicado.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agenda_clusters (
+      id TEXT PRIMARY KEY,
+      nome TEXT NOT NULL,
+      lojasJson TEXT NOT NULL,
+      ativo INTEGER NOT NULL DEFAULT 1,
+      criadoEm TEXT NOT NULL,
+      atualizadoEm TEXT NOT NULL,
+      atualizadoPor TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agenda_clusters_ativo
+      ON agenda_clusters (ativo, atualizadoEm);
+  `);
 } catch (e) {}

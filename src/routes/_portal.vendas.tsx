@@ -63,7 +63,10 @@ function VendasPage() {
     () =>
       vendas.filter((v) => {
         if (v.data < de || v.data > ate) return false;
-        if (loja !== "todas" && v.lojaId !== loja) return false;
+        // Select pode ficar sem valor durante a troca de fornecedor. Nesse
+        // estado, o comportamento correto é consolidar todas as lojas.
+        const lojaFiltro = loja || "todas";
+        if (lojaFiltro !== "todas" && v.lojaId !== lojaFiltro) return false;
         if (sku !== "todos" && v.sku !== sku) return false;
         if (busca) {
           const alvo =
@@ -78,6 +81,7 @@ function VendasPage() {
   // 2. Agrupamento dinâmico obrigatório (mínimo: diário)
   const agrupadas = useMemo(() => {
     const mapa = new Map<string, { data: string; lojaId: string; sku: string; quantidade: number; faturamento: number }>();
+    const consolidarPorProduto = !loja || loja === "todas";
 
     filtradas.forEach((v) => {
       let chave = "";
@@ -85,16 +89,16 @@ function VendasPage() {
       let lojaAgrupada = v.lojaId;
       let skuAgrupado = v.sku;
 
-      if (agrupamento === "dia") {
+      if (consolidarPorProduto || agrupamento === "produto") {
+        chave = `${v.sku}`;
+        lojaAgrupada = "todas";
+        dataAgrupada = "-";
+      } else if (agrupamento === "dia") {
         chave = `${v.data}-${v.lojaId}-${v.sku}`;
       } else if (agrupamento === "mes") {
         const mes = v.data.slice(0, 7); // YYYY-MM
         chave = `${mes}-${v.lojaId}-${v.sku}`;
         dataAgrupada = `${mes}-15`; // Usa o dia 15 para representar o faturamento do mês
-      } else if (agrupamento === "produto") {
-        chave = `${v.sku}`;
-        lojaAgrupada = "todas";
-        dataAgrupada = "-";
       }
 
       const atual = mapa.get(chave) || {
@@ -120,6 +124,29 @@ function VendasPage() {
     }));
   }, [filtradas, agrupamento]);
 
+  // A exportação sem loja selecionada deve representar o total do produto,
+  // sem repetir a mesma mercadoria uma vez para cada filial.
+  const linhasExportacao = useMemo(() => {
+    if (loja && loja !== "todas") return agrupadas;
+
+    const mapa = new Map<string, { sku: string; quantidade: number; faturamento: number }>();
+    filtradas.forEach((v) => {
+      const atual = mapa.get(v.sku) || { sku: v.sku, quantidade: 0, faturamento: 0 };
+      atual.quantidade += v.quantidade;
+      atual.faturamento += v.quantidade * v.valorUnitario;
+      mapa.set(v.sku, atual);
+    });
+
+    return Array.from(mapa.values()).map((item, index) => ({
+      id: index,
+      data: "-",
+      lojaId: "todas",
+      sku: item.sku,
+      quantidade: item.quantidade,
+      valorUnitario: item.quantidade > 0 ? item.faturamento / item.quantidade : 0,
+    }));
+  }, [filtradas, agrupadas, loja]);
+
   const agrupadasOrdenadas = useMemo(() => [...agrupadas].sort((a, b) => {
     const valor = (item: typeof a) => ordenacao.campo === "data" ? item.data : ordenacao.campo === "loja" ? nomeLoja(item.lojaId) : ordenacao.campo === "sku" ? item.sku : ordenacao.campo === "produto" ? produtoPorSku(item.sku).descricao : ordenacao.campo === "quantidade" ? item.quantidade : ordenacao.campo === "unitario" ? item.valorUnitario : item.quantidade * item.valorUnitario;
     const av = valor(a); const bv = valor(b);
@@ -142,7 +169,7 @@ function VendasPage() {
       "Valor Unitario Medio",
       "Valor Total",
     ];
-    const linhas = agrupadas.map((v) => [
+    const linhas = linhasExportacao.map((v) => [
       v.data === "-" ? "Consolidado Geral" : agrupamento === "mes" ? v.data.slice(0, 7) : dataBR(v.data),
       v.lojaId === "todas" ? "Todas as Lojas (Agrupado)" : nomeLoja(v.lojaId),
       codigoProdutoComDigito(v.sku),
@@ -160,7 +187,7 @@ function VendasPage() {
     link.click();
     URL.revokeObjectURL(url);
     toast.success("Relatório exportado", {
-      description: `${agrupadas.length} linhas em formato Excel (CSV).`,
+      description: `${linhasExportacao.length} linhas em formato Excel (CSV).`,
     });
   }
 

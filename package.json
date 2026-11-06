@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/retain-nitro-server.mjs",
     "build:dev": "vite build --mode development",
+    "extract:promotores-status": "node /home/administrador/maoadc-projects/celulas-disponibilidade-appcom/src/extract-promotores-status.mjs --out /home/administrador/maoadc-projects/celulas-disponibilidade-appcom/reports/promotores-status-operacional.json",
+    "run:promotores-status": "node /home/administrador/maoadc-projects/celulas-disponibilidade-appcom/src/run-promotores-status.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -53,7 +55,7 @@
     "googleapis": "^178.0.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "^10.0.16",
     "pg": "^8.16.3",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",

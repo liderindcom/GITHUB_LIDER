@@ -109,11 +109,33 @@
               "productSource": { "type": "string", "minLength": 1 },
               "stockSource": { "type": "string", "minLength": 1 },
               "mappingSource": { "type": "string", "minLength": 1 },
-              "approvalEventId": { "type": ["string", "null"] }
+              "approvalEventId": { "type": ["string", "null"] },
+              "recipeId": { "type": ["string", "null"], "minLength": 1 },
+              "recipeSource": { "type": ["string", "null"], "minLength": 1 },
+              "inputSku": { "type": ["string", "null"], "minLength": 1 },
+              "outputSku": { "type": ["string", "null"], "minLength": 1 }
             }
           },
           "writesToErp": { "const": false }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "itemRole": { "const": "production_input" } },
+              "required": ["itemRole"]
+            },
+            "then": {
+              "required": ["sourceEvidence"],
+              "properties": {
+                "inclusionStatus": { "const": "restricted" },
+                "inclusionReason": { "const": "production_input_restricted" },
+                "sourceEvidence": {
+                  "required": ["recipeId", "recipeSource", "inputSku", "outputSku"]
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

@@ -66,9 +66,12 @@ type ProdutoMix = {
   ref: string;
   status: "RT" | "FN" | "SA" | "R1";
   vendaMediaTotal: number;
+  estoqueLojasTotal: number;
+  estoqueCdamTotal: number;
   estoqueTotal: number;
   linha?: string | null;
   filiais: FilialCell[];
+  depositos: FilialCell[];
 };
 
 type SubGrupoMix = {
@@ -87,7 +90,10 @@ const chaveSkuFilial = (sku: string, filial: string) => `${sku}::${filial}`;
 
 const DIAS_MEDIA_VD = 30;
 
-const codigoLojaSemZeros = (codigo: string) => String(codigo ?? "").trim().replace(/^0+(?=\d)/, "");
+const codigoLojaSemZeros = (codigo: string) =>
+  String(codigo ?? "")
+    .trim()
+    .replace(/^0+(?=\d)/, "");
 
 const ordenarCodigos = (a: string, b: string) => {
   const numeroA = Number(a);
@@ -97,18 +103,27 @@ const ordenarCodigos = (a: string, b: string) => {
 };
 
 /** Vendas no cache usam o número da loja (1, 19, 27). */
-const filialDeVenda = (lojaId: string) => lojaPorCodigo(lojaId, "numero")?.id ?? codigoLojaSemZeros(lojaId);
+const filialDeVenda = (lojaId: string) =>
+  lojaPorCodigo(lojaId, "numero")?.id ?? codigoLojaSemZeros(lojaId);
 
 /**
  * Estoque e bloqueio vêm de GET_COD_LOCAL (19 = loja 1). Sem o modo `local`,
  * 19 colidiria com a loja 19.
  */
 const filialDeLocal = (lojaId: string) =>
-  lojaPorCodigo(lojaId, "local")?.id ?? lojaPorCodigo(lojaId, "numero")?.id ?? codigoLojaSemZeros(lojaId);
+  lojaPorCodigo(lojaId, "local")?.id ??
+  lojaPorCodigo(lojaId, "numero")?.id ??
+  codigoLojaSemZeros(lojaId);
 
 const filiaisOficiaisMix = () =>
   lojas
-    .filter((loja) => loja.tipo !== "D" && !lojaForaDoPortalFornecedor(loja.id))
+    .filter((loja) => loja.tipo === "L" && !lojaForaDoPortalFornecedor(loja.id))
+    .map((loja) => loja.id)
+    .sort(ordenarCodigos);
+
+const depositosOficiaisMix = () =>
+  lojas
+    .filter((loja) => loja.tipo === "D" && !lojaForaDoPortalFornecedor(loja.id))
     .map((loja) => loja.id)
     .sort(ordenarCodigos);
 
@@ -213,6 +228,8 @@ function RelatorioMixPage() {
     const vendasFornecedor = Array.from(vendas).filter((linha) => skusFornecedor.has(linha.sku));
     const estoqueFornecedor = Array.from(estoque).filter((linha) => skusFornecedor.has(linha.sku));
     const filiaisRelatorio = filiaisOficiaisMix();
+    const depositosRelatorio = depositosOficiaisMix();
+    const depositosSet = new Set(depositosRelatorio);
     const inicioUltimos30Dias = inicioJanelaDias(vendasFornecedor, DIAS_MEDIA_VD);
     const vendasUltimos30Dias = inicioUltimos30Dias
       ? vendasFornecedor.filter((linha) => linha.data >= inicioUltimos30Dias)
@@ -222,12 +239,24 @@ function RelatorioMixPage() {
       (linha) => linha.quantidade / DIAS_MEDIA_VD,
     );
     const estoqueSku = somarPorSku(estoqueFornecedor, (linha) => linha.estoqueAtual);
+    const estoqueSkuCdam = somarPorSku(
+      estoqueFornecedor.filter((linha) => depositosSet.has(filialDeLocal(linha.lojaId))),
+      (linha) => linha.estoqueAtual,
+    );
+    const estoqueSkuLojas = somarPorSku(
+      estoqueFornecedor.filter((linha) => !depositosSet.has(filialDeLocal(linha.lojaId))),
+      (linha) => linha.estoqueAtual,
+    );
     const vendasMediaSkuFilial = somarPorSkuFilial(
       vendasUltimos30Dias,
       (linha) => linha.quantidade / DIAS_MEDIA_VD,
       filialDeVenda,
     );
-    const vendasSkuFilial = somarPorSkuFilial(vendasFornecedor, (linha) => linha.quantidade, filialDeVenda);
+    const vendasSkuFilial = somarPorSkuFilial(
+      vendasFornecedor,
+      (linha) => linha.quantidade,
+      filialDeVenda,
+    );
     const estoqueSkuFilial = somarPorSkuFilial(
       estoqueFornecedor,
       (linha) => linha.estoqueAtual,
@@ -238,11 +267,29 @@ function RelatorioMixPage() {
       if (!skusFornecedor.has(bloq.sku)) continue;
       bloqueioSkuFilial.set(chaveSkuFilial(bloq.sku, filialDeLocal(bloq.lojaId)), bloq.bloqueio);
     }
+    const montarCelula = (sku: string, filial: string): FilialCell => {
+      const chave = chaveSkuFilial(sku, filial);
+      const vendaMedia = vendasMediaSkuFilial.get(chave) ?? 0;
+      const estoqueFilial = Math.round(estoqueSkuFilial.get(chave) ?? 0);
+      const bloqueio = bloqueioSkuFilial.get(chave) ?? 0;
+      const fazParteMix = estoqueSkuFilial.has(chave) || vendasSkuFilial.has(chave) || bloqueio > 0;
+
+      return {
+        filial,
+        fazParteMix,
+        estoque: estoqueFilial,
+        cobertura:
+          fazParteMix && bloqueio === 0 && vendaMedia > 0 ? estoqueFilial / vendaMedia : null,
+        bloqueio,
+      };
+    };
 
     const gruposMap = new Map<string, GrupoMix>();
 
     for (const produto of produtosFornecedor) {
       const vendaMediaTotal = vendasMediaSku.get(produto.sku) ?? 0;
+      const estoqueLojasTotal = Math.round(estoqueSkuLojas.get(produto.sku) ?? 0);
+      const estoqueCdamTotal = Math.round(estoqueSkuCdam.get(produto.sku) ?? 0);
       const estoqueTotal = Math.round(estoqueSku.get(produto.sku) ?? 0);
       const grupoCodigo = produto.grupoCodigo || "0";
       const subgrupoCodigo = produto.subgrupoCodigo || "0";
@@ -273,24 +320,12 @@ function RelatorioMixPage() {
         ref: referenciaProduto(produto),
         status: statusMix(produto, vendaMediaTotal, estoqueTotal),
         vendaMediaTotal,
+        estoqueLojasTotal,
+        estoqueCdamTotal,
         estoqueTotal,
         linha: produto.linha ?? null,
-        filiais: filiaisRelatorio.map((filial) => {
-          const chave = chaveSkuFilial(produto.sku, filial);
-          const vendaMedia = vendasMediaSkuFilial.get(chave) ?? 0;
-          const estoqueFilial = Math.round(estoqueSkuFilial.get(chave) ?? 0);
-          const bloqueio = bloqueioSkuFilial.get(chave) ?? 0;
-          const fazParteMix =
-            estoqueSkuFilial.has(chave) || vendasSkuFilial.has(chave) || bloqueio > 0;
-
-          return {
-            filial,
-            fazParteMix,
-            estoque: estoqueFilial,
-            cobertura: fazParteMix && bloqueio === 0 && vendaMedia > 0 ? estoqueFilial / vendaMedia : null,
-            bloqueio,
-          };
-        }),
+        filiais: filiaisRelatorio.map((filial) => montarCelula(produto.sku, filial)),
+        depositos: depositosRelatorio.map((filial) => montarCelula(produto.sku, filial)),
       });
     }
 
@@ -309,6 +344,7 @@ function RelatorioMixPage() {
     return {
       versao: dadosFornecedorVersao,
       filiais: filiaisRelatorio,
+      depositos: depositosRelatorio,
       grupos,
       periodo: periodoVendas(vendasFornecedor),
       compradores: compradoresProdutos(produtosFornecedor),
@@ -319,6 +355,7 @@ function RelatorioMixPage() {
 
   const grupos = dados.grupos;
   const filiaisRelatorio = dados.filiais;
+  const depositosRelatorio = dados.depositos;
 
   useEffect(() => {
     if (
@@ -351,6 +388,8 @@ function RelatorioMixPage() {
     return {
       produtos: produtos.length,
       vendas: produtos.reduce((acc, produto) => acc + produto.vendaMediaTotal, 0),
+      estoqueLojas: produtos.reduce((acc, produto) => acc + produto.estoqueLojasTotal, 0),
+      estoqueCdam: produtos.reduce((acc, produto) => acc + produto.estoqueCdamTotal, 0),
       estoque: produtos.reduce((acc, produto) => acc + produto.estoqueTotal, 0),
     };
   }, [gruposFiltrados]);
@@ -364,8 +403,11 @@ function RelatorioMixPage() {
       "Ref",
       "Status",
       "VD",
-      "ESTQ",
+      "ESTQ LOJAS",
+      "ESTQ CDAM",
+      "ESTQ TOTAL",
       ...filiaisRelatorio.map((filial) => `Filial ${codigoLojaSemDigito(filial)}`),
+      ...depositosRelatorio.map((filial) => `CDAM ${codigoLojaSemDigito(filial)}`),
     ];
     const linhas = gruposFiltrados.flatMap((grupo) =>
       grupo.subgrupos.flatMap((subgrupo) =>
@@ -378,8 +420,11 @@ function RelatorioMixPage() {
             produto.ref,
             produto.status,
             numeroMedia(produto.vendaMediaTotal),
+            String(produto.estoqueLojasTotal),
+            String(produto.estoqueCdamTotal),
             String(produto.estoqueTotal),
             ...produto.filiais.map((cell) => textoCelulaEstoque(cell)),
+            ...produto.depositos.map((cell) => textoCelulaEstoque(cell)),
           ],
           [
             `${grupo.codigo} ${grupo.nome}`,
@@ -390,7 +435,11 @@ function RelatorioMixPage() {
             "**",
             "",
             "",
+            "",
             ...produto.filiais.map((cell) =>
+              mostraCobertura(cell) ? `${Math.round(cell.cobertura!)}d` : "",
+            ),
+            ...produto.depositos.map((cell) =>
               mostraCobertura(cell) ? `${Math.round(cell.cobertura!)}d` : "",
             ),
           ],
@@ -464,10 +513,12 @@ function RelatorioMixPage() {
               </SelectContent>
             </Select>
 
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-5">
               <ResumoMini rotulo="Produtos" valor={numero(totais.produtos)} />
               <ResumoMini rotulo="VD" valor={numeroMedia(totais.vendas)} />
-              <ResumoMini rotulo="ESTQ" valor={numero(totais.estoque)} />
+              <ResumoMini rotulo="ESTQ LOJAS" valor={numero(totais.estoqueLojas)} />
+              <ResumoMini rotulo="ESTQ CDAM" valor={numero(totais.estoqueCdam)} />
+              <ResumoMini rotulo="ESTQ TOTAL" valor={numero(totais.estoque)} />
             </div>
 
             <Button onClick={exportar}>
@@ -484,7 +535,7 @@ function RelatorioMixPage() {
               <span className="hidden h-3 w-px bg-border sm:block" />
               <span>VD - Venda média diária total dos últimos 30 dias</span>
               <span className="hidden h-3 w-px bg-border sm:block" />
-              <span>ESTQ - Estoque total; na loja: estoque, X fora do mix ou B bloqueado</span>
+              <span>ESTQ - estoque separado entre lojas e depósitos/CDAM</span>
               <span className="hidden h-3 w-px bg-border sm:block" />
               <span>X - fora do mix da loja</span>
               <span className="hidden h-3 w-px bg-border sm:block" />
@@ -507,14 +558,22 @@ function RelatorioMixPage() {
                       VD
                     </th>
                     <th className="sticky left-[29.5rem] z-40 w-20 border-b border-r border-border bg-muted px-2 py-2 text-right">
-                      ESTQ
+                      ESTQ TOTAL
                     </th>
                     <th
                       className="border-b border-border px-3 py-2 text-center"
                       colSpan={filiaisRelatorio.length}
                     >
-                      FILIAIS
+                      LOJAS
                     </th>
+                    {depositosRelatorio.length > 0 && (
+                      <th
+                        className="border-b border-border bg-amber-50 px-3 py-2 text-center text-amber-900"
+                        colSpan={depositosRelatorio.length}
+                      >
+                        DEPÓSITOS / CDAM
+                      </th>
+                    )}
                   </tr>
                   <tr>
                     <th className="sticky left-0 z-40 border-b border-r border-border bg-muted px-3 py-2 text-left" />
@@ -525,6 +584,16 @@ function RelatorioMixPage() {
                       <th
                         key={filial}
                         className="w-16 border-b border-border px-2 py-2 text-center"
+                        title={lojaPorCodigo(filial)?.nome}
+                      >
+                        {codigoLojaSemDigito(filial)}
+                      </th>
+                    ))}
+                    {depositosRelatorio.map((filial) => (
+                      <th
+                        key={filial}
+                        className="w-16 border-b border-amber-100 bg-amber-50 px-2 py-2 text-center text-amber-900"
+                        title={lojaPorCodigo(filial)?.nome}
                       >
                         {codigoLojaSemDigito(filial)}
                       </th>
@@ -533,12 +602,17 @@ function RelatorioMixPage() {
                 </thead>
                 <tbody>
                   {gruposFiltrados.map((grupo) => (
-                    <GrupoRows key={grupo.codigo} grupo={grupo} filiais={filiaisRelatorio} />
+                    <GrupoRows
+                      key={grupo.codigo}
+                      grupo={grupo}
+                      filiais={filiaisRelatorio}
+                      depositos={depositosRelatorio}
+                    />
                   ))}
                   {gruposFiltrados.length === 0 && (
                     <tr>
                       <td
-                        colSpan={4 + filiaisRelatorio.length}
+                        colSpan={4 + filiaisRelatorio.length + depositosRelatorio.length}
                         className="px-3 py-10 text-center text-sm text-muted-foreground"
                       >
                         Nenhum produto encontrado para o fornecedor atual.
@@ -552,6 +626,7 @@ function RelatorioMixPage() {
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
               <span>[ REtqCob - Atualizado pela base do fornecedor atual ]</span>
               <span>X fora do mix · B bloqueado na loja · número = estoque</span>
+              <span>CDAM = estoque disponível nos depósitos</span>
               <span>** Cobertura em dias</span>
             </div>
           </CardContent>
@@ -561,11 +636,20 @@ function RelatorioMixPage() {
   );
 }
 
-function GrupoRows({ grupo, filiais }: { grupo: GrupoMix; filiais: string[] }) {
+function GrupoRows({
+  grupo,
+  filiais,
+  depositos,
+}: {
+  grupo: GrupoMix;
+  filiais: string[];
+  depositos: string[];
+}) {
+  const colunas = 4 + filiais.length + depositos.length;
   return (
     <>
       <tr className="bg-primary/5">
-        <td colSpan={4 + filiais.length} className="border-b border-border px-3 py-2 font-semibold">
+        <td colSpan={colunas} className="border-b border-border px-3 py-2 font-semibold">
           Grupo {grupo.codigo} {grupo.nome}
         </td>
       </tr>
@@ -574,18 +658,28 @@ function GrupoRows({ grupo, filiais }: { grupo: GrupoMix; filiais: string[] }) {
           key={`${grupo.codigo}-${subgrupo.codigo}`}
           subgrupo={subgrupo}
           filiais={filiais}
+          depositos={depositos}
         />
       ))}
     </>
   );
 }
 
-function SubGrupoRows({ subgrupo, filiais }: { subgrupo: SubGrupoMix; filiais: string[] }) {
+function SubGrupoRows({
+  subgrupo,
+  filiais,
+  depositos,
+}: {
+  subgrupo: SubGrupoMix;
+  filiais: string[];
+  depositos: string[];
+}) {
   const [aberto, setAberto] = useState(true);
+  const colunas = 4 + filiais.length + depositos.length;
   return (
     <>
       <tr className="bg-muted/50">
-        <td colSpan={4 + filiais.length} className="border-b border-border px-3 py-1.5 font-medium">
+        <td colSpan={colunas} className="border-b border-border px-3 py-1.5 font-medium">
           <button
             type="button"
             onClick={() => setAberto((atual) => !atual)}
@@ -607,9 +701,7 @@ function SubGrupoRows({ subgrupo, filiais }: { subgrupo: SubGrupoMix; filiais: s
         </td>
       </tr>
       {aberto &&
-        subgrupo.produtos.map((produto) => (
-          <ProdutoRows key={produto.codigo} produto={produto} />
-        ))}
+        subgrupo.produtos.map((produto) => <ProdutoRows key={produto.codigo} produto={produto} />)}
     </>
   );
 }
@@ -628,10 +720,13 @@ function ProdutoRows({ produto }: { produto: ProdutoMix }) {
       <tr className="font-mono hover:bg-accent/40">
         <td className="sticky left-0 z-20 border-b border-r border-border bg-background px-3 py-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-semibold">{produto.codigo}</span> 
+            <span className="font-semibold">{produto.codigo}</span>
             <span>{produto.descricao}</span>
             {produto.linha && (
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary border border-primary/15" title="Linha de Distribuição">
+              <span
+                className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary border border-primary/15"
+                title="Linha de Distribuição"
+              >
                 Linha: {produto.linha}
               </span>
             )}
@@ -665,6 +760,28 @@ function ProdutoRows({ produto }: { produto: ProdutoMix }) {
             </td>
           );
         })}
+        {produto.depositos.map((cell) => {
+          const marcador = marcadorCelulaMix(cell);
+          return (
+            <td
+              key={cell.filial}
+              className="border-b border-amber-100 bg-amber-50/50 px-2 py-1.5 text-center"
+            >
+              {marcador === "X" ? (
+                <span className="text-muted-foreground">X</span>
+              ) : marcador === "B" ? (
+                <span
+                  className="inline-flex cursor-help rounded border border-destructive/20 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive"
+                  title={obterNomeBloqueio(cell.bloqueio)}
+                >
+                  B
+                </span>
+              ) : (
+                <span>{numero(cell.estoque)}</span>
+              )}
+            </td>
+          );
+        })}
       </tr>
       <tr className="font-mono text-muted-foreground hover:bg-accent/30">
         <td className="sticky left-0 z-20 border-b border-r border-border bg-background px-3 py-1.5">
@@ -677,6 +794,16 @@ function ProdutoRows({ produto }: { produto: ProdutoMix }) {
         <td className="sticky left-[29.5rem] z-20 border-b border-r border-border bg-background px-2 py-1.5 text-right" />
         {produto.filiais.map((cell) => (
           <td key={cell.filial} className="border-b border-border px-2 py-1.5 text-center">
+            <span className={mostraCobertura(cell) && cell.cobertura! <= 7 ? "text-danger" : ""}>
+              {mostraCobertura(cell) ? `${numero(Math.round(cell.cobertura!))}d` : ""}
+            </span>
+          </td>
+        ))}
+        {produto.depositos.map((cell) => (
+          <td
+            key={cell.filial}
+            className="border-b border-amber-100 bg-amber-50/50 px-2 py-1.5 text-center"
+          >
             <span className={mostraCobertura(cell) && cell.cobertura! <= 7 ? "text-danger" : ""}>
               {mostraCobertura(cell) ? `${numero(Math.round(cell.cobertura!))}d` : ""}
             </span>

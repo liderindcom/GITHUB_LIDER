@@ -1,4 +1,4 @@
-const CACHE_NAME = "portal-fornecedor-v3";
+const CACHE_NAME = "portal-fornecedor-v4-agenda-20261022";
 const SHELL = ["/", "/instalar", "/manifest.json"];
 self.addEventListener("install", (event) => { event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", (event) => {

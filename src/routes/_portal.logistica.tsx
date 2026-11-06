@@ -3,7 +3,7 @@ import { CalendarCheck, CalendarDays, ExternalLink, Mail, Truck } from "lucide-r
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { fetchItensNfe, submitSolicitacaoAgendamento } from "@/api";
+import { fetchCapacidadeCargaAgendamento, fetchItensNfe, submitSolicitacaoAgendamento, type CapacidadeCargaAgendamentoDB } from "@/api";
 
 import { AgendaEntradaCalendario } from "@/components/agenda-entrada";
 import { PortalLayout } from "@/components/portal-layout";
@@ -95,6 +95,19 @@ function diaDocaHabilitado(dias: string | undefined, data: string) {
   const dia = new Date(`${data}T12:00:00`).getDay();
   const texto = dias.toLowerCase();
   return texto.includes(String(dia === 0 ? 7 : dia)) || texto.includes(DIAS_NUMERO[dia].toLowerCase());
+}
+
+function proximaDataRecebimento(doca: { diasUteis?: string } | undefined, secoes: string) {
+  if (!doca) return "";
+  const hoje = new Date();
+  for (let deslocamento = 0; deslocamento <= 90; deslocamento += 1) {
+    const data = new Date(hoje);
+    data.setHours(12, 0, 0, 0);
+    data.setDate(hoje.getDate() + deslocamento);
+    const iso = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}-${String(data.getDate()).padStart(2, "0")}`;
+    if (diaDocaHabilitado(doca.diasUteis, iso) && !faturamentoBloqueiaData(secoes.split(",").map((s) => s.trim()).filter(Boolean), iso).length) return iso;
+  }
+  return "";
 }
 
 function somarHoras(hora: string, horas: number) {
@@ -245,6 +258,7 @@ function LogisticaPage() {
   const [filtrosTabela, setFiltrosTabela] = useState<Record<string, string>>({});
   const [ordenacao, setOrdenacao] = useState<{ campo: keyof LinhaLogistica; asc: boolean }>({ campo: "dataIso", asc: false });
   const [solicitacao, setSolicitacao] = useState({
+    cargaNfeId: "",
     lojaId: "",
     doca: "",
     data: "",
@@ -257,6 +271,8 @@ function LogisticaPage() {
     observacoes: "",
   });
   const [enviandoSolicitacao, setEnviandoSolicitacao] = useState(false);
+  const [capacidadeCarga, setCapacidadeCarga] = useState<CapacidadeCargaAgendamentoDB | null>(null);
+  const [carregandoCapacidade, setCarregandoCapacidade] = useState(false);
 
   const docas = globalDbCache.docas ?? [];
   const docasPermitidas = docas.filter((doca) => LOJAS_AGENDAMENTO_PERMITIDAS.includes(doca.lojaId as (typeof LOJAS_AGENDAMENTO_PERMITIDAS)[number]));
@@ -268,10 +284,36 @@ function LogisticaPage() {
   const portasNecessarias = paletes >= 24 ? 2 : 1;
   const duracaoHoras = solicitacao.tipoCarga === "paletizada" ? 2 : 4;
   const horaFimCalculada = somarHoras(solicitacao.horaInicio, duracaoHoras);
+  const proximaData = useMemo(
+    () => proximaDataRecebimento(docaSelecionada, solicitacao.secoes),
+    [docaSelecionada, solicitacao.secoes],
+  );
+
+  useEffect(() => {
+    if (docaSelecionada && !solicitacao.data && proximaData) {
+      setSolicitacao((atual) => ({ ...atual, data: proximaData }));
+    }
+  }, [docaSelecionada, proximaData, solicitacao.data]);
 
   const enviarSolicitacao = async () => {
+    if (!solicitacao.cargaNfeId) {
+      toast.error("Selecione a NF-e/XML da carga que será recebida.");
+      return;
+    }
     if (!solicitacao.lojaId || !solicitacao.doca || !solicitacao.data || !solicitacao.horaInicio || !paletes) {
       toast.error("Preencha loja, doca, data, horário e quantidade de paletes.");
+      return;
+    }
+    if (carregandoCapacidade) {
+      toast.error("Aguarde o cálculo da paletização da carga.");
+      return;
+    }
+    if (!capacidadeCarga || capacidadeCarga.paletes === null) {
+      toast.error("A carga não possui paletização completa no cadastro. Atualize a ficha comercial antes de agendar.");
+      return;
+    }
+    if (paletes !== capacidadeCarga.paletes) {
+      toast.error(`A NF-e totaliza ${capacidadeCarga.paletes} palete(s) pelo cadastro.`);
       return;
     }
     if (!diaDocaHabilitado(docaSelecionada?.diasUteis, solicitacao.data)) {
@@ -286,6 +328,10 @@ function LogisticaPage() {
     }
     if (docaSelecionada?.horaFim && horaFimCalculada > docaSelecionada.horaFim) {
       toast.error("A duração da carga ultrapassa o horário da doca.");
+      return;
+    }
+    if (solicitacao.horaInicio < "07:00" || horaFimCalculada > "17:00") {
+      toast.error("O recebimento de cargas funciona somente das 07:00 às 17:00.");
       return;
     }
     setEnviandoSolicitacao(true);
@@ -311,7 +357,8 @@ function LogisticaPage() {
       } else {
         toast.warning("Solicitação registrada, mas o e-mail não foi enviado", { description: resultado.erroEmail });
       }
-      setSolicitacao((atual) => ({ ...atual, numeroNota: "", chaveNfe: "", observacoes: "" }));
+      setSolicitacao((atual) => ({ ...atual, cargaNfeId: "", numeroNota: "", chaveNfe: "", paletes: "", observacoes: "" }));
+      setCapacidadeCarga(null);
     } catch (erro) {
       toast.error(erro instanceof Error ? erro.message : "Não foi possível enviar a solicitação.");
     } finally {
@@ -575,6 +622,48 @@ function LogisticaPage() {
                 A porta escolhida nesta tela é apenas preferencial. A logística confirmará a porta, o horário e a preservação das quatro portas de emergência.
               </div>
               <label className="space-y-1 text-sm">
+                <span className="font-medium">Carga que será recebida</span>
+                <select
+                  value={solicitacao.cargaNfeId}
+                  onChange={(evento) => {
+                    const nfe = nfes.find((item) => item.id === evento.target.value);
+                    setSolicitacao((atual) => ({
+                      ...atual,
+                      cargaNfeId: evento.target.value,
+                      lojaId: nfe?.lojaId || atual.lojaId,
+                      doca: "",
+                      numeroNota: nfe?.numeroNota || "",
+                      chaveNfe: nfe?.chaveNfe || "",
+                    }));
+                    setCapacidadeCarga(null);
+                    if (nfe) {
+                      setCarregandoCapacidade(true);
+                      void fetchCapacidadeCargaAgendamento({ data: { chaveNfe: nfe.chaveNfe, numeroNota: nfe.numeroNota } })
+                        .then((capacidade) => {
+                          setCapacidadeCarga(capacidade);
+                          setSolicitacao((atual) => ({ ...atual, paletes: capacidade.paletes === null ? "" : String(capacidade.paletes) }));
+                        })
+                        .catch(() => {
+                          setCapacidadeCarga({ paletes: null, caixas: 0, itens: 0, itensSemCadastro: [] });
+                          toast.error("Não foi possível calcular a paletização desta NF-e.");
+                        })
+                        .finally(() => setCarregandoCapacidade(false));
+                    } else {
+                      setCarregandoCapacidade(false);
+                    }
+                  }}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Selecione a NF-e/XML pendente</option>
+                  {nfes.map((nfe) => (
+                    <option key={nfe.id} value={nfe.id}>
+                      NF-e {nfe.numeroNota || "sem número"} · {nfe.chaveNfe ? `${nfe.chaveNfe.slice(0, 8)}…` : "sem chave"} · {nomeLoja(nfe.lojaId)}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">A solicitação ficará vinculada a esta carga.</span>
+              </label>
+              <label className="space-y-1 text-sm">
                 <span className="font-medium">Loja/CDAM</span>
                 <select
                   value={solicitacao.lojaId}
@@ -606,10 +695,11 @@ function LogisticaPage() {
               <label className="space-y-1 text-sm">
                 <span className="font-medium">Data desejada</span>
                 <Input type="date" value={solicitacao.data} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, data: evento.target.value }))} />
+                {proximaData ? <span className="text-xs text-muted-foreground">Primeira data compatível com a doca e as seções: <strong>{dataBR(proximaData)}</strong></span> : null}
               </label>
               <label className="space-y-1 text-sm">
                 <span className="font-medium">Horário inicial</span>
-                <Input type="time" value={solicitacao.horaInicio} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, horaInicio: evento.target.value }))} />
+                <Input type="time" min="07:00" max={solicitacao.tipoCarga === "paletizada" ? "15:00" : "13:00"} value={solicitacao.horaInicio} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, horaInicio: evento.target.value }))} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="font-medium">Tipo de carga</span>
@@ -620,7 +710,16 @@ function LogisticaPage() {
               </label>
               <label className="space-y-1 text-sm">
                 <span className="font-medium">Quantidade de paletes</span>
-                <Input type="number" min="1" value={solicitacao.paletes} onChange={(evento) => setSolicitacao((atual) => ({ ...atual, paletes: evento.target.value }))} placeholder="Ex.: 12 ou 24" />
+                <Input type="number" min="1" value={solicitacao.paletes} readOnly placeholder={carregandoCapacidade ? "Calculando pelo cadastro..." : "Selecione a NF-e"} />
+                <span className="text-xs text-muted-foreground">
+                  {carregandoCapacidade
+                    ? "Calculando caixas e paletes pela ficha comercial..."
+                    : capacidadeCarga?.paletes !== null && capacidadeCarga
+                      ? `${capacidadeCarga.paletes} palete(s) · ${capacidadeCarga.caixas} caixa(s) calculadas pelo cadastro.`
+                      : capacidadeCarga?.itensSemCadastro.length
+                        ? `Pendências da carga: ${capacidadeCarga.itensSemCadastro.join("; ")}.`
+                        : "Selecione a NF-e para calcular a paletização."}
+                </span>
               </label>
               <label className="space-y-1 text-sm">
                 <span className="font-medium">Número da NF</span>

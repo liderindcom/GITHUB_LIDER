@@ -422,7 +422,7 @@ function PrecosPage() {
               className="border-separate border-spacing-0"
             >
               <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:bg-stone-100 [&_th]:shadow-sm">
-                <TableRow className="bg-stone-100">
+                  <TableRow className="bg-stone-100">
                     <TableHead>Cód. produto</TableHead>
                     <TableHead>Produto</TableHead>
                     <TableHead className="text-right">Menor da subcategoria</TableHead>

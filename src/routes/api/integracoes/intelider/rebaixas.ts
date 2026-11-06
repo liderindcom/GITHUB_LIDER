@@ -14,6 +14,10 @@ type RebaixaRow = {
   status: string;
   criadoEm: string;
   enviadoEm: string | null;
+  tipo: "rebaixa" | "tabela_preco";
+  compradorCodigo: string | null;
+  compradorNome: string | null;
+  destinatarios: string | null;
 };
 
 const STATUS_VALIDOS = new Set([
@@ -95,9 +99,23 @@ function ensureSolicitacoesTable() {
       id TEXT PRIMARY KEY, fornecedorCodigo TEXT NOT NULL, titulo TEXT NOT NULL,
       dataInicio TEXT NOT NULL, dataFim TEXT NOT NULL, segmentos TEXT NOT NULL,
       lojas TEXT NOT NULL, itens TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'em análise',
-      criadoEm TEXT NOT NULL, enviadoEm TEXT
+      criadoEm TEXT NOT NULL, enviadoEm TEXT,
+      tipo TEXT NOT NULL DEFAULT 'rebaixa', compradorCodigo TEXT,
+      compradorNome TEXT, destinatarios TEXT
     );
   `);
+  for (const [coluna, definicao] of [
+    ["tipo", "TEXT NOT NULL DEFAULT 'rebaixa'"],
+    ["compradorCodigo", "TEXT"],
+    ["compradorNome", "TEXT"],
+    ["destinatarios", "TEXT"],
+  ] as const) {
+    try {
+      db.exec(`ALTER TABLE rebaixa_solicitacoes ADD COLUMN ${coluna} ${definicao}`);
+    } catch {
+      // A coluna já existe em instalações atualizadas.
+    }
+  }
 }
 
 export const Route = createFileRoute("/api/integracoes/intelider/rebaixas")({
@@ -141,7 +159,8 @@ export const Route = createFileRoute("/api/integracoes/intelider/rebaixas")({
         const rows = db
           .prepare(
             `SELECT id, fornecedorCodigo, titulo, dataInicio, dataFim, segmentos,
-                    lojas, itens, status, criadoEm, enviadoEm
+                    lojas, itens, status, criadoEm, enviadoEm, tipo,
+                    compradorCodigo, compradorNome, destinatarios
                FROM rebaixa_solicitacoes
                ${where}
                ORDER BY criadoEm ASC
@@ -172,6 +191,9 @@ export const Route = createFileRoute("/api/integracoes/intelider/rebaixas")({
               status: row.status,
               criadoEm: row.criadoEm,
               enviadoEm: row.enviadoEm,
+              tipo: row.tipo || "rebaixa",
+              compradorCodigo: row.compradorCodigo,
+              compradorNome: row.compradorNome,
             })),
             count: visiveis.length,
             limit: limite,

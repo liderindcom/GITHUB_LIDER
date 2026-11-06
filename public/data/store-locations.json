@@ -1,0 +1,48 @@
+{
+  "schema_version": "store-locations.v1",
+  "source": "Relação operacional de localização e horários fornecida pelo responsável em 2026-10-26",
+  "stores": {
+    "1": { "nome": "CONDOR", "endereco": "Av. Alcindo Cacela, 3855", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 14h" },
+    "2": { "nome": "ALCINDO CACELA", "endereco": "Av. Alcindo Cacela, 2177", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 14h" },
+    "3": { "nome": "DOCA", "endereco": "Av. Visconde de Souza Franco, 1088", "horario": "24h" },
+    "4": { "nome": "CIDADE VELHA", "endereco": "Rua de Óbidos, 466", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 21h" },
+    "5": { "nome": "CASTANHEIRA", "endereco": "BR-316, km 1", "horario": "Seg a Dom 8h às 21h" },
+    "7": { "nome": "PRAÇA BRASIL", "endereco": "Trav. D. Pedro I, 1083", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 21h" },
+    "8": { "nome": "BATISTA CAMPOS", "endereco": "Trav. Pe. Eutíquio, 1845", "horario": "24h" },
+    "9": { "nome": "HUMAITÁ", "endereco": "Trav. Humaitá, 2084", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 21h" },
+    "10": { "nome": "CASTANHAL", "endereco": "Trav. Floriano Peixoto, 1391", "horario": "24h" },
+    "11": { "nome": "ICOARACI", "endereco": "Av. 15 de Agosto, 631", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 20h" },
+    "12": { "nome": "BR", "endereco": "BR-316, km 2", "horario": "24h" },
+    "17": { "nome": "CANUDOS", "endereco": "Av. Ceará, 518", "horario": "24h" },
+    "18": { "nome": "CIDADE NOVA", "endereco": "Cidade Nova IV, WE 72, 762", "horario": "24h" },
+    "24": { "nome": "QUINTINO", "endereco": "Trav. Quintino Bocaiúva, 1929", "horario": "Seg a Dom e Feriados 7h às 22h" },
+    "27": { "nome": "PEDREIRA", "endereco": "Av. Pedro Miranda, 689", "horario": "24h" },
+    "28": { "nome": "INDEPENDÊNCIA", "endereco": "Rod. Augusto Montenegro, 3010, km 4", "horario": "24h" },
+    "31": { "nome": "VILA DOS CABANOS (BARCARENA)", "endereco": "Av. Batista Campos, Cj. 32, Quadra 257, Lote 1", "horario": "Seg a Sáb 7h às 22h / Dom 7h às 14h" },
+    "32": { "nome": "MARABÁ", "endereco": "Rod. BR 230 - Transamazônica - Km 4 - Qd 12 - Nova Marabá", "horario": "24h" },
+    "33": { "nome": "AUGUSTO MONTENEGRO", "endereco": "Rod. Augusto Montenegro, km 8", "horario": null },
+    "36": { "nome": "PARAGOMINAS", "endereco": "Rod. PA-256, km 175 s/n", "horario": "Seg a Dom e Feriados 8h às 22h" },
+    "37": { "nome": "CAPANEMA", "endereco": "Trav. Justo Chermont, N° 200", "horario": null },
+    "38": { "nome": "ABAETETUBA", "endereco": "Rod. Dr. João Miranda, 2326", "horario": "07h às 22h" },
+    "40": { "nome": "MARAMBAIA", "endereco": "Av. Tavares Bastos, 827", "horario": "24h" },
+    "42": { "nome": "SALINAS", "endereco": "Av. Dr. Miguel Santa Brigida, s/n - São Tomé", "horario": "Seg a Qui 7h às 21h / Sex e Sáb 7h às 22h / Dom 7h às 20h" },
+    "44": { "nome": "GUAMÁ", "endereco": "Rua Augusto Correa, N° 588", "horario": null },
+    "50": { "nome": "ESTRELA", "endereco": "Av. Maximiano Porpino da Silva, 2326", "horario": "07h às 22h" },
+    "54": { "nome": "DUQUE", "endereco": "Av. Duque de Caxias, 1101", "horario": "24h" }
+  },
+  "regional_split_day_pairs": [
+    {
+      "id": "ABAETETUBA_BARCARENA",
+      "stores": ["38", "31"],
+      "periodos": ["MANHA", "TARDE"],
+      "regra": "Uma loja pela manhã e a outra à tarde, mantendo o par no mesmo dia quando a rota estiver alocada."
+    },
+    {
+      "id": "CAPANEMA_SALINAS",
+      "stores": ["37", "42"],
+      "periodos": ["MANHA", "TARDE"],
+      "regra": "Uma loja pela manhã e a outra à tarde, mantendo o par no mesmo dia quando a rota estiver alocada."
+    }
+  ],
+  "horarios_pendentes_confirmacao": ["33", "37", "44"]
+}

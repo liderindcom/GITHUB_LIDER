@@ -24,14 +24,18 @@ import { Route as PortalAdminRebaixaRouteImport } from './routes/_portal.admin-r
 import { Route as PortalAdminScanntechRouteImport } from './routes/_portal.admin-scanntech'
 import { Route as PortalAdminUsuariosRouteImport } from './routes/_portal.admin-usuarios'
 import { Route as PortalAgendaRouteImport } from './routes/_portal.agenda'
+import { Route as PortalAgendaPromotoresRouteImport } from './routes/_portal.agenda-promotores'
 import { Route as PortalCatalogoComercialRouteImport } from './routes/_portal.catalogo-comercial'
+import { Route as PortalCelulasDisponibilidadeRouteImport } from './routes/_portal.celulas-disponibilidade'
 import { Route as PortalClassificacaoRouteImport } from './routes/_portal.classificacao'
 import { Route as PortalConciliacaoRouteImport } from './routes/_portal.conciliacao'
 import { Route as PortalContasReceberRouteImport } from './routes/_portal.contas-receber'
+import { Route as PortalControlePromotoresRouteImport } from './routes/_portal.controle-promotores'
 import { Route as PortalCorrigirSenhaRouteImport } from './routes/_portal.corrigir-senha'
 import { Route as PortalDashboardRouteImport } from './routes/_portal.dashboard'
 import { Route as PortalEstoqueRouteImport } from './routes/_portal.estoque'
 import { Route as PortalFinanceiroRouteImport } from './routes/_portal.financeiro'
+import { Route as PortalIndicadoresFornecedoresRouteImport } from './routes/_portal.indicadores-fornecedores'
 import { Route as PortalInstalarRouteImport } from './routes/_portal.instalar'
 import { Route as PortalItensRouteImport } from './routes/_portal.itens'
 import { Route as PortalLogisticaRouteImport } from './routes/_portal.logistica'
@@ -43,18 +47,25 @@ import { Route as PortalPrecoSistemaRouteImport } from './routes/_portal.preco-s
 import { Route as PortalPrecosRouteImport } from './routes/_portal.precos'
 import { Route as PortalReconciliacaoRouteImport } from './routes/_portal.reconciliacao'
 import { Route as PortalRelatorioMixRouteImport } from './routes/_portal.relatorio-mix'
+import { Route as PortalRentabilidadeRouteImport } from './routes/_portal.rentabilidade'
 import { Route as PortalRepresentatividadeRouteImport } from './routes/_portal.representatividade'
 import { Route as PortalRupturaVendaRouteImport } from './routes/_portal.ruptura-venda'
 import { Route as PortalSugestaoCompraRouteImport } from './routes/_portal.sugestao-compra'
 import { Route as PortalUsuariosRouteImport } from './routes/_portal.usuarios'
 import { Route as PortalVendasRouteImport } from './routes/_portal.vendas'
 import { Route as PortalVendasAnualRouteImport } from './routes/_portal.vendas-anual'
+import { Route as PortalVendasLojaRouteImport } from './routes/_portal.vendas-loja'
+import { Route as ApiClientRuntimeErrorRouteImport } from './routes/api/client-runtime-error'
+import { Route as ApiAtlasArquivoBRouteImport } from './routes/api/atlas/arquivo-b'
 import { Route as ApiAtlasCarteiraRouteImport } from './routes/api/atlas/carteira'
 import { Route as ApiAtlasCompraRouteImport } from './routes/api/atlas/compra'
 import { Route as ApiAtlasCompradoresRouteImport } from './routes/api/atlas/compradores'
+import { Route as ApiAtlasFillRateRouteImport } from './routes/api/atlas/fill-rate'
 import { Route as ApiAtlasFornecedoresRouteImport } from './routes/api/atlas/fornecedores'
 import { Route as ApiCerberusCatalogoImportRouteImport } from './routes/api/cerberus/catalogo-import'
 import { Route as ApiCerberusUploadRouteImport } from './routes/api/cerberus/upload'
+import { Route as ApiAtlasFillRateSummaryRouteImport } from './routes/api/atlas/fill-rate/summary'
+import { Route as ApiAtlasFinanceiroRecebiveisRouteImport } from './routes/api/atlas/financeiro/recebiveis'
 import { Route as ApiConnectorV1IngestRouteImport } from './routes/api/connector/v1/ingest'
 import { Route as ApiIntegracoesInteliderRebaixasRouteImport } from './routes/api/integracoes/intelider/rebaixas'
 
@@ -132,11 +143,22 @@ const PortalAgendaRoute = PortalAgendaRouteImport.update({
   path: '/agenda',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalAgendaPromotoresRoute = PortalAgendaPromotoresRouteImport.update({
+  id: '/agenda-promotores',
+  path: '/agenda-promotores',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalCatalogoComercialRoute = PortalCatalogoComercialRouteImport.update({
   id: '/catalogo-comercial',
   path: '/catalogo-comercial',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalCelulasDisponibilidadeRoute =
+  PortalCelulasDisponibilidadeRouteImport.update({
+    id: '/celulas-disponibilidade',
+    path: '/celulas-disponibilidade',
+    getParentRoute: () => PortalRoute,
+  } as any)
 const PortalClassificacaoRoute = PortalClassificacaoRouteImport.update({
   id: '/classificacao',
   path: '/classificacao',
@@ -152,6 +174,12 @@ const PortalContasReceberRoute = PortalContasReceberRouteImport.update({
   path: '/contas-receber',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalControlePromotoresRoute =
+  PortalControlePromotoresRouteImport.update({
+    id: '/controle-promotores',
+    path: '/controle-promotores',
+    getParentRoute: () => PortalRoute,
+  } as any)
 const PortalCorrigirSenhaRoute = PortalCorrigirSenhaRouteImport.update({
   id: '/corrigir-senha',
   path: '/corrigir-senha',
@@ -172,6 +200,12 @@ const PortalFinanceiroRoute = PortalFinanceiroRouteImport.update({
   path: '/financeiro',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalIndicadoresFornecedoresRoute =
+  PortalIndicadoresFornecedoresRouteImport.update({
+    id: '/indicadores-fornecedores',
+    path: '/indicadores-fornecedores',
+    getParentRoute: () => PortalRoute,
+  } as any)
 const PortalInstalarRoute = PortalInstalarRouteImport.update({
   id: '/instalar',
   path: '/instalar',
@@ -227,6 +261,11 @@ const PortalRelatorioMixRoute = PortalRelatorioMixRouteImport.update({
   path: '/relatorio-mix',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalRentabilidadeRoute = PortalRentabilidadeRouteImport.update({
+  id: '/rentabilidade',
+  path: '/rentabilidade',
+  getParentRoute: () => PortalRoute,
+} as any)
 const PortalRepresentatividadeRoute =
   PortalRepresentatividadeRouteImport.update({
     id: '/representatividade',
@@ -258,6 +297,21 @@ const PortalVendasAnualRoute = PortalVendasAnualRouteImport.update({
   path: '/vendas-anual',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalVendasLojaRoute = PortalVendasLojaRouteImport.update({
+  id: '/vendas-loja',
+  path: '/vendas-loja',
+  getParentRoute: () => PortalRoute,
+} as any)
+const ApiClientRuntimeErrorRoute = ApiClientRuntimeErrorRouteImport.update({
+  id: '/api/client-runtime-error',
+  path: '/api/client-runtime-error',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAtlasArquivoBRoute = ApiAtlasArquivoBRouteImport.update({
+  id: '/api/atlas/arquivo-b',
+  path: '/api/atlas/arquivo-b',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAtlasCarteiraRoute = ApiAtlasCarteiraRouteImport.update({
   id: '/api/atlas/carteira',
   path: '/api/atlas/carteira',
@@ -271,6 +325,11 @@ const ApiAtlasCompraRoute = ApiAtlasCompraRouteImport.update({
 const ApiAtlasCompradoresRoute = ApiAtlasCompradoresRouteImport.update({
   id: '/api/atlas/compradores',
   path: '/api/atlas/compradores',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAtlasFillRateRoute = ApiAtlasFillRateRouteImport.update({
+  id: '/api/atlas/fill-rate',
+  path: '/api/atlas/fill-rate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAtlasFornecedoresRoute = ApiAtlasFornecedoresRouteImport.update({
@@ -289,6 +348,17 @@ const ApiCerberusUploadRoute = ApiCerberusUploadRouteImport.update({
   path: '/api/cerberus/upload',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAtlasFillRateSummaryRoute = ApiAtlasFillRateSummaryRouteImport.update({
+  id: '/summary',
+  path: '/summary',
+  getParentRoute: () => ApiAtlasFillRateRoute,
+} as any)
+const ApiAtlasFinanceiroRecebiveisRoute =
+  ApiAtlasFinanceiroRecebiveisRouteImport.update({
+    id: '/api/atlas/financeiro/recebiveis',
+    path: '/api/atlas/financeiro/recebiveis',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiConnectorV1IngestRoute = ApiConnectorV1IngestRouteImport.update({
   id: '/api/connector/v1/ingest',
   path: '/api/connector/v1/ingest',
@@ -316,14 +386,18 @@ export interface FileRoutesByFullPath {
   '/admin-scanntech': typeof PortalAdminScanntechRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/agenda': typeof PortalAgendaRoute
+  '/agenda-promotores': typeof PortalAgendaPromotoresRoute
   '/catalogo-comercial': typeof PortalCatalogoComercialRoute
+  '/celulas-disponibilidade': typeof PortalCelulasDisponibilidadeRoute
   '/classificacao': typeof PortalClassificacaoRoute
   '/conciliacao': typeof PortalConciliacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
+  '/controle-promotores': typeof PortalControlePromotoresRoute
   '/corrigir-senha': typeof PortalCorrigirSenhaRoute
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
   '/financeiro': typeof PortalFinanceiroRoute
+  '/indicadores-fornecedores': typeof PortalIndicadoresFornecedoresRoute
   '/instalar': typeof PortalInstalarRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
@@ -335,18 +409,25 @@ export interface FileRoutesByFullPath {
   '/precos': typeof PortalPrecosRoute
   '/reconciliacao': typeof PortalReconciliacaoRoute
   '/relatorio-mix': typeof PortalRelatorioMixRoute
+  '/rentabilidade': typeof PortalRentabilidadeRoute
   '/representatividade': typeof PortalRepresentatividadeRoute
   '/ruptura-venda': typeof PortalRupturaVendaRoute
   '/sugestao-compra': typeof PortalSugestaoCompraRoute
   '/usuarios': typeof PortalUsuariosRoute
   '/vendas': typeof PortalVendasRoute
   '/vendas-anual': typeof PortalVendasAnualRoute
+  '/vendas-loja': typeof PortalVendasLojaRoute
+  '/api/client-runtime-error': typeof ApiClientRuntimeErrorRoute
+  '/api/atlas/arquivo-b': typeof ApiAtlasArquivoBRoute
   '/api/atlas/carteira': typeof ApiAtlasCarteiraRoute
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
+  '/api/atlas/fill-rate': typeof ApiAtlasFillRateRouteWithChildren
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
   '/api/cerberus/catalogo-import': typeof ApiCerberusCatalogoImportRoute
   '/api/cerberus/upload': typeof ApiCerberusUploadRoute
+  '/api/atlas/fill-rate/summary': typeof ApiAtlasFillRateSummaryRoute
+  '/api/atlas/financeiro/recebiveis': typeof ApiAtlasFinanceiroRecebiveisRoute
   '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
@@ -365,14 +446,18 @@ export interface FileRoutesByTo {
   '/admin-scanntech': typeof PortalAdminScanntechRoute
   '/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/agenda': typeof PortalAgendaRoute
+  '/agenda-promotores': typeof PortalAgendaPromotoresRoute
   '/catalogo-comercial': typeof PortalCatalogoComercialRoute
+  '/celulas-disponibilidade': typeof PortalCelulasDisponibilidadeRoute
   '/classificacao': typeof PortalClassificacaoRoute
   '/conciliacao': typeof PortalConciliacaoRoute
   '/contas-receber': typeof PortalContasReceberRoute
+  '/controle-promotores': typeof PortalControlePromotoresRoute
   '/corrigir-senha': typeof PortalCorrigirSenhaRoute
   '/dashboard': typeof PortalDashboardRoute
   '/estoque': typeof PortalEstoqueRoute
   '/financeiro': typeof PortalFinanceiroRoute
+  '/indicadores-fornecedores': typeof PortalIndicadoresFornecedoresRoute
   '/instalar': typeof PortalInstalarRoute
   '/itens': typeof PortalItensRoute
   '/logistica': typeof PortalLogisticaRoute
@@ -384,18 +469,25 @@ export interface FileRoutesByTo {
   '/precos': typeof PortalPrecosRoute
   '/reconciliacao': typeof PortalReconciliacaoRoute
   '/relatorio-mix': typeof PortalRelatorioMixRoute
+  '/rentabilidade': typeof PortalRentabilidadeRoute
   '/representatividade': typeof PortalRepresentatividadeRoute
   '/ruptura-venda': typeof PortalRupturaVendaRoute
   '/sugestao-compra': typeof PortalSugestaoCompraRoute
   '/usuarios': typeof PortalUsuariosRoute
   '/vendas': typeof PortalVendasRoute
   '/vendas-anual': typeof PortalVendasAnualRoute
+  '/vendas-loja': typeof PortalVendasLojaRoute
+  '/api/client-runtime-error': typeof ApiClientRuntimeErrorRoute
+  '/api/atlas/arquivo-b': typeof ApiAtlasArquivoBRoute
   '/api/atlas/carteira': typeof ApiAtlasCarteiraRoute
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
+  '/api/atlas/fill-rate': typeof ApiAtlasFillRateRouteWithChildren
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
   '/api/cerberus/catalogo-import': typeof ApiCerberusCatalogoImportRoute
   '/api/cerberus/upload': typeof ApiCerberusUploadRoute
+  '/api/atlas/fill-rate/summary': typeof ApiAtlasFillRateSummaryRoute
+  '/api/atlas/financeiro/recebiveis': typeof ApiAtlasFinanceiroRecebiveisRoute
   '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
@@ -416,14 +508,18 @@ export interface FileRoutesById {
   '/_portal/admin-scanntech': typeof PortalAdminScanntechRoute
   '/_portal/admin-usuarios': typeof PortalAdminUsuariosRoute
   '/_portal/agenda': typeof PortalAgendaRoute
+  '/_portal/agenda-promotores': typeof PortalAgendaPromotoresRoute
   '/_portal/catalogo-comercial': typeof PortalCatalogoComercialRoute
+  '/_portal/celulas-disponibilidade': typeof PortalCelulasDisponibilidadeRoute
   '/_portal/classificacao': typeof PortalClassificacaoRoute
   '/_portal/conciliacao': typeof PortalConciliacaoRoute
   '/_portal/contas-receber': typeof PortalContasReceberRoute
+  '/_portal/controle-promotores': typeof PortalControlePromotoresRoute
   '/_portal/corrigir-senha': typeof PortalCorrigirSenhaRoute
   '/_portal/dashboard': typeof PortalDashboardRoute
   '/_portal/estoque': typeof PortalEstoqueRoute
   '/_portal/financeiro': typeof PortalFinanceiroRoute
+  '/_portal/indicadores-fornecedores': typeof PortalIndicadoresFornecedoresRoute
   '/_portal/instalar': typeof PortalInstalarRoute
   '/_portal/itens': typeof PortalItensRoute
   '/_portal/logistica': typeof PortalLogisticaRoute
@@ -435,18 +531,25 @@ export interface FileRoutesById {
   '/_portal/precos': typeof PortalPrecosRoute
   '/_portal/reconciliacao': typeof PortalReconciliacaoRoute
   '/_portal/relatorio-mix': typeof PortalRelatorioMixRoute
+  '/_portal/rentabilidade': typeof PortalRentabilidadeRoute
   '/_portal/representatividade': typeof PortalRepresentatividadeRoute
   '/_portal/ruptura-venda': typeof PortalRupturaVendaRoute
   '/_portal/sugestao-compra': typeof PortalSugestaoCompraRoute
   '/_portal/usuarios': typeof PortalUsuariosRoute
   '/_portal/vendas': typeof PortalVendasRoute
   '/_portal/vendas-anual': typeof PortalVendasAnualRoute
+  '/_portal/vendas-loja': typeof PortalVendasLojaRoute
+  '/api/client-runtime-error': typeof ApiClientRuntimeErrorRoute
+  '/api/atlas/arquivo-b': typeof ApiAtlasArquivoBRoute
   '/api/atlas/carteira': typeof ApiAtlasCarteiraRoute
   '/api/atlas/compra': typeof ApiAtlasCompraRoute
   '/api/atlas/compradores': typeof ApiAtlasCompradoresRoute
+  '/api/atlas/fill-rate': typeof ApiAtlasFillRateRouteWithChildren
   '/api/atlas/fornecedores': typeof ApiAtlasFornecedoresRoute
   '/api/cerberus/catalogo-import': typeof ApiCerberusCatalogoImportRoute
   '/api/cerberus/upload': typeof ApiCerberusUploadRoute
+  '/api/atlas/fill-rate/summary': typeof ApiAtlasFillRateSummaryRoute
+  '/api/atlas/financeiro/recebiveis': typeof ApiAtlasFinanceiroRecebiveisRoute
   '/api/connector/v1/ingest': typeof ApiConnectorV1IngestRoute
   '/api/integracoes/intelider/rebaixas': typeof ApiIntegracoesInteliderRebaixasRoute
 }
@@ -467,14 +570,18 @@ export interface FileRouteTypes {
     | '/admin-scanntech'
     | '/admin-usuarios'
     | '/agenda'
+    | '/agenda-promotores'
     | '/catalogo-comercial'
+    | '/celulas-disponibilidade'
     | '/classificacao'
     | '/conciliacao'
     | '/contas-receber'
+    | '/controle-promotores'
     | '/corrigir-senha'
     | '/dashboard'
     | '/estoque'
     | '/financeiro'
+    | '/indicadores-fornecedores'
     | '/instalar'
     | '/itens'
     | '/logistica'
@@ -486,18 +593,25 @@ export interface FileRouteTypes {
     | '/precos'
     | '/reconciliacao'
     | '/relatorio-mix'
+    | '/rentabilidade'
     | '/representatividade'
     | '/ruptura-venda'
     | '/sugestao-compra'
     | '/usuarios'
     | '/vendas'
     | '/vendas-anual'
+    | '/vendas-loja'
+    | '/api/client-runtime-error'
+    | '/api/atlas/arquivo-b'
     | '/api/atlas/carteira'
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
+    | '/api/atlas/fill-rate'
     | '/api/atlas/fornecedores'
     | '/api/cerberus/catalogo-import'
     | '/api/cerberus/upload'
+    | '/api/atlas/fill-rate/summary'
+    | '/api/atlas/financeiro/recebiveis'
     | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
   fileRoutesByTo: FileRoutesByTo
@@ -516,14 +630,18 @@ export interface FileRouteTypes {
     | '/admin-scanntech'
     | '/admin-usuarios'
     | '/agenda'
+    | '/agenda-promotores'
     | '/catalogo-comercial'
+    | '/celulas-disponibilidade'
     | '/classificacao'
     | '/conciliacao'
     | '/contas-receber'
+    | '/controle-promotores'
     | '/corrigir-senha'
     | '/dashboard'
     | '/estoque'
     | '/financeiro'
+    | '/indicadores-fornecedores'
     | '/instalar'
     | '/itens'
     | '/logistica'
@@ -535,18 +653,25 @@ export interface FileRouteTypes {
     | '/precos'
     | '/reconciliacao'
     | '/relatorio-mix'
+    | '/rentabilidade'
     | '/representatividade'
     | '/ruptura-venda'
     | '/sugestao-compra'
     | '/usuarios'
     | '/vendas'
     | '/vendas-anual'
+    | '/vendas-loja'
+    | '/api/client-runtime-error'
+    | '/api/atlas/arquivo-b'
     | '/api/atlas/carteira'
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
+    | '/api/atlas/fill-rate'
     | '/api/atlas/fornecedores'
     | '/api/cerberus/catalogo-import'
     | '/api/cerberus/upload'
+    | '/api/atlas/fill-rate/summary'
+    | '/api/atlas/financeiro/recebiveis'
     | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
   id:
@@ -566,14 +691,18 @@ export interface FileRouteTypes {
     | '/_portal/admin-scanntech'
     | '/_portal/admin-usuarios'
     | '/_portal/agenda'
+    | '/_portal/agenda-promotores'
     | '/_portal/catalogo-comercial'
+    | '/_portal/celulas-disponibilidade'
     | '/_portal/classificacao'
     | '/_portal/conciliacao'
     | '/_portal/contas-receber'
+    | '/_portal/controle-promotores'
     | '/_portal/corrigir-senha'
     | '/_portal/dashboard'
     | '/_portal/estoque'
     | '/_portal/financeiro'
+    | '/_portal/indicadores-fornecedores'
     | '/_portal/instalar'
     | '/_portal/itens'
     | '/_portal/logistica'
@@ -585,18 +714,25 @@ export interface FileRouteTypes {
     | '/_portal/precos'
     | '/_portal/reconciliacao'
     | '/_portal/relatorio-mix'
+    | '/_portal/rentabilidade'
     | '/_portal/representatividade'
     | '/_portal/ruptura-venda'
     | '/_portal/sugestao-compra'
     | '/_portal/usuarios'
     | '/_portal/vendas'
     | '/_portal/vendas-anual'
+    | '/_portal/vendas-loja'
+    | '/api/client-runtime-error'
+    | '/api/atlas/arquivo-b'
     | '/api/atlas/carteira'
     | '/api/atlas/compra'
     | '/api/atlas/compradores'
+    | '/api/atlas/fill-rate'
     | '/api/atlas/fornecedores'
     | '/api/cerberus/catalogo-import'
     | '/api/cerberus/upload'
+    | '/api/atlas/fill-rate/summary'
+    | '/api/atlas/financeiro/recebiveis'
     | '/api/connector/v1/ingest'
     | '/api/integracoes/intelider/rebaixas'
   fileRoutesById: FileRoutesById
@@ -607,12 +743,16 @@ export interface RootRouteChildren {
   ComunicacaoRoute: typeof ComunicacaoRoute
   HomologacaoRebaixaRoute: typeof HomologacaoRebaixaRoute
   LoginRoute: typeof LoginRoute
+  ApiClientRuntimeErrorRoute: typeof ApiClientRuntimeErrorRoute
+  ApiAtlasArquivoBRoute: typeof ApiAtlasArquivoBRoute
   ApiAtlasCarteiraRoute: typeof ApiAtlasCarteiraRoute
   ApiAtlasCompraRoute: typeof ApiAtlasCompraRoute
   ApiAtlasCompradoresRoute: typeof ApiAtlasCompradoresRoute
+  ApiAtlasFillRateRoute: typeof ApiAtlasFillRateRouteWithChildren
   ApiAtlasFornecedoresRoute: typeof ApiAtlasFornecedoresRoute
   ApiCerberusCatalogoImportRoute: typeof ApiCerberusCatalogoImportRoute
   ApiCerberusUploadRoute: typeof ApiCerberusUploadRoute
+  ApiAtlasFinanceiroRecebiveisRoute: typeof ApiAtlasFinanceiroRecebiveisRoute
   ApiConnectorV1IngestRoute: typeof ApiConnectorV1IngestRoute
   ApiIntegracoesInteliderRebaixasRoute: typeof ApiIntegracoesInteliderRebaixasRoute
 }
@@ -724,11 +864,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalAgendaRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/agenda-promotores': {
+      id: '/_portal/agenda-promotores'
+      path: '/agenda-promotores'
+      fullPath: '/agenda-promotores'
+      preLoaderRoute: typeof PortalAgendaPromotoresRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/catalogo-comercial': {
       id: '/_portal/catalogo-comercial'
       path: '/catalogo-comercial'
       fullPath: '/catalogo-comercial'
       preLoaderRoute: typeof PortalCatalogoComercialRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/celulas-disponibilidade': {
+      id: '/_portal/celulas-disponibilidade'
+      path: '/celulas-disponibilidade'
+      fullPath: '/celulas-disponibilidade'
+      preLoaderRoute: typeof PortalCelulasDisponibilidadeRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/classificacao': {
@@ -750,6 +904,13 @@ declare module '@tanstack/react-router' {
       path: '/contas-receber'
       fullPath: '/contas-receber'
       preLoaderRoute: typeof PortalContasReceberRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/controle-promotores': {
+      id: '/_portal/controle-promotores'
+      path: '/controle-promotores'
+      fullPath: '/controle-promotores'
+      preLoaderRoute: typeof PortalControlePromotoresRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/corrigir-senha': {
@@ -778,6 +939,13 @@ declare module '@tanstack/react-router' {
       path: '/financeiro'
       fullPath: '/financeiro'
       preLoaderRoute: typeof PortalFinanceiroRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/_portal/indicadores-fornecedores': {
+      id: '/_portal/indicadores-fornecedores'
+      path: '/indicadores-fornecedores'
+      fullPath: '/indicadores-fornecedores'
+      preLoaderRoute: typeof PortalIndicadoresFornecedoresRouteImport
       parentRoute: typeof PortalRoute
     }
     '/_portal/instalar': {
@@ -857,6 +1025,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalRelatorioMixRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/rentabilidade': {
+      id: '/_portal/rentabilidade'
+      path: '/rentabilidade'
+      fullPath: '/rentabilidade'
+      preLoaderRoute: typeof PortalRentabilidadeRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/_portal/representatividade': {
       id: '/_portal/representatividade'
       path: '/representatividade'
@@ -899,6 +1074,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalVendasAnualRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/_portal/vendas-loja': {
+      id: '/_portal/vendas-loja'
+      path: '/vendas-loja'
+      fullPath: '/vendas-loja'
+      preLoaderRoute: typeof PortalVendasLojaRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/api/client-runtime-error': {
+      id: '/api/client-runtime-error'
+      path: '/api/client-runtime-error'
+      fullPath: '/api/client-runtime-error'
+      preLoaderRoute: typeof ApiClientRuntimeErrorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/atlas/arquivo-b': {
+      id: '/api/atlas/arquivo-b'
+      path: '/api/atlas/arquivo-b'
+      fullPath: '/api/atlas/arquivo-b'
+      preLoaderRoute: typeof ApiAtlasArquivoBRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/atlas/carteira': {
       id: '/api/atlas/carteira'
       path: '/api/atlas/carteira'
@@ -920,6 +1116,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAtlasCompradoresRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/atlas/fill-rate': {
+      id: '/api/atlas/fill-rate'
+      path: '/api/atlas/fill-rate'
+      fullPath: '/api/atlas/fill-rate'
+      preLoaderRoute: typeof ApiAtlasFillRateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/atlas/fornecedores': {
       id: '/api/atlas/fornecedores'
       path: '/api/atlas/fornecedores'
@@ -939,6 +1142,20 @@ declare module '@tanstack/react-router' {
       path: '/api/cerberus/upload'
       fullPath: '/api/cerberus/upload'
       preLoaderRoute: typeof ApiCerberusUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/atlas/fill-rate/summary': {
+      id: '/api/atlas/fill-rate/summary'
+      path: '/summary'
+      fullPath: '/api/atlas/fill-rate/summary'
+      preLoaderRoute: typeof ApiAtlasFillRateSummaryRouteImport
+      parentRoute: typeof ApiAtlasFillRateRoute
+    }
+    '/api/atlas/financeiro/recebiveis': {
+      id: '/api/atlas/financeiro/recebiveis'
+      path: '/api/atlas/financeiro/recebiveis'
+      fullPath: '/api/atlas/financeiro/recebiveis'
+      preLoaderRoute: typeof ApiAtlasFinanceiroRecebiveisRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/connector/v1/ingest': {
@@ -969,14 +1186,18 @@ interface PortalRouteChildren {
   PortalAdminScanntechRoute: typeof PortalAdminScanntechRoute
   PortalAdminUsuariosRoute: typeof PortalAdminUsuariosRoute
   PortalAgendaRoute: typeof PortalAgendaRoute
+  PortalAgendaPromotoresRoute: typeof PortalAgendaPromotoresRoute
   PortalCatalogoComercialRoute: typeof PortalCatalogoComercialRoute
+  PortalCelulasDisponibilidadeRoute: typeof PortalCelulasDisponibilidadeRoute
   PortalClassificacaoRoute: typeof PortalClassificacaoRoute
   PortalConciliacaoRoute: typeof PortalConciliacaoRoute
   PortalContasReceberRoute: typeof PortalContasReceberRoute
+  PortalControlePromotoresRoute: typeof PortalControlePromotoresRoute
   PortalCorrigirSenhaRoute: typeof PortalCorrigirSenhaRoute
   PortalDashboardRoute: typeof PortalDashboardRoute
   PortalEstoqueRoute: typeof PortalEstoqueRoute
   PortalFinanceiroRoute: typeof PortalFinanceiroRoute
+  PortalIndicadoresFornecedoresRoute: typeof PortalIndicadoresFornecedoresRoute
   PortalInstalarRoute: typeof PortalInstalarRoute
   PortalItensRoute: typeof PortalItensRoute
   PortalLogisticaRoute: typeof PortalLogisticaRoute
@@ -988,12 +1209,14 @@ interface PortalRouteChildren {
   PortalPrecosRoute: typeof PortalPrecosRoute
   PortalReconciliacaoRoute: typeof PortalReconciliacaoRoute
   PortalRelatorioMixRoute: typeof PortalRelatorioMixRoute
+  PortalRentabilidadeRoute: typeof PortalRentabilidadeRoute
   PortalRepresentatividadeRoute: typeof PortalRepresentatividadeRoute
   PortalRupturaVendaRoute: typeof PortalRupturaVendaRoute
   PortalSugestaoCompraRoute: typeof PortalSugestaoCompraRoute
   PortalUsuariosRoute: typeof PortalUsuariosRoute
   PortalVendasRoute: typeof PortalVendasRoute
   PortalVendasAnualRoute: typeof PortalVendasAnualRoute
+  PortalVendasLojaRoute: typeof PortalVendasLojaRoute
 }
 
 const PortalRouteChildren: PortalRouteChildren = {
@@ -1007,14 +1230,18 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalAdminScanntechRoute: PortalAdminScanntechRoute,
   PortalAdminUsuariosRoute: PortalAdminUsuariosRoute,
   PortalAgendaRoute: PortalAgendaRoute,
+  PortalAgendaPromotoresRoute: PortalAgendaPromotoresRoute,
   PortalCatalogoComercialRoute: PortalCatalogoComercialRoute,
+  PortalCelulasDisponibilidadeRoute: PortalCelulasDisponibilidadeRoute,
   PortalClassificacaoRoute: PortalClassificacaoRoute,
   PortalConciliacaoRoute: PortalConciliacaoRoute,
   PortalContasReceberRoute: PortalContasReceberRoute,
+  PortalControlePromotoresRoute: PortalControlePromotoresRoute,
   PortalCorrigirSenhaRoute: PortalCorrigirSenhaRoute,
   PortalDashboardRoute: PortalDashboardRoute,
   PortalEstoqueRoute: PortalEstoqueRoute,
   PortalFinanceiroRoute: PortalFinanceiroRoute,
+  PortalIndicadoresFornecedoresRoute: PortalIndicadoresFornecedoresRoute,
   PortalInstalarRoute: PortalInstalarRoute,
   PortalItensRoute: PortalItensRoute,
   PortalLogisticaRoute: PortalLogisticaRoute,
@@ -1026,16 +1253,29 @@ const PortalRouteChildren: PortalRouteChildren = {
   PortalPrecosRoute: PortalPrecosRoute,
   PortalReconciliacaoRoute: PortalReconciliacaoRoute,
   PortalRelatorioMixRoute: PortalRelatorioMixRoute,
+  PortalRentabilidadeRoute: PortalRentabilidadeRoute,
   PortalRepresentatividadeRoute: PortalRepresentatividadeRoute,
   PortalRupturaVendaRoute: PortalRupturaVendaRoute,
   PortalSugestaoCompraRoute: PortalSugestaoCompraRoute,
   PortalUsuariosRoute: PortalUsuariosRoute,
   PortalVendasRoute: PortalVendasRoute,
   PortalVendasAnualRoute: PortalVendasAnualRoute,
+  PortalVendasLojaRoute: PortalVendasLojaRoute,
 }
 
 const PortalRouteWithChildren =
   PortalRoute._addFileChildren(PortalRouteChildren)
+
+interface ApiAtlasFillRateRouteChildren {
+  ApiAtlasFillRateSummaryRoute: typeof ApiAtlasFillRateSummaryRoute
+}
+
+const ApiAtlasFillRateRouteChildren: ApiAtlasFillRateRouteChildren = {
+  ApiAtlasFillRateSummaryRoute: ApiAtlasFillRateSummaryRoute,
+}
+
+const ApiAtlasFillRateRouteWithChildren =
+  ApiAtlasFillRateRoute._addFileChildren(ApiAtlasFillRateRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -1043,12 +1283,16 @@ const rootRouteChildren: RootRouteChildren = {
   ComunicacaoRoute: ComunicacaoRoute,
   HomologacaoRebaixaRoute: HomologacaoRebaixaRoute,
   LoginRoute: LoginRoute,
+  ApiClientRuntimeErrorRoute: ApiClientRuntimeErrorRoute,
+  ApiAtlasArquivoBRoute: ApiAtlasArquivoBRoute,
   ApiAtlasCarteiraRoute: ApiAtlasCarteiraRoute,
   ApiAtlasCompraRoute: ApiAtlasCompraRoute,
   ApiAtlasCompradoresRoute: ApiAtlasCompradoresRoute,
+  ApiAtlasFillRateRoute: ApiAtlasFillRateRouteWithChildren,
   ApiAtlasFornecedoresRoute: ApiAtlasFornecedoresRoute,
   ApiCerberusCatalogoImportRoute: ApiCerberusCatalogoImportRoute,
   ApiCerberusUploadRoute: ApiCerberusUploadRoute,
+  ApiAtlasFinanceiroRecebiveisRoute: ApiAtlasFinanceiroRecebiveisRoute,
   ApiConnectorV1IngestRoute: ApiConnectorV1IngestRoute,
   ApiIntegracoesInteliderRebaixasRoute: ApiIntegracoesInteliderRebaixasRoute,
 }

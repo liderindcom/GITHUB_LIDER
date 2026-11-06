@@ -15,7 +15,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PortalLayout } from "@/components/portal-layout";
@@ -39,6 +39,7 @@ import {
   updateFillrateTaxa,
   updateFillrateMeta,
   updateSupplierAccessConfig,
+  updateSupplierCarencia,
   refreshSupplierDataImmediately,
   FILLRATE_TAXA_PADRAO,
   FILLRATE_TAXA_MIN,
@@ -46,40 +47,28 @@ import {
   FILLRATE_META_PADRAO,
   FILLRATE_META_MIN,
   FILLRATE_META_MAX,
+  type FornecedorDB,
 } from "@/api";
 import { usePortal } from "@/context/portal-context";
 import { TAXAS_ACESSO_PORTAL_PCT } from "@/lib/acordo-acesso";
 import { formatarCodigoFornecedorComDigito } from "@/lib/fornecedor-codigo";
 import { RebaixaDestinatariosTab } from "@/components/rebaixa-destinatarios-tab";
+import { RenderErrorBoundary } from "@/components/render-error-boundary";
 
-const dataIsoCompleta = (valor: string) => /^\d{4}-\d{2}-\d{2}$/.test(valor);
+const formatarDataBr = (valor: string | null | undefined) => {
+  const data = String(valor ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return valor || "—";
+  const [ano, mes, dia] = data.split("-");
+  return `${dia}/${mes}/${ano}`;
+};
 
-function CampoDataVigencia({
-  valor,
-  disabled,
-  onConfirmar,
-}: {
-  valor: string;
-  disabled?: boolean;
-  onConfirmar: (iso: string | null) => void;
-}) {
-  return (
-    <Input
-      type="date"
-      defaultValue={valor || ""}
-      disabled={disabled}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (dataIsoCompleta(v)) onConfirmar(v);
-      }}
-      onBlur={(e) => {
-        const v = e.target.value;
-        if (!v && valor) onConfirmar(null);
-      }}
-      className="h-7 w-[132px] px-1 text-center font-mono text-[10px]"
-    />
-  );
-}
+const formatarCompetenciaBr = (valor: string | null | undefined) => {
+  const competencia = String(valor ?? "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(competencia)) return valor || "—";
+  const [ano, mes] = competencia.split("-");
+  return `${mes}/${ano}`;
+};
+
 export const Route = createFileRoute("/_portal/admin-fornecedores")({
   head: () => ({
     meta: [
@@ -96,14 +85,16 @@ export const Route = createFileRoute("/_portal/admin-fornecedores")({
 
 function AdminFornecedoresPage() {
   const { usuarioInterno } = usePortal();
+  const montadoRef = useRef(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
-  const [fornecedores, setFornecedores] = useState<any[]>([]);
+  const [fornecedores, setFornecedores] = useState<FornecedorDB[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [taxaMulta, setTaxaMulta] = useState<number>(FILLRATE_TAXA_PADRAO);
   const [salvandoTaxa, setSalvandoTaxa] = useState(false);
   const [codigoNovo, setCodigoNovo] = useState("");
+  const [carenciaDiasNovo, setCarenciaDiasNovo] = useState(30);
   const [incluindo, setIncluindo] = useState(false);
   const [salvandoMeta, setSalvandoMeta] = useState<string | null>(null);
   const [atualizandoCodigo, setAtualizandoCodigo] = useState<string | null>(null);
@@ -111,6 +102,13 @@ function AdminFornecedoresPage() {
   const [ordemOrdenacao, setOrdemOrdenacao] = useState<"asc" | "desc">("asc");
 
   const limit = 500;
+
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+    };
+  }, []);
 
   const fornecedoresOrdenados = [...fornecedores].sort((a, b) => {
     const alvo = (search.trim() || codigoNovo.trim()).replace(/\D/g, "");
@@ -158,21 +156,13 @@ function AdminFornecedoresPage() {
     </div>
   );
 
-  const handleUpdateConfig = async (
-    codigo: string,
-    isento: number,
-    inicio: string | null,
-    fim: string | null,
-    taxaAcessoPct?: number,
-  ) => {
+  const handleUpdateConfig = async (codigo: string, isento: number, taxaAcessoPct?: number) => {
     try {
       const taxa = taxaAcessoPct !== undefined ? taxaAcessoPct : 1.0;
       await updateSupplierAccessConfig({
         data: {
           codigo,
           isentoCobranca: isento,
-          acessoDataInicio: inicio,
-          acessoDataFim: fim,
           taxaAcessoPct: taxa,
         },
       });
@@ -182,8 +172,6 @@ function AdminFornecedoresPage() {
             ? {
                 ...f,
                 isentoCobranca: isento,
-                acessoDataInicio: inicio,
-                acessoDataFim: fim,
                 taxaAcessoPct: taxa,
               }
             : f,
@@ -196,15 +184,41 @@ function AdminFornecedoresPage() {
     }
   };
 
+  const handleUpdateCarencia = async (codigo: string, carenciaDias: number) => {
+    try {
+      const resultado = await updateSupplierCarencia({
+        data: { codigo, carenciaDias },
+      });
+      setFornecedores((prev) =>
+        prev.map((f) =>
+          f.codigo === codigo
+            ? {
+                ...f,
+                carenciaDias: resultado.carenciaDias,
+                carenciaAte: resultado.carenciaAte,
+                primeiraCompetenciaCobravel: resultado.primeiraCompetenciaCobravel,
+                primeiraCobrancaEm: resultado.primeiraCobrancaEm,
+                acessoStatus: resultado.acessoStatus as FornecedorDB["acessoStatus"],
+              }
+            : f,
+        ),
+      );
+      toast.success("Carência e data de cobrança atualizadas.");
+    } catch (err) {
+      console.error(err);
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar carência.");
+    }
+  };
+
   const handleRefreshSupplier = async (codigo: string) => {
     setAtualizandoCodigo(codigo);
     try {
       const res = await refreshSupplierDataImmediately({ data: { codigo } });
       toast.success(res.message);
       await carregarFornecedores(search, page);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || "Erro ao atualizar dados do fornecedor.");
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar dados do fornecedor.");
     } finally {
       setAtualizandoCodigo(null);
     }
@@ -221,13 +235,15 @@ function AdminFornecedoresPage() {
           onlyActive: true,
         },
       });
+      if (!montadoRef.current) return;
       setFornecedores(data.rows);
       setTotal(data.total);
     } catch (err) {
+      if (!montadoRef.current) return;
       console.error(err);
       toast.error("Erro ao carregar lista de fornecedores.");
     } finally {
-      setCarregando(false);
+      if (montadoRef.current) setCarregando(false);
     }
   };
 
@@ -270,7 +286,9 @@ function AdminFornecedoresPage() {
     setTaxaMulta(limitada);
     setSalvandoTaxa(true);
     try {
-      const politica = await updateFillrateTaxa({ data: { taxaMultaPct: limitada } });
+      const politica = await updateFillrateTaxa({
+        data: { taxaMultaPct: limitada },
+      });
       setTaxaMulta(politica.taxaMultaPct);
       toast.success(`Taxa da multa atualizada para ${politica.taxaMultaPct}%.`);
     } catch (err) {
@@ -294,7 +312,10 @@ function AdminFornecedoresPage() {
     cnpj: string,
     acessoStatus: string | null | undefined,
     inicio: string | null | undefined,
-    fim: string | null | undefined,
+    carenciaAte: string | null | undefined,
+    carenciaDias: number | null | undefined,
+    primeiraCompetencia: string | null | undefined,
+    primeiraCobranca: string | null | undefined,
     taxaAcessoPct: number,
     acordoNumero?: string | null,
   ) => {
@@ -307,15 +328,23 @@ function AdminFornecedoresPage() {
       valor.replace(
         /[&<>"']/g,
         (caractere) =>
-          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[caractere]!,
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;",
+          })[caractere]!,
       );
     const degustacao = acessoStatus === "DEGUSTACAO";
     const detalhesAcesso = degustacao
-      ? `<p>O acesso de degustação inicia em <b>${escaparHtml(inicio || "não informado")}</b> e termina em <b>${escaparHtml(fim || "não informado")}</b>, totalizando 30 dias corridos. Este prazo é único, não prorrogável e não gera cobrança durante a degustação.</p>`
+      ? `<p>O acesso de degustação inicia em <b>${escaparHtml(formatarDataBr(inicio) || "não informado")}</b> e termina em <b>${escaparHtml(formatarDataBr(carenciaAte) || "sem carência")}</b>, totalizando <b>${Number(carenciaDias || 0)} dias</b>. A primeira competência cobravel será <b>${escaparHtml(formatarCompetenciaBr(primeiraCompetencia) || "não informada")}</b>, com cobrança a partir de <b>${escaparHtml(formatarDataBr(primeiraCobranca) || "não informada")}</b>. Este prazo é único e não prorrogável.</p>`
       : `<p>O acesso está ativo no Portal do Fornecedor${acordoNumero ? ` sob o acordo nº <b>${escaparHtml(acordoNumero)}</b>` : ""}.</p>`;
-    const primeiroAcesso = `<section class="primeiro-acesso"><h2>Primeiro acesso ao Portal do Fornecedor</h2><ol><li>Acesse <b>https://portaldofornecedor.intelider.com.br</b>.</li><li>Informe o seu <b>código RMS</b>, o e-mail corporativo e a senha inicial.</li><li>No primeiro acesso, use o <b>CNPJ do fornecedor</b> como senha, com ou sem pontuação.</li><li>Após entrar, cadastre uma nova senha no menu <b>Corrigir senha</b>.</li></ol></section>`;
+    const loginImagemUrl = new URL("/assets/login-portal-fornecedor.png", window.location.origin)
+      .href;
+    const primeiroAcesso = `<section class="primeiro-acesso"><h2>Primeiro acesso ao Portal do Fornecedor</h2><ol><li>Acesse <b>https://portaldofornecedor.intelider.com.br</b>.</li><li>Informe o seu <b>código RMS</b>, o e-mail corporativo e a senha inicial.</li><li>No primeiro acesso, use o <b>CNPJ do fornecedor</b> como senha, com ou sem pontuação.</li><li>Após entrar, cadastre uma nova senha no menu <b>Corrigir senha</b>.</li></ol><figure class="login-print"><figcaption>Exemplo de preenchimento da tela de login</figcaption><img src="${escaparHtml(loginImagemUrl)}" alt="Tela de login do Portal do Fornecedor" /></figure></section>`;
     janela.document.write(
-      `<html><head><title>Acordo de acesso - ${escaparHtml(codigo)}</title><style>@page{size:A4 portrait;margin:18mm}body{font-family:Arial;padding:0;line-height:1.5}h1{font-size:22px}h2{font-size:15px;margin:0 0 8px}hr{margin:28px 0}.primeiro-acesso{background:#f3f7ff;border-left:4px solid #1d4ed8;padding:14px 16px;margin:20px 0}.primeiro-acesso ol{margin:0;padding-left:20px}.assinatura{margin-top:90px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:8px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${escaparHtml(nome)}</b>, CNPJ <b>${escaparHtml(cnpj || "não informado")}</b>, código RMS <b>${escaparHtml(codigo)}</b>, registram este termo de acesso.</p>${detalhesAcesso}${primeiroAcesso}<p>Após a validação do acordo, será aplicada a taxa comercial escolhida de <b>${taxaAcessoPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</b> sobre as compras faturadas do mês anterior.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
+      `<html><head><title>Acordo de acesso - ${escaparHtml(codigo)}</title><style>@page{size:A4 portrait;margin:15mm}body{font-family:Arial;padding:0;line-height:1.4}h1{font-size:21px}h2{font-size:15px;margin:0 0 6px}hr{margin:18px 0}.primeiro-acesso{background:#f3f7ff;border-left:4px solid #1d4ed8;padding:10px 12px;margin:14px 0}.primeiro-acesso ol{margin:0;padding-left:20px}.login-print{width:72%;margin:10px auto 2px;padding:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;break-inside:avoid}.login-print figcaption{font-size:10px;font-weight:bold;margin-bottom:5px;color:#334155}.login-print img{display:block;width:100%;max-height:220px;object-fit:contain;border:1px solid #e2e8f0}.assinatura{margin-top:42px;display:flex;justify-content:space-between}.linha{border-top:1px solid #222;width:42%;padding-top:6px}</style></head><body><h1>ACORDO DE ACESSO AO PORTAL DO FORNECEDOR</h1><p><b>Líder Indústria &amp; Comércio Ltda.</b>, CNPJ <b>05.054.671/0005-63</b>, e o fornecedor <b>${escaparHtml(nome)}</b>, CNPJ <b>${escaparHtml(cnpj || "não informado")}</b>, código RMS <b>${escaparHtml(codigo)}</b>, registram este termo de acesso.</p>${detalhesAcesso}${primeiroAcesso}<p>Após a validação do acordo, será aplicada a taxa comercial escolhida de <b>${taxaAcessoPct.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</b> sobre as compras faturadas do mês anterior.</p><p>Após a assinatura e validação no sistema do Grupo Líder, o fornecedor será mantido ativo e incluído na lista de cobrança do menu <b>Acordo de acesso</b>. Sem validação, o acesso será encerrado ao final do prazo.</p><p>Este documento deve ser assinado pelo fornecedor e devolvido ao comprador responsável.</p><hr/><div class="assinatura"><div class="linha">Fornecedor / representante legal</div><div class="linha">Grupo Líder / comprador</div></div><script>window.onload=()=>window.print()</script></body></html>`,
     );
     janela.document.close();
   };
@@ -328,7 +357,9 @@ function AdminFornecedoresPage() {
     }
     setIncluindo(true);
     try {
-      const resultado = await includeSupplier({ data: { codigo } });
+      const resultado = await includeSupplier({
+        data: { codigo, carenciaDias: carenciaDiasNovo },
+      });
       const codigoExibicao = formatarCodigoFornecedorComDigito(resultado.codigo);
       toast.success(resultado.message || `Carga RMS iniciada para o fornecedor ${codigoExibicao}.`);
       setCodigoNovo("");
@@ -433,7 +464,7 @@ function AdminFornecedoresPage() {
       <Tabs defaultValue="acesso" className="space-y-6">
         <TabsList className="grid w-full max-w-[600px] grid-cols-3">
           <TabsTrigger value="acesso">Controle de Acesso</TabsTrigger>
-          <TabsTrigger value="rebaixa-destinatarios">Destinatários de rebaixa</TabsTrigger>
+          <TabsTrigger value="rebaixa-destinatarios">Destinatários de rebaixa e preços</TabsTrigger>
           <TabsTrigger value="politica-log">Fill Rate & Logs</TabsTrigger>
         </TabsList>
 
@@ -453,8 +484,13 @@ function AdminFornecedoresPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Informe apenas o código RMS. Nome e CNPJ serão preenchidos pelo cadastro RMS
-                  quando o cache for sincronizado. Os primeiros 30 dias de degustação não serão
-                  cobrados.
+                  quando o cache for sincronizado. A data inicial é registrada automaticamente e não
+                  poderá ser alterada. A cobrança começa após a primeira competência mensal
+                  completa.
+                </p>
+                <p className="rounded-md border border-primary/20 bg-primary/5 p-2 text-xs text-primary/90">
+                  O botão <b>Imprimir acordo</b>, na lista abaixo, gera o termo com as instruções e
+                  um print da tela de login para orientar o fornecedor no primeiro acesso.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -470,6 +506,21 @@ function AdminFornecedoresPage() {
                     }
                   }}
                 />
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold uppercase text-muted-foreground">
+                    Carência (0–60 dias)
+                  </label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={carenciaDiasNovo}
+                    onChange={(e) =>
+                      setCarenciaDiasNovo(Math.max(0, Math.min(60, Number(e.target.value))))
+                    }
+                    className="h-9 w-[110px] font-mono"
+                  />
+                </div>
                 <Button
                   size="sm"
                   className="h-9 text-xs font-bold"
@@ -527,11 +578,20 @@ function AdminFornecedoresPage() {
                       <TableHead className="w-[130px] text-center">
                         {cabecalhoOrdenavel("Cobrança", "isentoCobranca")}
                       </TableHead>
-                      <TableHead className="w-[240px] text-center">
-                        {cabecalhoOrdenavel("Vigência Acesso", "acessoDataFim")}
+                      <TableHead className="w-[115px] text-center">
+                        {cabecalhoOrdenavel("Início", "acessoDataInicio")}
+                      </TableHead>
+                      <TableHead className="w-[125px] text-center">
+                        {cabecalhoOrdenavel("Carência", "carenciaAte")}
+                      </TableHead>
+                      <TableHead className="w-[145px] text-center">
+                        {cabecalhoOrdenavel("Cobrança", "primeiraCobrancaEm")}
                       </TableHead>
                       <TableHead className="w-[110px] text-center">
-                        {cabecalhoOrdenavel("Meta Fill", "metaFillRatePct")}
+                        {cabecalhoOrdenavel(
+                          `Meta Fill (${FILLRATE_META_MIN}–${FILLRATE_META_MAX}%)`,
+                          "metaFillRatePct",
+                        )}
                       </TableHead>
                       <TableHead className="w-[100px] text-center">
                         {cabecalhoOrdenavel("Acesso", "acessoLiberado")}
@@ -543,7 +603,7 @@ function AdminFornecedoresPage() {
                     {carregando && fornecedores.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={9}
+                          colSpan={11}
                           className="h-32 text-center text-sm text-muted-foreground"
                         >
                           Carregando fornecedores...
@@ -552,7 +612,7 @@ function AdminFornecedoresPage() {
                     ) : fornecedores.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={11}
                           className="h-32 text-center text-sm text-muted-foreground"
                         >
                           Nenhum fornecedor encontrado para a busca "{search}".
@@ -581,18 +641,26 @@ function AdminFornecedoresPage() {
                                   {f.acessoStatus === "ATIVO_COM_ACORDO"
                                     ? "ACORDO VALIDADO"
                                     : f.acessoStatus === "DEGUSTACAO"
-                                      ? "DEGUSTAÇÃO 30 DIAS"
-                                      : f.acessoStatus === "EXPIRADO"
-                                        ? "EXPIRADO"
-                                        : "SEM ACORDO"}
+                                      ? `DEGUSTAÇÃO ${f.carenciaDias ?? ""} DIAS`
+                                      : f.acessoStatus === "AGUARDANDO_ACORDO_MENSAL"
+                                        ? "AGUARDANDO ACORDO MENSAL"
+                                        : f.acessoStatus === "ACORDO_MENSAL_PENDENTE"
+                                          ? "ACORDO MENSAL PENDENTE"
+                                          : f.acessoStatus === "AGUARDANDO_CONTRATO"
+                                            ? "AGUARDANDO CONTRATO"
+                                            : f.acessoStatus === "AGUARDANDO_COMPETENCIA"
+                                              ? "AGUARDANDO COMPETÊNCIA"
+                                              : f.acessoStatus === "EXPIRADO"
+                                                ? "EXPIRADO"
+                                                : "SEM ACORDO"}
                                 </span>
                                 {f.acordoNumero ? (
                                   <div className="font-mono text-muted-foreground">
                                     {f.acordoNumero}
                                   </div>
                                 ) : null}
-                                {f.acessoStatus === "DEGUSTACAO" && f.acessoDataFim ? (
-                                  <div>até {f.acessoDataFim}</div>
+                                {f.acessoStatus === "DEGUSTACAO" && f.carenciaAte ? (
+                                  <div>até {formatarDataBr(f.carenciaAte)}</div>
                                 ) : null}
                                 <Button
                                   variant="ghost"
@@ -605,7 +673,10 @@ function AdminFornecedoresPage() {
                                       f.cnpj || "",
                                       f.acessoStatus,
                                       f.acessoDataInicio,
-                                      f.acessoDataFim,
+                                      f.carenciaAte,
+                                      f.carenciaDias,
+                                      f.primeiraCompetenciaCobravel,
+                                      f.primeiraCobrancaEm,
                                       f.taxaAcessoPct ?? 1.0,
                                       f.acordoNumero,
                                     )
@@ -650,8 +721,6 @@ function AdminFornecedoresPage() {
                                     void handleUpdateConfig(
                                       f.codigo,
                                       isentoSelecionado ? 1 : 0,
-                                      f.acessoDataInicio || null,
-                                      f.acessoDataFim || null,
                                       isentoSelecionado
                                         ? (f.taxaAcessoPct ?? 1.0)
                                         : parseFloat(e.target.value),
@@ -673,37 +742,43 @@ function AdminFornecedoresPage() {
                                 </select>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-center gap-1">
-                                <CampoDataVigencia
-                                  key={`${f.codigo}-inicio`}
-                                  valor={f.acessoDataInicio || ""}
-                                  disabled={isento}
-                                  onConfirmar={(inicio) =>
-                                    void handleUpdateConfig(
-                                      f.codigo,
-                                      f.isentoCobranca || 0,
-                                      inicio,
-                                      f.acessoDataFim || null,
-                                      f.taxaAcessoPct ?? 1.0,
-                                    )
+                            <TableCell className="text-center font-mono text-xs font-semibold whitespace-nowrap">
+                              <span title="Data inicial imutável">
+                                🔒 {formatarDataBr(f.acessoDataInicio)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs whitespace-nowrap">
+                              <Input
+                                key={`${f.codigo}-${f.carenciaDias ?? "nova"}`}
+                                type="number"
+                                min={0}
+                                max={60}
+                                defaultValue={f.carenciaDias ?? ""}
+                                placeholder="0–60"
+                                aria-label={`Carência em dias para ${f.nome}`}
+                                className="mx-auto h-7 w-[64px] px-1 text-center font-mono text-xs"
+                                onBlur={(e) => {
+                                  const dias = Math.trunc(Number(e.target.value));
+                                  if (
+                                    Number.isInteger(dias) &&
+                                    dias >= 0 &&
+                                    dias <= 60 &&
+                                    dias !== f.carenciaDias
+                                  ) {
+                                    void handleUpdateCarencia(f.codigo, dias);
                                   }
-                                />
-                                <span className="text-[10px] text-muted-foreground">a</span>
-                                <CampoDataVigencia
-                                  key={`${f.codigo}-fim`}
-                                  valor={f.acessoDataFim || ""}
-                                  disabled={isento}
-                                  onConfirmar={(fim) =>
-                                    void handleUpdateConfig(
-                                      f.codigo,
-                                      f.isentoCobranca || 0,
-                                      f.acessoDataInicio || null,
-                                      fim,
-                                      f.taxaAcessoPct ?? 1.0,
-                                    )
-                                  }
-                                />
+                                }}
+                              />
+                              <div className="mt-1 font-semibold">
+                                {f.carenciaAte ? formatarDataBr(f.carenciaAte) : "Definir carência"}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center font-mono text-xs whitespace-nowrap">
+                              <div className="text-[10px] text-muted-foreground">
+                                Competência {formatarCompetenciaBr(f.primeiraCompetenciaCobravel)}
+                              </div>
+                              <div className="font-bold">
+                                {formatarDataBr(f.primeiraCobrancaEm)}
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
@@ -787,7 +862,9 @@ function AdminFornecedoresPage() {
         </TabsContent>
 
         <TabsContent value="rebaixa-destinatarios" className="space-y-6">
-          <RebaixaDestinatariosTab />
+          <RenderErrorBoundary boundary="admin-fornecedores:rebaixa-destinatarios">
+            <RebaixaDestinatariosTab />
+          </RenderErrorBoundary>
         </TabsContent>
 
         <TabsContent value="politica-log" className="space-y-6">

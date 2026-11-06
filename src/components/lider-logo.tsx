@@ -4,11 +4,11 @@ type LiderLogoVariant = "full" | "mark" | "hero";
 
 const sources: Record<LiderLogoVariant, { src: string; width: number; height: number }> = {
   /** Wordmark GRUPOLÍDER — header, sidebar expandida, login compacto */
-  full: { src: "/brand/logo-header.png", width: 160, height: 28 },
+  full: { src: "/brand/logo-header.png", width: 320, height: 56 },
   /** Monograma L — sidebar colapsada e favicon visual */
   mark: { src: "/brand/logo-mark.png", width: 32, height: 32 },
-  /** Wordmark grande — tela de login / splash */
-  hero: { src: "/brand/logo-grupolider.png", width: 280, height: 72 },
+  /** Wordmark grande — tela de login / splash. O asset horizontal evita a área transparente do PNG antigo. */
+  hero: { src: "/brand/logo-header.png", width: 320, height: 56 },
 };
 
 export function LiderLogo({

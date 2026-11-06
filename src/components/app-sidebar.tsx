@@ -24,6 +24,8 @@ import {
   TrendingUp,
   Coins,
   ClipboardList,
+  BarChart3,
+  Store,
 } from "lucide-react";
 
 import { LiderLogo } from "@/components/lider-logo";
@@ -42,16 +44,27 @@ import {
 } from "@/components/ui/sidebar";
 import { usePortal } from "@/context/portal-context";
 import { prefetchVendasAnual } from "@/lib/vendas-anual-cache";
+import { fornecedorAcessoRestrito } from "@/lib/acordo-acesso";
 
 const itens = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Pedidos", url: "/pedidos", icon: ShoppingCart },
   { title: "Acordo Fill Rate", url: "/acordo-fillrate", icon: ClipboardCheck },
+  { title: "Agenda Promotor", url: "/agenda-promotores", icon: CalendarClock },
   { title: "Vendas Sell-out", url: "/vendas", icon: LineChart },
+  { title: "Vendas por Loja", url: "/vendas-loja", icon: Store },
   { title: "Vendas Anual", url: "/vendas-anual", icon: TrendingUp },
-  { title: "Catálogo Comercial", url: "/catalogo-comercial", icon: PackagePlus },
+  {
+    title: "Catálogo Comercial",
+    url: "/catalogo-comercial",
+    icon: PackagePlus,
+  },
   { title: "Estoque", url: "/estoque", icon: PackageCheck },
-  { title: "Ruptura e Perda Venda", url: "/ruptura-venda", icon: AlertTriangle },
+  {
+    title: "Ruptura e Perda Venda",
+    url: "/ruptura-venda",
+    icon: AlertTriangle,
+  },
   { title: "Perdas Físicas", url: "/perdas", icon: TrendingDown },
   { title: "Relatório MIX", url: "/relatorio-mix", icon: FileSpreadsheet },
   { title: "Preço Concorrência", url: "/precos", icon: BadgeDollarSign },
@@ -64,14 +77,42 @@ const itens = [
   { title: "Conciliação NF-e", url: "/conciliacao", icon: Scale },
   { title: "Contas a Receber", url: "/contas-receber", icon: ReceiptText },
   { title: "Financeiro", url: "/financeiro", icon: Wallet },
+  { title: "Rentabilidade", url: "/rentabilidade", icon: BarChart3 },
   { title: "Corrigir senha", url: "/corrigir-senha", icon: KeyRound },
   { title: "Usuários", url: "/usuarios", icon: Users },
-  { title: "Taxa de acesso 1%", url: "/acordo-acesso", icon: BadgePercent },
+  { title: "Acordo de acesso", url: "/acordo-acesso", icon: BadgePercent },
   { title: "Aprovação de Preços", url: "/admin-precos", icon: ShieldCheck },
-  { title: "Acesso Fornecedores (Admin)", url: "/admin-fornecedores", icon: Tags },
-  { title: "Acordo de acesso", url: "/admin-acordo-acesso", icon: BadgePercent },
+  {
+    title: "Acesso Fornecedores (Admin)",
+    url: "/admin-fornecedores",
+    icon: Tags,
+  },
+  {
+    title: "Acordo de acesso",
+    url: "/admin-acordo-acesso",
+    icon: BadgePercent,
+  },
   { title: "Usuários Administrativos", url: "/admin-usuarios", icon: Users },
+  {
+    title: "Controle de Promotores",
+    url: "/controle-promotores",
+    icon: ClipboardList,
+  },
+  {
+    title: "Indicadores por Fornecedor",
+    url: "/indicadores-fornecedores",
+    icon: BarChart3,
+  },
 ] as const;
+
+const urlsMenuLider = new Set([
+  "/admin-precos",
+  "/admin-fornecedores",
+  "/admin-acordo-acesso",
+  "/admin-usuarios",
+  "/controle-promotores",
+  "/indicadores-fornecedores",
+]);
 
 import { useState, useEffect, useMemo } from "react";
 
@@ -100,6 +141,7 @@ export function AppSidebar() {
 
   const displayNome = mounted ? fornecedor.nome : "Carregando fornecedor...";
   const displayCodigo = mounted ? fornecedor.codigo : "—";
+  const acessoRestrito = !usuarioInterno && fornecedorAcessoRestrito(fornecedor);
 
   const itensVisiveis = useMemo(() => {
     const precisaTrocar = Boolean(usuarioFornecedor?.precisaTrocarSenha) && !usuarioInterno;
@@ -107,10 +149,15 @@ export function AppSidebar() {
       if (precisaTrocar) {
         return item.url === "/corrigir-senha";
       }
+      if (acessoRestrito) {
+        return item.url === "/dashboard" || item.url === "/acordo-acesso";
+      }
       if (
         item.url === "/admin-fornecedores" ||
         item.url === "/admin-precos" ||
-        item.url === "/admin-acordo-acesso"
+        item.url === "/admin-acordo-acesso" ||
+        item.url === "/controle-promotores" ||
+        item.url === "/indicadores-fornecedores"
       ) {
         return usuarioInterno !== null;
       }
@@ -126,7 +173,36 @@ export function AppSidebar() {
       }
       return true;
     });
-  }, [usuarioInterno, usuarioFornecedor?.precisaTrocarSenha]);
+  }, [acessoRestrito, usuarioInterno, usuarioFornecedor?.precisaTrocarSenha]);
+
+  const itensFornecedor = useMemo(
+    () => itensVisiveis.filter((item) => !urlsMenuLider.has(item.url)),
+    [itensVisiveis],
+  );
+  const itensLider = useMemo(
+    () => itensVisiveis.filter((item) => urlsMenuLider.has(item.url)),
+    [itensVisiveis],
+  );
+
+  const renderItem = (item: (typeof itens)[number], menuLider = false) => (
+    <SidebarMenuItem key={item.url}>
+      <SidebarMenuButton
+        asChild
+        isActive={pathname === item.url}
+        tooltip={item.title}
+        className={
+          menuLider
+            ? "text-amber-800/90 hover:bg-amber-500/15 hover:text-amber-950 data-[active=true]:bg-amber-500/20 data-[active=true]:text-amber-950 dark:text-amber-100/90 dark:hover:bg-amber-400/15 dark:hover:text-amber-50 dark:data-[active=true]:bg-amber-400/20 dark:data-[active=true]:text-amber-50"
+            : undefined
+        }
+      >
+        <Link to={item.url} className="flex items-center gap-2">
+          <item.icon className="size-4" />
+          <span>{item.title}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
 
   return (
     <Sidebar variant="floating" collapsible="icon" className="border-none">
@@ -151,20 +227,26 @@ export function AppSidebar() {
             Navegação
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              {itensVisiveis.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url} tooltip={item.title}>
-                    <Link to={item.url} className="flex items-center gap-2">
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+            <SidebarMenu>{itensFornecedor.map((item) => renderItem(item))}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {usuarioInterno && itensLider.length > 0 ? (
+          <SidebarGroup className="mx-2 mb-2 w-auto rounded-xl border border-amber-500/25 bg-amber-500/10 p-2 dark:border-amber-400/20 dark:bg-amber-400/10">
+            <SidebarGroupLabel className="h-auto min-h-8 flex-col items-start justify-center gap-0.5 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.16em] text-amber-800 dark:text-amber-200">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="size-3.5" />
+                Área interna · Líder
+              </span>
+              <span className="text-[0.56rem] font-medium normal-case tracking-normal text-amber-800/70 dark:text-amber-200/70">
+                Visível somente para a equipe interna
+              </span>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{itensLider.map((item) => renderItem(item, true))}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">

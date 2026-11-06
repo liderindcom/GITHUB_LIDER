@@ -6,31 +6,31 @@ import {
   Package,
   PackagePlus,
   PiggyBank,
+  Search,
   TrendingUp,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-} from "recharts";
+import { Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 
 import { PortalLayout } from "@/components/portal-layout";
 import { usePortal } from "@/context/portal-context";
-import { fetchComprasAno, type ComprasAnoDB } from "@/api";
+import {
+  fetchAtualizacaoDadosFornecedor,
+  fetchComprasAno,
+  fetchVendasPorLoja,
+  type AtualizacaoDadosFornecedorDB,
+  type ComprasAnoDB,
+  type VendasPorLojaDB,
+} from "@/api";
+import { Input } from "@/components/ui/input";
 import { filtroMercadologicoAtivo } from "@/lib/filtro-mercadologico";
-import { brl, dataBR, numero, percentual } from "@/lib/format";
+import { brl, dataBR, dataHoraBR, numero, percentual } from "@/lib/format";
 import {
   codigoProdutoComDigito,
   estoque,
   estoqueMinimoCalculado,
   faturasDoFornecedor,
+  lojas,
   nomeLoja,
   nomeLojaPorLocal,
   produtos,
@@ -39,6 +39,7 @@ import {
 } from "@/lib/mock-data";
 import { mesFechadoIso, rotuloMesAno } from "@/lib/pedidos-janela";
 import { calcularSugestoesCompraCdam } from "@/lib/sugestao-compra";
+import { lojaForaRelatorioVendas } from "@/lib/lojas-excluidas-vendas";
 
 export const Route = createFileRoute("/_portal/dashboard")({
   head: () => ({
@@ -58,7 +59,6 @@ export const Route = createFileRoute("/_portal/dashboard")({
   component: Dashboard,
 });
 
-const CORES = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"];
 const MESES_CURTO = [
   "jan",
   "fev",
@@ -128,11 +128,37 @@ function Painel({ className = "", children }: { className?: string; children: Re
   );
 }
 
+function alertaDaCarga(dados: AtualizacaoDadosFornecedorDB | null): string | null {
+  if (!dados) return "carga sem registro";
+  // A execução global pode ter falhas parciais. O alerta do Dashboard deve
+  // refletir o fornecedor selecionado, sem penalizar quem concluiu com sucesso.
+  if (dados.status === "FALHA") return "carga com falha";
+  if (dados.status !== "SUCESSO" && dados.execucaoStatus === "FALHA") {
+    return "carga com falha";
+  }
+  if (dados.execucaoStatus === "INICIADO") {
+    const inicio = dados.execucaoInicioEm ? new Date(dados.execucaoInicioEm).getTime() : 0;
+    if (!inicio || Date.now() - inicio > 2 * 60 * 60 * 1000) return "carga travada";
+    return "carga em andamento";
+  }
+  if (!dados.ultimoSucessoEm) return "carga sem sucesso registrado";
+  const sucesso = new Date(dados.ultimoSucessoEm).getTime();
+  if (!sucesso || Date.now() - sucesso > 26 * 60 * 60 * 1000) return "carga atrasada";
+  return null;
+}
+
 function Dashboard() {
   const navigate = useNavigate();
-  const { fornecedor, codigoFornecedorAtivo, dadosFornecedorVersao, filtroMercadologico } = usePortal();
+  const { fornecedor, codigoFornecedorAtivo, dadosFornecedorVersao, filtroMercadologico } =
+    usePortal();
   const ateMesPadrao = mesFechadoIso();
   const [comprasAno, setComprasAno] = useState<ComprasAnoDB | null>(null);
+  const [vendasPorLoja, setVendasPorLoja] = useState<VendasPorLojaDB | null>(null);
+  const [atualizacaoDados, setAtualizacaoDados] = useState<AtualizacaoDadosFornecedorDB | null>(
+    null,
+  );
+  const [buscaLoja, setBuscaLoja] = useState("");
+  const alertaCarga = alertaDaCarga(atualizacaoDados);
   const mixAtivo = filtroMercadologicoAtivo(filtroMercadologico);
   const rotuloMix = [
     filtroMercadologico.segmento,
@@ -166,6 +192,41 @@ function Dashboard() {
     };
   }, [codigoFornecedorAtivo, ateMesPadrao, dadosFornecedorVersao, filtroMercadologico]);
 
+  useEffect(() => {
+    let ativo = true;
+    fetchVendasPorLoja({
+      data: {
+        fornecedorCodigo: codigoFornecedorAtivo,
+        filtro: filtroMercadologico,
+      },
+    })
+      .then((dados) => {
+        if (ativo) setVendasPorLoja(dados);
+      })
+      .catch((err) => {
+        console.error("Erro ao carregar vendas por loja:", err);
+        if (ativo) setVendasPorLoja(null);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [codigoFornecedorAtivo, dadosFornecedorVersao, filtroMercadologico]);
+
+  useEffect(() => {
+    let ativo = true;
+    fetchAtualizacaoDadosFornecedor({ data: codigoFornecedorAtivo })
+      .then((dados) => {
+        if (ativo) setAtualizacaoDados(dados);
+      })
+      .catch((err) => {
+        console.error("Erro ao carregar a data da atualização dos dados:", err);
+        if (ativo) setAtualizacaoDados(null);
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [codigoFornecedorAtivo, dadosFornecedorVersao]);
+
   const pedidoAno = comprasAno?.pedido ?? 0;
   const entregueAno = comprasAno?.entregue ?? 0;
   const perdaAno = comprasAno?.perda ?? 0;
@@ -198,16 +259,47 @@ function Dashboard() {
     return porMes;
   }, [comprasAno, ano, mesLimite]);
 
-  const comprasPorLoja = useMemo(() => {
-    return (comprasAno?.destinos ?? [])
-      .filter((d) => Number(d.perda || 0) > 0)
-      .map((d) => ({
-        nome: nomeLoja(d.lojaId),
-        valor: Number(d.perda || 0),
-      }));
-  }, [comprasAno]);
+  const vendasLojasResumo = useMemo(() => {
+    const porLoja = new Map<
+      string,
+      { lojaId: string; nome: string; faturamento: number; quantidade: number }
+    >();
+    for (const loja of lojas.filter(
+      (item) => item.tipo !== "D" && !lojaForaRelatorioVendas(item.id),
+    )) {
+      porLoja.set(loja.id, { lojaId: loja.id, nome: loja.nome, faturamento: 0, quantidade: 0 });
+    }
+    const idsPorReferencia = new Map<string, string>();
+    for (const loja of lojas) {
+      idsPorReferencia.set(loja.id, loja.id);
+      idsPorReferencia.set(loja.idLocal, loja.id);
+    }
+    for (const linha of vendasPorLoja?.linhas ?? []) {
+      const lojaId = idsPorReferencia.get(String(linha.lojaId)) ?? String(linha.lojaId);
+      const atual = porLoja.get(lojaId) ?? {
+        lojaId,
+        nome: nomeLoja(String(linha.lojaId)),
+        faturamento: 0,
+        quantidade: 0,
+      };
+      atual.faturamento += Number(linha.faturamento || 0);
+      atual.quantidade += Number(linha.quantidade || 0);
+      porLoja.set(lojaId, atual);
+    }
+    return [...porLoja.values()].sort(
+      (a, b) => b.faturamento - a.faturamento || a.nome.localeCompare(b.nome, "pt-BR"),
+    );
+  }, [vendasPorLoja]);
 
-  const lojasPizza = comprasPorLoja.slice(0, 6);
+  const vendasLojasFiltradas = useMemo(() => {
+    const termo = buscaLoja.trim().toLowerCase();
+    if (!termo) return vendasLojasResumo;
+    return vendasLojasResumo.filter((loja) =>
+      `${loja.nome} ${loja.lojaId}`.toLowerCase().includes(termo),
+    );
+  }, [buscaLoja, vendasLojasResumo]);
+  const faturamentoPorLoja = vendasLojasResumo.reduce((acc, loja) => acc + loja.faturamento, 0);
+  const quantidadePorLoja = vendasLojasResumo.reduce((acc, loja) => acc + loja.quantidade, 0);
   const rupturas = estoque.filter((e) => statusEstoque(e) !== "Confortável");
   const skusMonitorados = new Set(estoque.map((e) => e.sku)).size;
   const lojasComEstoque = new Set(estoque.map((e) => e.lojaId)).size;
@@ -309,7 +401,22 @@ function Dashboard() {
 
   return (
     <PortalLayout
-      titulo="Dashboard"
+      titulo={
+        <span className="inline-flex min-w-0 items-baseline gap-2">
+          <span>Dashboard</span>
+          <span className="truncate font-sans text-xs font-medium text-muted-foreground sm:text-sm">
+            · Última atualização:{" "}
+            {atualizacaoDados?.ultimoSucessoEm
+              ? dataHoraBR(atualizacaoDados.ultimoSucessoEm)
+              : "indisponível"}
+          </span>
+          {alertaCarga ? (
+            <span className="truncate font-sans text-xs font-semibold text-warning sm:text-sm">
+              · {alertaCarga}
+            </span>
+          ) : null}
+        </span>
+      }
       descricao={
         mixAtivo
           ? `Visão geral · mix ${rotuloMix}`
@@ -328,9 +435,9 @@ function Dashboard() {
                 {brl(perdaAno)}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                O Líder pediu {brl(pedidoAno)}. Entregue {brl(entregueAno)}. Pedido aberto e
-                parcial entram pelo que faltou. {numero(pedidosEmAberto)} de {numero(pedidosAno)}{" "}
-                pedido{pedidosAno === 1 ? "" : "s"} ainda incompleto
+                O Líder pediu {brl(pedidoAno)}. Entregue {brl(entregueAno)}. Pedido aberto e parcial
+                entram pelo que faltou. {numero(pedidosEmAberto)} de {numero(pedidosAno)} pedido
+                {pedidosAno === 1 ? "" : "s"} ainda incompleto
                 {pedidosEmAberto === 1 ? "" : "s"}.
               </p>
             </div>
@@ -400,52 +507,59 @@ function Dashboard() {
           ))}
         </div>
 
-        {/* Participação por loja */}
+        {/* Vendas por loja */}
         <Painel className="lg:col-span-2">
-          <p className="font-display text-base font-semibold">Onde faltou entregar</p>
-          <p className="text-xs text-muted-foreground">Perda por destino até {rotuloAte}</p>
-          <div className="mt-2 h-44">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={lojasPizza}
-                  dataKey="valor"
-                  nameKey="nome"
-                  innerRadius={48}
-                  outerRadius={72}
-                  paddingAngle={3}
-                  stroke="none"
-                >
-                  {lojasPizza.map((loja, i) => (
-                    <Cell key={loja.nome} fill={CORES[i % CORES.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(v: number) => brl(v)}
-                  contentStyle={{
-                    borderRadius: 14,
-                    border: "1px solid var(--border)",
-                    background: "var(--popover)",
-                    color: "var(--popover-foreground)",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-display text-base font-semibold">Vendas por loja</p>
+              <p className="text-xs text-muted-foreground">
+                Sell-out dos últimos {vendasPorLoja?.dias ?? 30} dias · clique em uma loja para
+                detalhar
+              </p>
+            </div>
+            <a href="/vendas-loja" className="text-xs font-semibold text-primary hover:underline">
+              Ver análise
+            </a>
           </div>
-          <div className="mt-3 space-y-1.5">
-            {lojasPizza.map((loja, i) => (
-              <div key={loja.nome} className="flex items-center gap-2 text-xs">
-                <span
-                  className="size-2.5 shrink-0 rounded-full"
-                  style={{ background: CORES[i % CORES.length] }}
-                />
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">{loja.nome}</span>
-                <span className="font-semibold">{brl(loja.valor)}</span>
-              </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="relative">
+              <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                value={buscaLoja}
+                onChange={(event) => setBuscaLoja(event.target.value)}
+                placeholder="Buscar loja..."
+                className="h-9 pl-9"
+              />
+            </div>
+            <div className="text-right text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{brl(faturamentoPorLoja)}</span> ·{" "}
+              {numero(Math.round(quantidadePorLoja))} un
+            </div>
+          </div>
+          <div className="mt-3 max-h-[22rem] overflow-auto rounded-2xl border border-border">
+            <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-border bg-muted/95 px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span>Loja</span>
+              <span className="text-right">Venda</span>
+              <span className="text-right">Un.</span>
+            </div>
+            {vendasLojasFiltradas.map((loja) => (
+              <a
+                key={loja.lojaId}
+                href={`/vendas-loja?loja=${encodeURIComponent(loja.lojaId)}`}
+                className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border/70 px-3 py-2.5 text-xs transition-colors last:border-0 hover:bg-muted/50"
+              >
+                <span className="min-w-0 truncate font-medium" title={loja.nome}>
+                  {loja.nome}
+                </span>
+                <span className="text-right font-semibold">{brl(loja.faturamento)}</span>
+                <span className="min-w-[3.5rem] text-right text-muted-foreground">
+                  {numero(Math.round(loja.quantidade))}
+                </span>
+              </a>
             ))}
-            {comprasPorLoja.length > lojasPizza.length ? (
-              <p className="pt-1 text-[0.7rem] text-muted-foreground">
-                + {comprasPorLoja.length - lojasPizza.length} destino(s)
+            {!vendasLojasFiltradas.length ? (
+              <p className="px-3 py-8 text-center text-xs text-muted-foreground">
+                Nenhuma loja encontrada.
               </p>
             ) : null}
           </div>
@@ -500,8 +614,12 @@ function Dashboard() {
               <div className="mt-3 space-y-1.5">
                 {topStars.slice(0, 3).map((item) => (
                   <div key={item.sku} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="min-w-0 truncate font-medium">Top Star - {item.descricao}</span>
-                    <span className={item.emRuptura ? "shrink-0 text-danger" : "shrink-0 text-success"}>
+                    <span className="min-w-0 truncate font-medium">
+                      Top Star - {item.descricao}
+                    </span>
+                    <span
+                      className={item.emRuptura ? "shrink-0 text-danger" : "shrink-0 text-success"}
+                    >
                       {item.emRuptura ? "Ruptura" : "Monitorar"}
                     </span>
                   </div>
@@ -551,7 +669,8 @@ function Dashboard() {
             ))}
             {rupturas.length > 6 && (
               <p className="text-center text-[0.7rem] text-muted-foreground mt-2 font-medium">
-                + {rupturas.length - 6} itens em atenção ou ruptura. Acompanhe todos no menu Estoque.
+                + {rupturas.length - 6} itens em atenção ou ruptura. Acompanhe todos no menu
+                Estoque.
               </p>
             )}
           </div>
