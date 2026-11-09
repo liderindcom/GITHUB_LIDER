@@ -109,6 +109,7 @@ function VendasPorLojaPage() {
         filtro: filtroMercadologico,
         dias,
         lojaId: lojaSelecionada,
+        incluirLinhas: false,
       },
     })
       .then((resultado) => {

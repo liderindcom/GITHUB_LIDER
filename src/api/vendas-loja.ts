@@ -40,6 +40,12 @@ export type VendasPorLojaDB = {
   itens: VendaPorLojaItemDB[];
 };
 
+const CACHE_VENDAS_POR_LOJA_TTL_MS = 2 * 60_000;
+const cacheVendasPorLoja = new Map<
+  string,
+  { expiresAt: number; linhas: VendaPorLojaDiaDB[] }
+>();
+
 function proximoDiaIso(data: string): string {
   const [ano, mes, dia] = data.slice(0, 10).split("-").map(Number);
   const proximo = new Date(Date.UTC(ano, mes - 1, dia));
@@ -65,12 +71,14 @@ export const fetchVendasPorLoja = createServerFn({ method: "POST" })
       filtro?: FiltroMercadologico;
       dias?: number;
       lojaId?: string;
+      incluirLinhas?: boolean;
     }) => ({
       fornecedorCodigo: soDigitos(data.fornecedorCodigo),
       filtro: data.filtro ?? FILTRO_VAZIO,
       dias: Math.min(90, Math.max(7, Math.trunc(Number(data.dias) || JANELA_VENDAS_LOJA_DIAS))),
       lojaId:
         typeof data.lojaId === "string" && data.lojaId.trim() ? soDigitos(data.lojaId) : undefined,
+      incluirLinhas: data.incluirLinhas !== false,
     }),
   )
   .handler(async ({ data }) => {
@@ -112,25 +120,41 @@ export const fetchVendasPorLoja = createServerFn({ method: "POST" })
       ...(data.lojaId ? [data.lojaId] : []),
       ...(skusMix ?? []),
     ];
-    const linhas = db
-      .prepare(
-        `SELECT substr(v.data, 1, 10) AS data,
-                v.lojaid AS lojaId,
-                SUM(COALESCE(v.quantidade, 0)) AS quantidade,
-                SUM(COALESCE(v.quantidade, 0) * COALESCE(v.valorunitario, 0)) AS faturamento,
-                COUNT(DISTINCT v.sku) AS skus
-         FROM vendas v
-         JOIN produtos p ON v.sku = p.sku
-         WHERE ${sqlSkuVisivel("p")}
-           AND v.lojaid NOT IN (${sqlLojasForaPortal}, ${sqlLojasForaRelatorioVendas})
-           AND v.data >= ?
-           AND v.data < ?
-           ${sqlLoja}
-           ${sqlSkuMix}
-         GROUP BY substr(v.data, 1, 10), v.lojaid
-         ORDER BY data DESC, faturamento DESC`,
-      )
-      .all(...params) as VendaPorLojaDiaDB[];
+    const chaveCache = `${fornecedorCodigo}:${data.dias}:${JSON.stringify(data.filtro)}`;
+    const cacheAtual =
+      !data.lojaId && data.incluirLinhas ? cacheVendasPorLoja.get(chaveCache) : undefined;
+    let linhas: VendaPorLojaDiaDB[] = [];
+    if (data.incluirLinhas) {
+      if (cacheAtual && cacheAtual.expiresAt > Date.now()) {
+        linhas = cacheAtual.linhas;
+      } else {
+        linhas = db
+          .prepare(
+            `SELECT substr(v.data, 1, 10) AS data,
+                    v.lojaid AS lojaId,
+                    SUM(COALESCE(v.quantidade, 0)) AS quantidade,
+                    SUM(COALESCE(v.quantidade, 0) * COALESCE(v.valorunitario, 0)) AS faturamento,
+                    COUNT(DISTINCT v.sku) AS skus
+             FROM vendas v
+             JOIN produtos p ON v.sku = p.sku
+             WHERE ${sqlSkuVisivel("p")}
+               AND v.lojaid NOT IN (${sqlLojasForaPortal}, ${sqlLojasForaRelatorioVendas})
+               AND v.data >= ?
+               AND v.data < ?
+               ${sqlLoja}
+               ${sqlSkuMix}
+             GROUP BY substr(v.data, 1, 10), v.lojaid
+             ORDER BY data DESC, faturamento DESC`,
+          )
+          .all(...params) as VendaPorLojaDiaDB[];
+        if (!data.lojaId) {
+          cacheVendasPorLoja.set(chaveCache, {
+            expiresAt: Date.now() + CACHE_VENDAS_POR_LOJA_TTL_MS,
+            linhas,
+          });
+        }
+      }
+    }
 
     let itens: VendaPorLojaItemDB[] = [];
     if (data.lojaId) {

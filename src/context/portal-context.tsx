@@ -282,6 +282,19 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const agendarCargaDadosFornecedor = useCallback(
+    (code: string) => {
+      if (typeof window === "undefined") return;
+      const carregar = () => void carregarDadosReaisFornecedor(code);
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(carregar, { timeout: 10_000 });
+        return;
+      }
+      window.setTimeout(carregar, 5_000);
+    },
+    [carregarDadosReaisFornecedor],
+  );
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const bruto = window.sessionStorage.getItem(CHAVE_SESSAO);
@@ -339,7 +352,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           // plano e atualizar o cache conforme cada tela for usada.
           // Dê prioridade à rota aberta pelo usuário. A carga global envolve
           // vários conjuntos e não deve concorrer com o primeiro conteúdo da tela.
-          window.setTimeout(() => void carregarDadosReaisFornecedor(code), 1_500);
+          agendarCargaDadosFornecedor(code);
         }
       } catch {
         window.sessionStorage.removeItem(CHAVE_SESSAO);
@@ -350,7 +363,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelado = true;
     };
-  }, [carregarDadosReaisFornecedor]);
+  }, [agendarCargaDadosFornecedor]);
 
   useEffect(() => {
     if (typeof window === "undefined" || carregandoSessao) return;
@@ -387,19 +400,19 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         const jaAtivo = getActiveSupplierCode();
         setActiveSupplierCode(jaAtivo);
         setCodigoFornecedorAtivo(jaAtivo);
-        void carregarDadosReaisFornecedor(jaAtivo);
+        agendarCargaDadosFornecedor(jaAtivo);
         setPrimeiroAcessoConcluido(true);
       } else if (codigoFornecedor) {
         setUsuarioInterno(null);
         setUsuarioFornecedor(contaFornecedor ?? null);
         setActiveSupplierCode(codigoFornecedor);
         setCodigoFornecedorAtivo(codigoFornecedor);
-        carregarDadosReaisFornecedor(codigoFornecedor);
+        agendarCargaDadosFornecedor(codigoFornecedor);
         setPrimeiroAcessoConcluido(!contaFornecedor?.precisaTrocarSenha);
       }
       setAutenticado(true);
     },
-    [carregarDadosReaisFornecedor],
+    [agendarCargaDadosFornecedor],
   );
   const sair = useCallback(() => {
     setAutenticado(false);
