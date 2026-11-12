@@ -21,6 +21,7 @@ import oracledb
 ROOT = Path("/lider/portal-fornecedor")
 ENV = ROOT / ".env.postgres"
 JERONIMO_LOC = (132, 450, 469, 493, 515, 523, 531, 566, 574, 582, 639, 647, 710, 736, 752, 760, 779, 809, 817, 841, 850, 868, 876, 884, 892, 906, 914, 922)
+CODIGOS_FORNECEDOR_COMPLETOS = {"101354", "200069", "104949"}
 
 
 def janela_13_meses() -> tuple[int, int]:
@@ -103,6 +104,8 @@ def parse_rms7(raw: object) -> str | None:
 def normalizar_fornecedor(raw: object) -> str:
     """TB_AG520 traz o código com dígito; o Portal usa o código fiscal base."""
     text = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    if text in CODIGOS_FORNECEDOR_COMPLETOS:
+        return text
     if len(text) >= 2:
         base = text[:-1]
         peso, soma = 2, 0

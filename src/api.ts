@@ -215,11 +215,7 @@ import {
   lerSessaoPortal,
   resolverCodigoFornecedorDados,
 } from "./server/sessao-portal";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { randomUuid } from "@/lib/uuid";
-
-const execAsync = promisify(exec);
 
 export function ensureFornecedoresColumns() {
   // Safe migrations run on startup in db.ts
@@ -1939,21 +1935,14 @@ export const updateSupplierCarencia = createServerFn({ method: "POST" })
 
 export const refreshSupplierDataImmediately = createServerFn({ method: "POST" })
   .validator((data: { codigo: string }) => ({ codigo: soDigitos(data.codigo) }))
-  .handler(async ({ data }) => {
+  .handler(({ data }) => {
     exigirInterno();
     const codigo = resolverCodigoFornecedorDados(data.codigo);
     if (!codigo) throw new Error("Código de fornecedor inválido.");
-
-    try {
-      const cmd = `LD_LIBRARY_PATH=/home/administrador/instantclient_19_25 /home/administrador/deepseek-env/bin/python3 /home/administrador/rms/scripts/apply_portal_refresh_fornecedor.py --codigo ${codigo}`;
-      const { stdout, stderr } = await execAsync(cmd);
-      console.log("Atualização RMS imediata:", stdout, stderr);
-      return {
-        success: true,
-        message: "Atualização no RMS realizada com sucesso!",
-      };
-    } catch (err) {
-      console.error("Erro ao sincronizar fornecedor imediatamente:", err);
-      throw new Error("Erro de execução no script de sincronização do RMS.");
-    }
+    iniciarCargaRmsAssincrona(codigo);
+    return {
+      success: true,
+      accepted: true,
+      message: "Atualização RMS iniciada em segundo plano. Acompanhe o status da carga.",
+    };
   });
