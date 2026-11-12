@@ -39,7 +39,10 @@ export function normalizarCodigoFornecedor(code: string | null | undefined): str
   if (n.length >= 6) {
     const base = n.slice(0, -1);
     const dv = n.slice(-1);
-    const EXCLUSIONS = ["101354", "200069"];
+    // Estes códigos são canônicos com seis dígitos no cadastro operacional,
+    // embora o último dígito também coincida com o DV calculado. Não remover
+    // o dígito: pedidos e NF-es do fornecedor usam o código completo.
+    const EXCLUSIONS = ["101354", "200069", "104949"];
     if (digitoVerificadorFornecedor(base) === dv && !EXCLUSIONS.includes(n)) return base;
   }
   return n;
