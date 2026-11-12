@@ -6,6 +6,7 @@
 **Fase/backlog:** correção operacional de identificação do fornecedor Cimed 104949
 **Pedido/decisão vinculada:** tickets Harness de commit/deploy aprovados por Oscar; commit `0186fdf`
 **Status:** validado
+**Protocolo aplicado:** `/home/administrador/AGENTS.md`, bloco gerenciado `PROTOCOLO_MAOADC.md` (Tier 3; fechamento e controle de código).
 
 ## Objetivo e alteração
 
