@@ -106,6 +106,7 @@ const itens = [
 ] as const;
 
 const urlsMenuLider = new Set([
+  "/rentabilidade",
   "/admin-precos",
   "/admin-fornecedores",
   "/admin-acordo-acesso",
@@ -157,7 +158,8 @@ export function AppSidebar() {
         item.url === "/admin-precos" ||
         item.url === "/admin-acordo-acesso" ||
         item.url === "/controle-promotores" ||
-        item.url === "/indicadores-fornecedores"
+        item.url === "/indicadores-fornecedores" ||
+        item.url === "/rentabilidade"
       ) {
         return usuarioInterno !== null;
       }

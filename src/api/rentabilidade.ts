@@ -14,8 +14,8 @@ import {
 } from "@/lib/mock-data";
 import { segmentoIntelider } from "@/lib/acordo-acesso";
 import { db } from "../server/db";
-import { exigirInterno, lerSessaoPortal } from "../server/sessao-portal";
-import { colunaExiste, sqlSkuVisivel, tabelaExiste } from "./db-support";
+import { exigirInterno } from "../server/sessao-portal";
+import { colunaExiste, tabelaExiste } from "./db-support";
 import type { RentabilidadeDB, RentabilidadeLinhaDB, RentabilidadeRebaixaDB } from "./contracts";
 
 type RentabilidadeProdutoRow = {
@@ -261,8 +261,7 @@ function linhasMockRentabilidade(
           valorUnitario: Number(venda.valorUnitario ?? 0),
         });
       }
-      // O proxy de demonstração usa Nestlé como fallback para qualquer código;
-      // não podemos atribuir essa amostra aos demais fornecedores do benchmark.
+      // O proxy de demonstração usa Nestlé como fallback para qualquer código.
       const ofertasDoFornecedor = codigo === DEMO_FORNECEDOR_CODIGO ? rebaixasMock : [];
       for (const oferta of ofertasDoFornecedor) {
         const inicio = dataRentabilidade(oferta.dataInicio);
@@ -315,9 +314,7 @@ function montarRentabilidade(
   nomes: Map<string, string>,
   de: string,
   ate: string,
-  modo: "interno" | "fornecedor",
   fonte: "live" | "mock",
-  fornecedorAlvo: string | null,
 ): RentabilidadeDB {
   const porProduto = new Map<string, RentabilidadeLinhaDB>();
   for (const venda of vendas) {
@@ -587,64 +584,9 @@ function montarRentabilidade(
 
   const linhas = [...linhasBase, ...linhasCreditosRecebidosNaoAlocados];
 
-  let benchmark: RentabilidadeDB["benchmark"] = null;
-  let linhasVisiveis = linhas;
-  let rebaixasVisiveis = rebaixas;
-  let rebaixasNaoAlocadasVisiveis = rebaixasNaoAlocadas;
-  if (modo === "fornecedor" && fornecedorAlvo) {
-    const porFornecedor = new Map<string, RentabilidadeLinhaDB[]>();
-    for (const linha of linhas) {
-      const lista = porFornecedor.get(linha.fornecedorCodigo) || [];
-      lista.push(linha);
-      porFornecedor.set(linha.fornecedorCodigo, lista);
-    }
-    const comparaveis = Array.from(porFornecedor.entries())
-      .filter(([codigo]) => codigo !== fornecedorAlvo)
-      .map(([, lista]) => {
-        const receita = lista.reduce((total, linha) => total + linha.receitaLiquida, 0);
-        const resultadoGerencial = lista.reduce(
-          (total, linha) => total + linha.resultadoGerencial,
-          0,
-        );
-        const resultadoRealizado = lista.reduce(
-          (total, linha) => total + linha.resultadoRealizado,
-          0,
-        );
-        return {
-          receita,
-          resultadoGerencial,
-          resultadoRealizado,
-          margemGerencialPct: receita > 0 ? (resultadoGerencial / receita) * 100 : 0,
-          margemRealizadaPct: receita > 0 ? (resultadoRealizado / receita) * 100 : 0,
-        };
-      });
-    const participantes = comparaveis.length;
-    if (participantes > 0) {
-      benchmark = {
-        participantes,
-        receitaMedia: arredondarRentabilidade(
-          comparaveis.reduce((total, item) => total + item.receita, 0) / participantes,
-        ),
-        resultadoGerencialMedio: arredondarRentabilidade(
-          comparaveis.reduce((total, item) => total + item.resultadoGerencial, 0) / participantes,
-        ),
-        margemGerencialMediaPct: arredondarRentabilidade(
-          comparaveis.reduce((total, item) => total + item.margemGerencialPct, 0) / participantes,
-        ),
-        resultadoRealizadoMedio: arredondarRentabilidade(
-          comparaveis.reduce((total, item) => total + item.resultadoRealizado, 0) / participantes,
-        ),
-        margemRealizadaMediaPct: arredondarRentabilidade(
-          comparaveis.reduce((total, item) => total + item.margemRealizadaPct, 0) / participantes,
-        ),
-      };
-    }
-    linhasVisiveis = linhas.filter((linha) => linha.fornecedorCodigo === fornecedorAlvo);
-    rebaixasVisiveis = rebaixas.filter((item) => item.fornecedorCodigo === fornecedorAlvo);
-    rebaixasNaoAlocadasVisiveis = rebaixasNaoAlocadas.filter(
-      (item) => item.fornecedorCodigo === fornecedorAlvo,
-    );
-  }
+  const linhasVisiveis = agruparLinhasRentabilidadeInterna(linhas);
+  const rebaixasVisiveis: RentabilidadeRebaixaDB[] = [];
+  const rebaixasNaoAlocadasVisiveis = rebaixasNaoAlocadas;
 
   const linhasEstoqueVisiveis = linhasVisiveis;
   const estoqueVisivel = linhasEstoqueVisiveis.reduce(
@@ -670,15 +612,8 @@ function montarRentabilidade(
       ? estoqueVisivel.valor / (cmvPeriodo / diasPeriodo)
       : null;
 
-  if (modo === "interno") {
-    linhasVisiveis = agruparLinhasRentabilidadeInterna(linhasVisiveis);
-    // A tabela interna usa apenas os totais das linhas e a conciliação
-    // resumida; o detalhamento de cada rebaixa fica reservado ao fornecedor.
-    rebaixasVisiveis = [];
-  }
-
   return {
-    modo,
+    modo: "interno",
     fonte,
     periodo: { de, ate },
     linhas: linhasVisiveis,
@@ -690,29 +625,20 @@ function montarRentabilidade(
       valor: arredondarRentabilidade(estoqueVisivel.valor),
       coberturaDias: coberturaDias === null ? null : arredondarRentabilidade(coberturaDias),
     },
-    benchmark,
   };
 }
 
 export const fetchRentabilidade = createServerFn({ method: "GET" })
-  .validator((data: { de: string; ate: string; modo: "interno" | "fornecedor" }) => {
+  .validator((data: { de: string; ate: string }) => {
     const de = data.de.slice(0, 10);
     const ate = data.ate.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate) || de > ate) {
       throw new Error("Período inválido para a rentabilidade.");
     }
-    const modo = data.modo === "interno" ? ("interno" as const) : ("fornecedor" as const);
-    return { de, ate, modo };
+    return { de, ate };
   })
   .handler(async ({ data }) => {
-    let fornecedorCodigo: string | null = null;
-    if (data.modo === "interno") {
-      exigirInterno();
-    } else {
-      const sessao = lerSessaoPortal();
-      if (!sessao || sessao.tipo !== "fornecedor") throw new Error("Sessão do fornecedor exigida.");
-      fornecedorCodigo = codigoRentabilidade(sessao.codigo);
-    }
+    exigirInterno();
 
     const nomes = new Map<string, string>();
     try {
@@ -731,7 +657,6 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
       nomes.set(codigoRentabilidade(row.codigo), row.nome);
     }
 
-    const fornecedoresPermitidos = fornecedorCodigo ? [fornecedorCodigo] : null;
     const vendas: RentabilidadeProdutoRow[] = [];
     const estoques: RentabilidadeEstoqueRow[] = [];
     const ofertas: RentabilidadeOfertaRow[] = [];
@@ -742,10 +667,8 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
     try {
       if (tabelaExiste("vendas") && tabelaExiste("produtos")) {
         consultouLive = true;
-        const filtroFornecedor = fornecedorCodigo ? "AND p.fornecedorCodigo = ?" : "";
-        const params: unknown[] = fornecedorCodigo
-          ? [data.de, data.ate, fornecedorCodigo]
-          : [data.de, data.ate];
+        const filtroFornecedor = "";
+        const params: unknown[] = [data.de, data.ate];
         const rows = db
           .prepare(
             `SELECT p.fornecedorCodigo AS fornecedorCodigo, v.sku, p.descricao,
@@ -769,9 +692,9 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
         vendas.push(...rows);
       }
       if (tabelaExiste("estoque") && tabelaExiste("produtos")) {
-        const estoquePorSku = data.modo !== "interno";
-        const filtroFornecedorEstoque = fornecedorCodigo ? `AND ${sqlSkuVisivel("p")}` : "";
-        const paramsEstoque: unknown[] = fornecedorCodigo ? [fornecedorCodigo] : [];
+        const estoquePorSku = false;
+        const filtroFornecedorEstoque = "";
+        const paramsEstoque: unknown[] = [];
         const dataEstoqueSql = colunaExiste("estoque", "dataEstoque")
           ? "MAX(e.dataEstoque)"
           : "NULL";
@@ -849,14 +772,7 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
 
     if (!consultouLive) {
       fonte = "mock";
-      const codigos = fornecedoresPermitidos
-        ? [
-            ...new Set([
-              ...fornecedoresMock.map((row) => codigoRentabilidade(row.codigo)),
-              ...fornecedoresPermitidos,
-            ]),
-          ]
-        : fornecedoresMock.map((row) => codigoRentabilidade(row.codigo));
+      const codigos = fornecedoresMock.map((row) => codigoRentabilidade(row.codigo));
       const mock = linhasMockRentabilidade(codigos, data.de, data.ate);
       vendas.push(...mock.vendas);
       estoques.push(...mock.estoques);
@@ -864,16 +780,5 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
       contas.push(...mock.contas);
     }
 
-    return montarRentabilidade(
-      vendas,
-      estoques,
-      ofertas,
-      contas,
-      nomes,
-      data.de,
-      data.ate,
-      data.modo,
-      fonte,
-      fornecedorCodigo,
-    );
+    return montarRentabilidade(vendas, estoques, ofertas, contas, nomes, data.de, data.ate, fonte);
   });

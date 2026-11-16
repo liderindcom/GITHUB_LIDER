@@ -331,7 +331,7 @@ export type RentabilidadeRebaixaDB = {
   agendaRms?: string | null;
 };
 export type RentabilidadeDB = {
-  modo: "interno" | "fornecedor";
+  modo: "interno";
   fonte: "live" | "mock";
   periodo: { de: string; ate: string };
   linhas: RentabilidadeLinhaDB[];
@@ -344,14 +344,6 @@ export type RentabilidadeDB = {
     linhasComEstoque: number;
     coberturaDias: number | null;
   };
-  benchmark: {
-    participantes: number;
-    receitaMedia: number;
-    resultadoGerencialMedio: number;
-    margemGerencialMediaPct: number;
-    resultadoRealizadoMedio: number;
-    margemRealizadaMediaPct: number;
-  } | null;
 };
 export type TransferenciaCdamDB = {
   sku: string;

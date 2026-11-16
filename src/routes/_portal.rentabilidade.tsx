@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { BarChart3, Filter, Layers3, PackageSearch, ReceiptText, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -184,9 +184,8 @@ function PaginacaoRentabilidade({
 
 function RentabilidadePage() {
   const { fornecedor, codigoFornecedorAtivo, usuarioInterno } = usePortal();
-  const modo: "interno" | "fornecedor" = usuarioInterno ? "interno" : "fornecedor";
+  const modo: "interno" | "fornecedor" = "interno";
   const fornecedorSelecionado = codigoFornecedorAtivo || fornecedor.codigo;
-  const fornecedorConsulta = modo === "fornecedor" ? fornecedorSelecionado : "";
   const ITENS_POR_PAGINA = 100;
   const [de, setDe] = useState(primeiroDiaMesAnterior);
   const [ate, setAte] = useState(ultimoDiaMesAnterior);
@@ -195,7 +194,6 @@ function RentabilidadePage() {
   const [secao, setSecao] = useState("todos");
   const [grupo, setGrupo] = useState("todos");
   const [subgrupo, setSubgrupo] = useState("todos");
-  const [busca, setBusca] = useState("");
   const [buscaFornecedor, setBuscaFornecedor] = useState("");
   const [dados, setDados] = useState<RentabilidadeDB | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -203,10 +201,16 @@ function RentabilidadePage() {
   const [pagina, setPagina] = useState(1);
 
   useEffect(() => {
+    if (!usuarioInterno) {
+      setDados(null);
+      setCarregando(false);
+      setErro(null);
+      return;
+    }
     let ativo = true;
     setCarregando(true);
     setErro(null);
-    void fetchRentabilidade({ data: { de, ate, modo } })
+    void fetchRentabilidade({ data: { de, ate } })
       .then((resultado) => {
         if (ativo) setDados(resultado);
       })
@@ -223,7 +227,7 @@ function RentabilidadePage() {
     return () => {
       ativo = false;
     };
-  }, [ate, de, fornecedorConsulta, modo]);
+  }, [ate, de, usuarioInterno]);
 
   const linhas = dados?.linhas ?? linhasRentabilidadeVazias;
   const segmentos = useMemo(
@@ -286,9 +290,9 @@ function RentabilidadePage() {
   );
 
   const linhasFiltradas = useMemo(() => {
-    const consulta = modo === "fornecedor" ? busca.trim().toLocaleLowerCase() : "";
-    const consultaFornecedor = modo === "interno" ? buscaFornecedor.trim().toLocaleLowerCase() : "";
-    const fornecedorDaBusca = modo === "fornecedor" ? fornecedorSelecionado : "todos";
+    const consulta = "";
+    const consultaFornecedor = buscaFornecedor.trim().toLocaleLowerCase();
+    const fornecedorDaBusca = "todos";
     return linhas
       .filter(
         (linha) => fornecedorDaBusca === "todos" || linha.fornecedorCodigo === fornecedorDaBusca,
@@ -311,7 +315,7 @@ function RentabilidadePage() {
           .toLocaleLowerCase()
           .includes(consulta);
       });
-  }, [busca, buscaFornecedor, departamento, fornecedorSelecionado, grupo, linhas, modo, secao, segmento, subgrupo]);
+  }, [buscaFornecedor, departamento, grupo, linhas, secao, segmento, subgrupo]);
 
   const resumo = useMemo(() => {
     const resultado = resumir(linhasFiltradas);
@@ -349,7 +353,8 @@ function RentabilidadePage() {
     () => [...linhasFiltradas].sort((a, b) => b.resultadoGerencial - a.resultadoGerencial),
     [linhasFiltradas],
   );
-  const totalItensTabela = modo === "interno" ? fornecedoresVisiveis.length : linhasOrdenadas.length;
+  const totalItensTabela =
+    modo === "interno" ? fornecedoresVisiveis.length : linhasOrdenadas.length;
   const totalPaginas = Math.max(1, Math.ceil(totalItensTabela / ITENS_POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
   const fornecedoresPagina = useMemo(
@@ -362,21 +367,19 @@ function RentabilidadePage() {
   );
   const linhasPagina = useMemo(
     () =>
-      linhasOrdenadas.slice(
-        (paginaAtual - 1) * ITENS_POR_PAGINA,
-        paginaAtual * ITENS_POR_PAGINA,
-      ),
+      linhasOrdenadas.slice((paginaAtual - 1) * ITENS_POR_PAGINA, paginaAtual * ITENS_POR_PAGINA),
     [linhasOrdenadas, paginaAtual],
   );
 
   useEffect(() => {
     setPagina(1);
-  }, [ate, busca, buscaFornecedor, de, departamento, grupo, modo, secao, segmento, subgrupo]);
+  }, [ate, buscaFornecedor, de, departamento, grupo, secao, segmento, subgrupo]);
 
-  const benchmark = dados?.benchmark;
   const margemGerencial = margemPct(resumo.resultadoGerencial, resumo.receitaLiquida);
   const margemRealizada = margemPct(resumo.resultadoRealizado, resumo.receitaLiquida);
-  const fornecedorAtual = fornecedorSelecionado;
+  if (!usuarioInterno) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <PortalLayout
@@ -525,21 +528,6 @@ function RentabilidadePage() {
                 </div>
               </div>
             )}
-            {modo === "fornecedor" ? (
-              <div className="space-y-2">
-                <Label htmlFor="rentabilidade-busca">Produto/SKU</Label>
-                <div className="relative">
-                  <PackageSearch className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-                  <Input
-                    id="rentabilidade-busca"
-                    className="pl-9"
-                    value={busca}
-                    onChange={(event) => setBusca(event.target.value)}
-                    placeholder="Buscar produto do fornecedor selecionado..."
-                  />
-                </div>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 
@@ -598,52 +586,6 @@ function RentabilidadePage() {
           posição exibida é a última disponível na fonte operacional
           {dados?.estoque.data ? ` (${dados.estoque.data.slice(0, 10)})` : ""}.
         </p>
-
-        {modo === "fornecedor" && benchmark ? (
-          <Card className="border-primary/20 shadow-panel">
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="text-base">Comparação com outros fornecedores</CardTitle>
-                  <CardDescription>
-                    Média anonimizada dos demais fornecedores no mesmo período.
-                  </CardDescription>
-                </div>
-                <Badge variant="secondary">{benchmark.participantes} fornecedor(es) na base</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-lg border bg-card p-3">
-                <p className="text-xs text-muted-foreground">Sua margem gerencial</p>
-                <p className="mt-1 text-xl font-bold">{percentual(margemGerencial)}</p>
-                <p className="text-xs text-muted-foreground">
-                  Média: {percentual(benchmark.margemGerencialMediaPct)}
-                </p>
-              </div>
-              <div className="rounded-lg border bg-card p-3">
-                <p className="text-xs text-muted-foreground">Seu resultado</p>
-                <p className="mt-1 text-xl font-bold">{brl(resumo.resultadoGerencial)}</p>
-                <p className="text-xs text-muted-foreground">
-                  Média: {brl(benchmark.resultadoGerencialMedio)}
-                </p>
-              </div>
-              <div className="rounded-lg border bg-card p-3">
-                <p className="text-xs text-muted-foreground">Diferença de margem</p>
-                <p
-                  className={`mt-1 text-xl font-bold ${margemGerencial >= benchmark.margemGerencialMediaPct ? "text-success" : "text-destructive"}`}
-                >
-                  {percentual(margemGerencial - benchmark.margemGerencialMediaPct)}
-                </p>
-                <p className="text-xs text-muted-foreground">Em relação à média</p>
-              </div>
-              <div className="rounded-lg border bg-card p-3">
-                <p className="text-xs text-muted-foreground">Receita média da base</p>
-                <p className="mt-1 text-xl font-bold">{brl(benchmark.receitaMedia)}</p>
-                <p className="text-xs text-muted-foreground">Sem identificar concorrentes</p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
 
         <Card className="shadow-panel">
           <CardHeader className="pb-3">
@@ -764,57 +706,55 @@ function RentabilidadePage() {
                 </TableHeader>
                 <TableBody>
                   {linhasPagina.map((linha) => (
-                      <TableRow key={`${linha.fornecedorCodigo}-${linha.sku}`}>
-                        <TableCell>
-                          <div className="max-w-[20rem] truncate font-medium">
-                            {linha.descricao}
-                          </div>
-                          <div className="font-mono text-[10px] text-muted-foreground">
-                            SKU {linha.sku}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-xs">
-                            {linha.segmento} · {linha.departamento} · {linha.secao}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {linha.grupo} · {linha.subgrupo} · {linha.categoria}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {linha.quantidade.toLocaleString("pt-BR")}
-                        </TableCell>
-                        <TableCell className="text-right">{brl(linha.receitaLiquida)}</TableCell>
-                        <TableCell className="text-right">{brl(linha.cmv)}</TableCell>
-                        <TableCell className="text-right">{brl(linha.rebaixaApurada)}</TableCell>
-                        <TableCell className="text-right">{brl(linha.rebaixaRecebida)}</TableCell>
-                        <TableCell className="text-right">
-                          <div>{brl(linha.estoqueValor)}</div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {linha.estoqueQuantidade.toLocaleString("pt-BR")} un.
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {linha.coberturaDias === null
-                            ? "—"
-                            : `${linha.coberturaDias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} d`}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">
-                          {brl(linha.resultadoGerencial)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Badge
-                            variant={
-                              margemPct(linha.resultadoGerencial, linha.receitaLiquida) >= 0
-                                ? "secondary"
-                                : "destructive"
-                            }
-                          >
-                            {percentual(margemPct(linha.resultadoGerencial, linha.receitaLiquida))}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    <TableRow key={`${linha.fornecedorCodigo}-${linha.sku}`}>
+                      <TableCell>
+                        <div className="max-w-[20rem] truncate font-medium">{linha.descricao}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">
+                          SKU {linha.sku}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs">
+                          {linha.segmento} · {linha.departamento} · {linha.secao}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {linha.grupo} · {linha.subgrupo} · {linha.categoria}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {linha.quantidade.toLocaleString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="text-right">{brl(linha.receitaLiquida)}</TableCell>
+                      <TableCell className="text-right">{brl(linha.cmv)}</TableCell>
+                      <TableCell className="text-right">{brl(linha.rebaixaApurada)}</TableCell>
+                      <TableCell className="text-right">{brl(linha.rebaixaRecebida)}</TableCell>
+                      <TableCell className="text-right">
+                        <div>{brl(linha.estoqueValor)}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {linha.estoqueQuantidade.toLocaleString("pt-BR")} un.
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {linha.coberturaDias === null
+                          ? "—"
+                          : `${linha.coberturaDias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} d`}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {brl(linha.resultadoGerencial)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge
+                          variant={
+                            margemPct(linha.resultadoGerencial, linha.receitaLiquida) >= 0
+                              ? "secondary"
+                              : "destructive"
+                          }
+                        >
+                          {percentual(margemPct(linha.resultadoGerencial, linha.receitaLiquida))}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                   {linhasFiltradas.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
@@ -916,9 +856,7 @@ function RentabilidadePage() {
           {dados?.fonte === "mock"
             ? "Ambiente de demonstração: os dados exibidos usam a base sintética do portal."
             : "Fonte operacional: vendas, produtos, ofertas e contas a receber do portal."}{" "}
-          {modo === "fornecedor"
-            ? `Fornecedor ativo: ${fornecedorAtual}.`
-            : "Visão interna com comparação entre fornecedores."}
+          Visão interna com comparação entre fornecedores.
         </p>
       </div>
     </PortalLayout>

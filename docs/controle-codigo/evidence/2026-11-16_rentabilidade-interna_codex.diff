@@ -1,0 +1,579 @@
+diff --git a/src/api/contracts.ts b/src/api/contracts.ts
+index 520804d..2bdf30d 100644
+--- a/src/api/contracts.ts
++++ b/src/api/contracts.ts
+@@ -331,7 +331,7 @@ export type RentabilidadeRebaixaDB = {
+   agendaRms?: string | null;
+ };
+ export type RentabilidadeDB = {
+-  modo: "interno" | "fornecedor";
++  modo: "interno";
+   fonte: "live" | "mock";
+   periodo: { de: string; ate: string };
+   linhas: RentabilidadeLinhaDB[];
+@@ -344,14 +344,6 @@ export type RentabilidadeDB = {
+     linhasComEstoque: number;
+     coberturaDias: number | null;
+   };
+-  benchmark: {
+-    participantes: number;
+-    receitaMedia: number;
+-    resultadoGerencialMedio: number;
+-    margemGerencialMediaPct: number;
+-    resultadoRealizadoMedio: number;
+-    margemRealizadaMediaPct: number;
+-  } | null;
+ };
+ export type TransferenciaCdamDB = {
+   sku: string;
+diff --git a/src/api/rentabilidade.ts b/src/api/rentabilidade.ts
+index 6ce150a..4dea423 100644
+--- a/src/api/rentabilidade.ts
++++ b/src/api/rentabilidade.ts
+@@ -14,8 +14,8 @@ import {
+ } from "@/lib/mock-data";
+ import { segmentoIntelider } from "@/lib/acordo-acesso";
+ import { db } from "../server/db";
+-import { exigirInterno, lerSessaoPortal } from "../server/sessao-portal";
+-import { colunaExiste, sqlSkuVisivel, tabelaExiste } from "./db-support";
++import { exigirInterno } from "../server/sessao-portal";
++import { colunaExiste, tabelaExiste } from "./db-support";
+ import type { RentabilidadeDB, RentabilidadeLinhaDB, RentabilidadeRebaixaDB } from "./contracts";
+
+ type RentabilidadeProdutoRow = {
+@@ -261,8 +261,7 @@ function linhasMockRentabilidade(
+           valorUnitario: Number(venda.valorUnitario ?? 0),
+         });
+       }
+-      // O proxy de demonstração usa Nestlé como fallback para qualquer código;
+-      // não podemos atribuir essa amostra aos demais fornecedores do benchmark.
++      // O proxy de demonstração usa Nestlé como fallback para qualquer código.
+       const ofertasDoFornecedor = codigo === DEMO_FORNECEDOR_CODIGO ? rebaixasMock : [];
+       for (const oferta of ofertasDoFornecedor) {
+         const inicio = dataRentabilidade(oferta.dataInicio);
+@@ -315,9 +314,7 @@ function montarRentabilidade(
+   nomes: Map<string, string>,
+   de: string,
+   ate: string,
+-  modo: "interno" | "fornecedor",
+   fonte: "live" | "mock",
+-  fornecedorAlvo: string | null,
+ ): RentabilidadeDB {
+   const porProduto = new Map<string, RentabilidadeLinhaDB>();
+   for (const venda of vendas) {
+@@ -587,64 +584,9 @@ function montarRentabilidade(
+
+   const linhas = [...linhasBase, ...linhasCreditosRecebidosNaoAlocados];
+
+-  let benchmark: RentabilidadeDB["benchmark"] = null;
+-  let linhasVisiveis = linhas;
+-  let rebaixasVisiveis = rebaixas;
+-  let rebaixasNaoAlocadasVisiveis = rebaixasNaoAlocadas;
+-  if (modo === "fornecedor" && fornecedorAlvo) {
+-    const porFornecedor = new Map<string, RentabilidadeLinhaDB[]>();
+-    for (const linha of linhas) {
+-      const lista = porFornecedor.get(linha.fornecedorCodigo) || [];
+-      lista.push(linha);
+-      porFornecedor.set(linha.fornecedorCodigo, lista);
+-    }
+-    const comparaveis = Array.from(porFornecedor.entries())
+-      .filter(([codigo]) => codigo !== fornecedorAlvo)
+-      .map(([, lista]) => {
+-        const receita = lista.reduce((total, linha) => total + linha.receitaLiquida, 0);
+-        const resultadoGerencial = lista.reduce(
+-          (total, linha) => total + linha.resultadoGerencial,
+-          0,
+-        );
+-        const resultadoRealizado = lista.reduce(
+-          (total, linha) => total + linha.resultadoRealizado,
+-          0,
+-        );
+-        return {
+-          receita,
+-          resultadoGerencial,
+-          resultadoRealizado,
+-          margemGerencialPct: receita > 0 ? (resultadoGerencial / receita) * 100 : 0,
+-          margemRealizadaPct: receita > 0 ? (resultadoRealizado / receita) * 100 : 0,
+-        };
+-      });
+-    const participantes = comparaveis.length;
+-    if (participantes > 0) {
+-      benchmark = {
+-        participantes,
+-        receitaMedia: arredondarRentabilidade(
+-          comparaveis.reduce((total, item) => total + item.receita, 0) / participantes,
+-        ),
+-        resultadoGerencialMedio: arredondarRentabilidade(
+-          comparaveis.reduce((total, item) => total + item.resultadoGerencial, 0) / participantes,
+-        ),
+-        margemGerencialMediaPct: arredondarRentabilidade(
+-          comparaveis.reduce((total, item) => total + item.margemGerencialPct, 0) / participantes,
+-        ),
+-        resultadoRealizadoMedio: arredondarRentabilidade(
+-          comparaveis.reduce((total, item) => total + item.resultadoRealizado, 0) / participantes,
+-        ),
+-        margemRealizadaMediaPct: arredondarRentabilidade(
+-          comparaveis.reduce((total, item) => total + item.margemRealizadaPct, 0) / participantes,
+-        ),
+-      };
+-    }
+-    linhasVisiveis = linhas.filter((linha) => linha.fornecedorCodigo === fornecedorAlvo);
+-    rebaixasVisiveis = rebaixas.filter((item) => item.fornecedorCodigo === fornecedorAlvo);
+-    rebaixasNaoAlocadasVisiveis = rebaixasNaoAlocadas.filter(
+-      (item) => item.fornecedorCodigo === fornecedorAlvo,
+-    );
+-  }
++  const linhasVisiveis = agruparLinhasRentabilidadeInterna(linhas);
++  const rebaixasVisiveis: RentabilidadeRebaixaDB[] = [];
++  const rebaixasNaoAlocadasVisiveis = rebaixasNaoAlocadas;
+
+   const linhasEstoqueVisiveis = linhasVisiveis;
+   const estoqueVisivel = linhasEstoqueVisiveis.reduce(
+@@ -670,15 +612,8 @@ function montarRentabilidade(
+       ? estoqueVisivel.valor / (cmvPeriodo / diasPeriodo)
+       : null;
+
+-  if (modo === "interno") {
+-    linhasVisiveis = agruparLinhasRentabilidadeInterna(linhasVisiveis);
+-    // A tabela interna usa apenas os totais das linhas e a conciliação
+-    // resumida; o detalhamento de cada rebaixa fica reservado ao fornecedor.
+-    rebaixasVisiveis = [];
+-  }
+-
+   return {
+-    modo,
++    modo: "interno",
+     fonte,
+     periodo: { de, ate },
+     linhas: linhasVisiveis,
+@@ -690,29 +625,20 @@ function montarRentabilidade(
+       valor: arredondarRentabilidade(estoqueVisivel.valor),
+       coberturaDias: coberturaDias === null ? null : arredondarRentabilidade(coberturaDias),
+     },
+-    benchmark,
+   };
+ }
+
+ export const fetchRentabilidade = createServerFn({ method: "GET" })
+-  .validator((data: { de: string; ate: string; modo: "interno" | "fornecedor" }) => {
++  .validator((data: { de: string; ate: string }) => {
+     const de = data.de.slice(0, 10);
+     const ate = data.ate.slice(0, 10);
+     if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate) || de > ate) {
+       throw new Error("Período inválido para a rentabilidade.");
+     }
+-    const modo = data.modo === "interno" ? ("interno" as const) : ("fornecedor" as const);
+-    return { de, ate, modo };
++    return { de, ate };
+   })
+   .handler(async ({ data }) => {
+-    let fornecedorCodigo: string | null = null;
+-    if (data.modo === "interno") {
+-      exigirInterno();
+-    } else {
+-      const sessao = lerSessaoPortal();
+-      if (!sessao || sessao.tipo !== "fornecedor") throw new Error("Sessão do fornecedor exigida.");
+-      fornecedorCodigo = codigoRentabilidade(sessao.codigo);
+-    }
++    exigirInterno();
+
+     const nomes = new Map<string, string>();
+     try {
+@@ -731,7 +657,6 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
+       nomes.set(codigoRentabilidade(row.codigo), row.nome);
+     }
+
+-    const fornecedoresPermitidos = fornecedorCodigo ? [fornecedorCodigo] : null;
+     const vendas: RentabilidadeProdutoRow[] = [];
+     const estoques: RentabilidadeEstoqueRow[] = [];
+     const ofertas: RentabilidadeOfertaRow[] = [];
+@@ -742,10 +667,8 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
+     try {
+       if (tabelaExiste("vendas") && tabelaExiste("produtos")) {
+         consultouLive = true;
+-        const filtroFornecedor = fornecedorCodigo ? "AND p.fornecedorCodigo = ?" : "";
+-        const params: unknown[] = fornecedorCodigo
+-          ? [data.de, data.ate, fornecedorCodigo]
+-          : [data.de, data.ate];
++        const filtroFornecedor = "";
++        const params: unknown[] = [data.de, data.ate];
+         const rows = db
+           .prepare(
+             `SELECT p.fornecedorCodigo AS fornecedorCodigo, v.sku, p.descricao,
+@@ -769,9 +692,9 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
+         vendas.push(...rows);
+       }
+       if (tabelaExiste("estoque") && tabelaExiste("produtos")) {
+-        const estoquePorSku = data.modo !== "interno";
+-        const filtroFornecedorEstoque = fornecedorCodigo ? `AND ${sqlSkuVisivel("p")}` : "";
+-        const paramsEstoque: unknown[] = fornecedorCodigo ? [fornecedorCodigo] : [];
++        const estoquePorSku = false;
++        const filtroFornecedorEstoque = "";
++        const paramsEstoque: unknown[] = [];
+         const dataEstoqueSql = colunaExiste("estoque", "dataEstoque")
+           ? "MAX(e.dataEstoque)"
+           : "NULL";
+@@ -849,14 +772,7 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
+
+     if (!consultouLive) {
+       fonte = "mock";
+-      const codigos = fornecedoresPermitidos
+-        ? [
+-            ...new Set([
+-              ...fornecedoresMock.map((row) => codigoRentabilidade(row.codigo)),
+-              ...fornecedoresPermitidos,
+-            ]),
+-          ]
+-        : fornecedoresMock.map((row) => codigoRentabilidade(row.codigo));
++      const codigos = fornecedoresMock.map((row) => codigoRentabilidade(row.codigo));
+       const mock = linhasMockRentabilidade(codigos, data.de, data.ate);
+       vendas.push(...mock.vendas);
+       estoques.push(...mock.estoques);
+@@ -864,16 +780,5 @@ export const fetchRentabilidade = createServerFn({ method: "GET" })
+       contas.push(...mock.contas);
+     }
+
+-    return montarRentabilidade(
+-      vendas,
+-      estoques,
+-      ofertas,
+-      contas,
+-      nomes,
+-      data.de,
+-      data.ate,
+-      data.modo,
+-      fonte,
+-      fornecedorCodigo,
+-    );
++    return montarRentabilidade(vendas, estoques, ofertas, contas, nomes, data.de, data.ate, fonte);
+   });
+diff --git a/src/components/app-sidebar.tsx b/src/components/app-sidebar.tsx
+index 9bec0d0..9bf5a39 100755
+--- a/src/components/app-sidebar.tsx
++++ b/src/components/app-sidebar.tsx
+@@ -106,6 +106,7 @@ const itens = [
+ ] as const;
+
+ const urlsMenuLider = new Set([
++  "/rentabilidade",
+   "/admin-precos",
+   "/admin-fornecedores",
+   "/admin-acordo-acesso",
+@@ -157,7 +158,8 @@ export function AppSidebar() {
+         item.url === "/admin-precos" ||
+         item.url === "/admin-acordo-acesso" ||
+         item.url === "/controle-promotores" ||
+-        item.url === "/indicadores-fornecedores"
++        item.url === "/indicadores-fornecedores" ||
++        item.url === "/rentabilidade"
+       ) {
+         return usuarioInterno !== null;
+       }
+diff --git a/src/routes/_portal.rentabilidade.tsx b/src/routes/_portal.rentabilidade.tsx
+index 09fc2a1..9eb22d4 100644
+--- a/src/routes/_portal.rentabilidade.tsx
++++ b/src/routes/_portal.rentabilidade.tsx
+@@ -1,4 +1,4 @@
+-import { createFileRoute } from "@tanstack/react-router";
++import { createFileRoute, Navigate } from "@tanstack/react-router";
+ import { BarChart3, Filter, Layers3, PackageSearch, ReceiptText, WalletCards } from "lucide-react";
+ import { useEffect, useMemo, useState } from "react";
+
+@@ -184,9 +184,8 @@ function PaginacaoRentabilidade({
+
+ function RentabilidadePage() {
+   const { fornecedor, codigoFornecedorAtivo, usuarioInterno } = usePortal();
+-  const modo: "interno" | "fornecedor" = usuarioInterno ? "interno" : "fornecedor";
++  const modo: "interno" | "fornecedor" = "interno";
+   const fornecedorSelecionado = codigoFornecedorAtivo || fornecedor.codigo;
+-  const fornecedorConsulta = modo === "fornecedor" ? fornecedorSelecionado : "";
+   const ITENS_POR_PAGINA = 100;
+   const [de, setDe] = useState(primeiroDiaMesAnterior);
+   const [ate, setAte] = useState(ultimoDiaMesAnterior);
+@@ -195,7 +194,6 @@ function RentabilidadePage() {
+   const [secao, setSecao] = useState("todos");
+   const [grupo, setGrupo] = useState("todos");
+   const [subgrupo, setSubgrupo] = useState("todos");
+-  const [busca, setBusca] = useState("");
+   const [buscaFornecedor, setBuscaFornecedor] = useState("");
+   const [dados, setDados] = useState<RentabilidadeDB | null>(null);
+   const [carregando, setCarregando] = useState(false);
+@@ -203,10 +201,16 @@ function RentabilidadePage() {
+   const [pagina, setPagina] = useState(1);
+
+   useEffect(() => {
++    if (!usuarioInterno) {
++      setDados(null);
++      setCarregando(false);
++      setErro(null);
++      return;
++    }
+     let ativo = true;
+     setCarregando(true);
+     setErro(null);
+-    void fetchRentabilidade({ data: { de, ate, modo } })
++    void fetchRentabilidade({ data: { de, ate } })
+       .then((resultado) => {
+         if (ativo) setDados(resultado);
+       })
+@@ -223,7 +227,7 @@ function RentabilidadePage() {
+     return () => {
+       ativo = false;
+     };
+-  }, [ate, de, fornecedorConsulta, modo]);
++  }, [ate, de, usuarioInterno]);
+
+   const linhas = dados?.linhas ?? linhasRentabilidadeVazias;
+   const segmentos = useMemo(
+@@ -286,9 +290,9 @@ function RentabilidadePage() {
+   );
+
+   const linhasFiltradas = useMemo(() => {
+-    const consulta = modo === "fornecedor" ? busca.trim().toLocaleLowerCase() : "";
+-    const consultaFornecedor = modo === "interno" ? buscaFornecedor.trim().toLocaleLowerCase() : "";
+-    const fornecedorDaBusca = modo === "fornecedor" ? fornecedorSelecionado : "todos";
++    const consulta = "";
++    const consultaFornecedor = buscaFornecedor.trim().toLocaleLowerCase();
++    const fornecedorDaBusca = "todos";
+     return linhas
+       .filter(
+         (linha) => fornecedorDaBusca === "todos" || linha.fornecedorCodigo === fornecedorDaBusca,
+@@ -311,7 +315,7 @@ function RentabilidadePage() {
+           .toLocaleLowerCase()
+           .includes(consulta);
+       });
+-  }, [busca, buscaFornecedor, departamento, fornecedorSelecionado, grupo, linhas, modo, secao, segmento, subgrupo]);
++  }, [buscaFornecedor, departamento, grupo, linhas, secao, segmento, subgrupo]);
+
+   const resumo = useMemo(() => {
+     const resultado = resumir(linhasFiltradas);
+@@ -349,7 +353,8 @@ function RentabilidadePage() {
+     () => [...linhasFiltradas].sort((a, b) => b.resultadoGerencial - a.resultadoGerencial),
+     [linhasFiltradas],
+   );
+-  const totalItensTabela = modo === "interno" ? fornecedoresVisiveis.length : linhasOrdenadas.length;
++  const totalItensTabela =
++    modo === "interno" ? fornecedoresVisiveis.length : linhasOrdenadas.length;
+   const totalPaginas = Math.max(1, Math.ceil(totalItensTabela / ITENS_POR_PAGINA));
+   const paginaAtual = Math.min(pagina, totalPaginas);
+   const fornecedoresPagina = useMemo(
+@@ -362,21 +367,19 @@ function RentabilidadePage() {
+   );
+   const linhasPagina = useMemo(
+     () =>
+-      linhasOrdenadas.slice(
+-        (paginaAtual - 1) * ITENS_POR_PAGINA,
+-        paginaAtual * ITENS_POR_PAGINA,
+-      ),
++      linhasOrdenadas.slice((paginaAtual - 1) * ITENS_POR_PAGINA, paginaAtual * ITENS_POR_PAGINA),
+     [linhasOrdenadas, paginaAtual],
+   );
+
+   useEffect(() => {
+     setPagina(1);
+-  }, [ate, busca, buscaFornecedor, de, departamento, grupo, modo, secao, segmento, subgrupo]);
++  }, [ate, buscaFornecedor, de, departamento, grupo, secao, segmento, subgrupo]);
+
+-  const benchmark = dados?.benchmark;
+   const margemGerencial = margemPct(resumo.resultadoGerencial, resumo.receitaLiquida);
+   const margemRealizada = margemPct(resumo.resultadoRealizado, resumo.receitaLiquida);
+-  const fornecedorAtual = fornecedorSelecionado;
++  if (!usuarioInterno) {
++    return <Navigate to="/dashboard" replace />;
++  }
+
+   return (
+     <PortalLayout
+@@ -525,21 +528,6 @@ function RentabilidadePage() {
+                 </div>
+               </div>
+             )}
+-            {modo === "fornecedor" ? (
+-              <div className="space-y-2">
+-                <Label htmlFor="rentabilidade-busca">Produto/SKU</Label>
+-                <div className="relative">
+-                  <PackageSearch className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+-                  <Input
+-                    id="rentabilidade-busca"
+-                    className="pl-9"
+-                    value={busca}
+-                    onChange={(event) => setBusca(event.target.value)}
+-                    placeholder="Buscar produto do fornecedor selecionado..."
+-                  />
+-                </div>
+-              </div>
+-            ) : null}
+           </CardContent>
+         </Card>
+
+@@ -599,52 +587,6 @@ function RentabilidadePage() {
+           {dados?.estoque.data ? ` (${dados.estoque.data.slice(0, 10)})` : ""}.
+         </p>
+
+-        {modo === "fornecedor" && benchmark ? (
+-          <Card className="border-primary/20 shadow-panel">
+-            <CardHeader className="pb-3">
+-              <div className="flex flex-wrap items-center justify-between gap-2">
+-                <div>
+-                  <CardTitle className="text-base">Comparação com outros fornecedores</CardTitle>
+-                  <CardDescription>
+-                    Média anonimizada dos demais fornecedores no mesmo período.
+-                  </CardDescription>
+-                </div>
+-                <Badge variant="secondary">{benchmark.participantes} fornecedor(es) na base</Badge>
+-              </div>
+-            </CardHeader>
+-            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+-              <div className="rounded-lg border bg-card p-3">
+-                <p className="text-xs text-muted-foreground">Sua margem gerencial</p>
+-                <p className="mt-1 text-xl font-bold">{percentual(margemGerencial)}</p>
+-                <p className="text-xs text-muted-foreground">
+-                  Média: {percentual(benchmark.margemGerencialMediaPct)}
+-                </p>
+-              </div>
+-              <div className="rounded-lg border bg-card p-3">
+-                <p className="text-xs text-muted-foreground">Seu resultado</p>
+-                <p className="mt-1 text-xl font-bold">{brl(resumo.resultadoGerencial)}</p>
+-                <p className="text-xs text-muted-foreground">
+-                  Média: {brl(benchmark.resultadoGerencialMedio)}
+-                </p>
+-              </div>
+-              <div className="rounded-lg border bg-card p-3">
+-                <p className="text-xs text-muted-foreground">Diferença de margem</p>
+-                <p
+-                  className={`mt-1 text-xl font-bold ${margemGerencial >= benchmark.margemGerencialMediaPct ? "text-success" : "text-destructive"}`}
+-                >
+-                  {percentual(margemGerencial - benchmark.margemGerencialMediaPct)}
+-                </p>
+-                <p className="text-xs text-muted-foreground">Em relação à média</p>
+-              </div>
+-              <div className="rounded-lg border bg-card p-3">
+-                <p className="text-xs text-muted-foreground">Receita média da base</p>
+-                <p className="mt-1 text-xl font-bold">{brl(benchmark.receitaMedia)}</p>
+-                <p className="text-xs text-muted-foreground">Sem identificar concorrentes</p>
+-              </div>
+-            </CardContent>
+-          </Card>
+-        ) : null}
+-
+         <Card className="shadow-panel">
+           <CardHeader className="pb-3">
+             <div className="flex flex-wrap items-center justify-between gap-2">
+@@ -764,57 +706,55 @@ function RentabilidadePage() {
+                 </TableHeader>
+                 <TableBody>
+                   {linhasPagina.map((linha) => (
+-                      <TableRow key={`${linha.fornecedorCodigo}-${linha.sku}`}>
+-                        <TableCell>
+-                          <div className="max-w-[20rem] truncate font-medium">
+-                            {linha.descricao}
+-                          </div>
+-                          <div className="font-mono text-[10px] text-muted-foreground">
+-                            SKU {linha.sku}
+-                          </div>
+-                        </TableCell>
+-                        <TableCell>
+-                          <div className="text-xs">
+-                            {linha.segmento} · {linha.departamento} · {linha.secao}
+-                          </div>
+-                          <div className="text-[10px] text-muted-foreground">
+-                            {linha.grupo} · {linha.subgrupo} · {linha.categoria}
+-                          </div>
+-                        </TableCell>
+-                        <TableCell className="text-right">
+-                          {linha.quantidade.toLocaleString("pt-BR")}
+-                        </TableCell>
+-                        <TableCell className="text-right">{brl(linha.receitaLiquida)}</TableCell>
+-                        <TableCell className="text-right">{brl(linha.cmv)}</TableCell>
+-                        <TableCell className="text-right">{brl(linha.rebaixaApurada)}</TableCell>
+-                        <TableCell className="text-right">{brl(linha.rebaixaRecebida)}</TableCell>
+-                        <TableCell className="text-right">
+-                          <div>{brl(linha.estoqueValor)}</div>
+-                          <div className="text-[10px] text-muted-foreground">
+-                            {linha.estoqueQuantidade.toLocaleString("pt-BR")} un.
+-                          </div>
+-                        </TableCell>
+-                        <TableCell className="text-right">
+-                          {linha.coberturaDias === null
+-                            ? "—"
+-                            : `${linha.coberturaDias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} d`}
+-                        </TableCell>
+-                        <TableCell className="text-right font-semibold">
+-                          {brl(linha.resultadoGerencial)}
+-                        </TableCell>
+-                        <TableCell className="text-right">
+-                          <Badge
+-                            variant={
+-                              margemPct(linha.resultadoGerencial, linha.receitaLiquida) >= 0
+-                                ? "secondary"
+-                                : "destructive"
+-                            }
+-                          >
+-                            {percentual(margemPct(linha.resultadoGerencial, linha.receitaLiquida))}
+-                          </Badge>
+-                        </TableCell>
+-                      </TableRow>
+-                    ))}
++                    <TableRow key={`${linha.fornecedorCodigo}-${linha.sku}`}>
++                      <TableCell>
++                        <div className="max-w-[20rem] truncate font-medium">{linha.descricao}</div>
++                        <div className="font-mono text-[10px] text-muted-foreground">
++                          SKU {linha.sku}
++                        </div>
++                      </TableCell>
++                      <TableCell>
++                        <div className="text-xs">
++                          {linha.segmento} · {linha.departamento} · {linha.secao}
++                        </div>
++                        <div className="text-[10px] text-muted-foreground">
++                          {linha.grupo} · {linha.subgrupo} · {linha.categoria}
++                        </div>
++                      </TableCell>
++                      <TableCell className="text-right">
++                        {linha.quantidade.toLocaleString("pt-BR")}
++                      </TableCell>
++                      <TableCell className="text-right">{brl(linha.receitaLiquida)}</TableCell>
++                      <TableCell className="text-right">{brl(linha.cmv)}</TableCell>
++                      <TableCell className="text-right">{brl(linha.rebaixaApurada)}</TableCell>
++                      <TableCell className="text-right">{brl(linha.rebaixaRecebida)}</TableCell>
++                      <TableCell className="text-right">
++                        <div>{brl(linha.estoqueValor)}</div>
++                        <div className="text-[10px] text-muted-foreground">
++                          {linha.estoqueQuantidade.toLocaleString("pt-BR")} un.
++                        </div>
++                      </TableCell>
++                      <TableCell className="text-right">
++                        {linha.coberturaDias === null
++                          ? "—"
++                          : `${linha.coberturaDias.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} d`}
++                      </TableCell>
++                      <TableCell className="text-right font-semibold">
++                        {brl(linha.resultadoGerencial)}
++                      </TableCell>
++                      <TableCell className="text-right">
++                        <Badge
++                          variant={
++                            margemPct(linha.resultadoGerencial, linha.receitaLiquida) >= 0
++                              ? "secondary"
++                              : "destructive"
++                          }
++                        >
++                          {percentual(margemPct(linha.resultadoGerencial, linha.receitaLiquida))}
++                        </Badge>
++                      </TableCell>
++                    </TableRow>
++                  ))}
+                   {linhasFiltradas.length === 0 ? (
+                     <TableRow>
+                       <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
+@@ -916,9 +856,7 @@ function RentabilidadePage() {
+           {dados?.fonte === "mock"
+             ? "Ambiente de demonstração: os dados exibidos usam a base sintética do portal."
+             : "Fonte operacional: vendas, produtos, ofertas e contas a receber do portal."}{" "}
+-          {modo === "fornecedor"
+-            ? `Fornecedor ativo: ${fornecedorAtual}.`
+-            : "Visão interna com comparação entre fornecedores."}
++          Visão interna com comparação entre fornecedores.
+         </p>
+       </div>
+     </PortalLayout>
