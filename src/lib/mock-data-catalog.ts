@@ -83,6 +83,9 @@ export type FornecedorType = {
   acessoStatus?: string | null;
   acessoDataInicio?: string | null;
   acessoDataFim?: string | null;
+  carenciaAte?: string | null;
+  primeiraCompetenciaCobravel?: string | null;
+  ultimoAcordoMes?: string | null;
 };
 
 export const fornecedores: FornecedorType[] = [

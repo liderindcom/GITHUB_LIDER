@@ -195,6 +195,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
           acessoStatus: forn.acessoStatus,
           acessoDataInicio: forn.acessoDataInicio,
           acessoDataFim: forn.acessoDataFim,
+          carenciaAte: forn.carenciaAte,
+          primeiraCompetenciaCobravel: forn.primeiraCompetenciaCobravel,
+          ultimoAcordoMes: forn.ultimoAcordoMes,
           ...(forn.fornecedorComercialCodigo
             ? { fornecedorComercialCodigo: forn.fornecedorComercialCodigo }
             : {}),
