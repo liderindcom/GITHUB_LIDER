@@ -418,7 +418,10 @@ export const fetchFaturas = createServerFn({ method: "GET" })
         valor: Number(row.valor ?? 0),
         descontoFinanceiro: Number(row.descontoFinanceiro ?? 0),
         valorLiquido: Number(row.valorLiquido ?? 0),
-        status: row.status === "Pago" ? "Pago" : "A vencer",
+        status:
+          row.status === "Pago" || row.status === "Vencido" || row.status === "Cancelado"
+            ? row.status
+            : "A vencer",
         lojaId: String(row.lojaId),
         fornecedorCodigo: String(row.fornecedorCodigo),
         direcao: "fornecedor_para_lider",

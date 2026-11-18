@@ -67,7 +67,14 @@ function FinanceiroPage() {
     () => faturasDoFornecedor(fornecedor.codigo),
     [fornecedor.codigo, dadosFornecedorVersao],
   );
-  const aVencer = useMemo(() => titulos.filter((f) => f.status === "A vencer"), [titulos]);
+  const titulosEmAberto = useMemo(
+    () => titulos.filter((f) => f.status !== "Pago" && f.status !== "Cancelado"),
+    [titulos],
+  );
+  const aVencer = useMemo(
+    () => titulosEmAberto.filter((f) => f.status === "A vencer"),
+    [titulosEmAberto],
+  );
   const debitoVencido = useMemo(() => {
     const hojeIso = hoje.toISOString().slice(0, 10);
     return contasReceber.filter((conta) => conta.status !== "Descontado" && conta.vencimento && conta.vencimento < hojeIso).reduce((total, conta) => total + Number(conta.valor || 0), 0);
@@ -256,11 +263,11 @@ function FinanceiroPage() {
   }
 
   const resumoTitulos = useMemo(() => {
-    const brutoAberto = aVencer.reduce((acc, f) => acc + f.valor, 0);
-    const descFinAberto = aVencer.reduce((acc, f) => acc + f.descontoFinanceiro, 0);
-    const liquidoAberto = aVencer.reduce((acc, f) => acc + f.valorLiquido, 0);
-    return { brutoAberto, descFinAberto, liquidoAberto, qtdAberto: aVencer.length };
-  }, [aVencer]);
+    const brutoAberto = titulosEmAberto.reduce((acc, f) => acc + f.valor, 0);
+    const descFinAberto = titulosEmAberto.reduce((acc, f) => acc + f.descontoFinanceiro, 0);
+    const liquidoAberto = titulosEmAberto.reduce((acc, f) => acc + f.valorLiquido, 0);
+    return { brutoAberto, descFinAberto, liquidoAberto, qtdAberto: titulosEmAberto.length };
+  }, [titulosEmAberto]);
 
 
 
@@ -404,9 +411,7 @@ function FinanceiroPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {titulos
-                      .filter((f) => f.status !== "Pago")
-                      .map((f) => {
+                    {titulosEmAberto.map((f) => {
                         const antecipavel = f.status === "A vencer" && cadastro.anticipationEnabled;
                         return (
                           <TableRow
@@ -447,9 +452,9 @@ function FinanceiroPage() {
                             <TableCell>
                               <Badge
                                 className={`border-0 ${
-                                  f.status === "A vencer"
-                                    ? "bg-warning-soft text-warning"
-                                    : "bg-success-soft text-success"
+                                  f.status === "Vencido"
+                                    ? "bg-destructive/15 text-destructive"
+                                    : "bg-warning-soft text-warning"
                                 }`}
                               >
                                 {f.status}
@@ -458,7 +463,7 @@ function FinanceiroPage() {
                           </TableRow>
                         );
                       })}
-                    {titulos.length === 0 && (
+                    {titulosEmAberto.length === 0 && (
                       <TableRow>
                         <TableCell
                           colSpan={11}

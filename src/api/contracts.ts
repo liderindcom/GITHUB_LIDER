@@ -136,7 +136,7 @@ export type FaturaDB = {
   valor: number;
   descontoFinanceiro: number;
   valorLiquido: number;
-  status: "A vencer" | "Pago";
+  status: "A vencer" | "Vencido" | "Pago" | "Cancelado";
   lojaId: string;
   destTipo?: string;
   fornecedorCodigo: string;

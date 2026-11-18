@@ -198,7 +198,7 @@ export type Fatura = {
   descontoFinanceiro: number;
   /** Valor líquido após desconto financeiro do cadastro. */
   valorLiquido: number;
-  status: "A vencer" | "Pago";
+  status: "A vencer" | "Vencido" | "Pago" | "Cancelado";
   /** Filial de destino da NF (loja ou CDAM). */
   lojaId: string;
   /** Código do fornecedor emitente (escopo do portal). */
@@ -245,7 +245,7 @@ type FaturaInput = {
   numeroNota: string;
   emissao: string;
   valor: number;
-  status: "A vencer" | "Pago";
+  status: "A vencer" | "Vencido" | "Pago" | "Cancelado";
   lojaId: string;
   fornecedorCodigo?: string;
   direcao?: DirecaoNota;
